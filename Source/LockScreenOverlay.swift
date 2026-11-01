@@ -968,6 +968,7 @@ final class LockScreenOverlay {
     // MARK: StandBy (4.0.0)
 
     private var standbyWindow: LockIslandPanel?
+    var onStandByDismiss: (() -> Void)?
     private var standbyPreviewWindow: NSPanel?
 
     // Full screen, above the card and widgets, never taking a click: the
@@ -989,20 +990,27 @@ final class LockScreenOverlay {
                 panel.isMovable = false
                 panel.isReleasedWhenClosed = false
                 panel.canBecomeVisibleWithoutLogin = true
+                panel.acceptsMouseMovedEvents = true
                 panel.level = NSWindow.Level(rawValue: Int(Int32.max - 1))
                 panel.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary, .stationary, .ignoresCycle]
-                panel.contentView = NSHostingView(rootView: StandByView(state: state, activity: LockCoverActivity.standby))
+                // 4.1.0: takes clicks — a click leaves StandBy, the music
+                // island opens with one.
+                panel.contentView = FirstClickHostingView(rootView: StandByView(
+                    state: state, activity: LockCoverActivity.standby,
+                    onDismiss: { [weak self] in self?.onStandByDismiss?() }))
                 panel.alphaValue = 0
                 standbyWindow = panel
             }
             panel.setFrame(screen.frame, display: false)
             LockCoverActivity.standby.show()
+            panel.ignoresMouseEvents = false
             panel.orderFrontRegardless()
             _ = bridge.attach(panel)
             fade(panel, to: 1, duration: 0.6)
             LockIslandLog.record("standby: on")
         } else {
             LockCoverActivity.standby.hide(after: 0.4)
+            standbyWindow?.ignoresMouseEvents = true
             if let panel = standbyWindow, panel.alphaValue > 0 {
                 fade(panel, to: 0, duration: 0.3)
                 LockIslandLog.record("standby: off")
@@ -1027,9 +1035,8 @@ final class LockScreenOverlay {
         }()
         standbyPreviewWindow = panel
         panel.contentView = FirstClickHostingView(rootView:
-            StandByView(state: state, activity: LockCoverActivity.standby)
-                .contentShape(Rectangle())
-                .onTapGesture { [weak self] in self?.closeStandByPreview() })
+            StandByView(state: state, activity: LockCoverActivity.standby,
+                        onDismiss: { [weak self] in self?.closeStandByPreview() }))
         panel.setFrame(screen.frame, display: false)
         LockCoverActivity.standby.show()
         panel.alphaValue = 0
@@ -1059,6 +1066,7 @@ final class LockScreenOverlay {
 
     func hideImmediately() {
         standbyWindow?.alphaValue = 0
+        standbyWindow?.ignoresMouseEvents = true
         LockCoverActivity.standby.hide(after: 0)
         generation += 1
         lockPresentationActive = false

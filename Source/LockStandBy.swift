@@ -45,12 +45,22 @@ final class StandByController {
         }
     }
 
+    // 4.1.0: StandBy is left by a click (see StandByView) — moving the mouse
+    // does nothing. A key press also leaves it at once, so the password is
+    // never typed into the hidden login field blindly.
     private func tick() {
-        let anyInput = CGEventType(rawValue: ~UInt32(0))!
-        let idle = CGEventSource.secondsSinceLastEventType(.combinedSessionState, eventType: anyInput)
-        if shown && idle < 1 { setShown(false) }
-        else if !shown && idle >= StandBySettings.idleBeforeShow { setShown(true) }
+        if shown {
+            let keys = CGEventSource.secondsSinceLastEventType(.combinedSessionState, eventType: .keyDown)
+            if keys < 1 { setShown(false) }
+        } else {
+            let anyInput = CGEventType(rawValue: ~UInt32(0))!
+            let idle = CGEventSource.secondsSinceLastEventType(.combinedSessionState, eventType: anyInput)
+            if idle >= StandBySettings.idleBeforeShow { setShown(true) }
+        }
     }
+
+    // A click on StandBy (outside the open music island).
+    func userDismissed() { setShown(false) }
 
     private func setShown(_ on: Bool) {
         guard on != shown else { return }
@@ -67,17 +77,31 @@ final class StandByController {
     }
 }
 
+// 4.1.0: the look of iPhone StandBy — a huge condensed clock in a warm tint
+// on black, the day and the temperature at the top right. Music lives in a
+// small island at the top that opens into a player. A click anywhere leaves
+// StandBy; clicks inside the open island do not.
+final class StandByUIState: ObservableObject {
+    @Published var islandExpanded = false
+}
+
 struct StandByView: View {
     @ObservedObject var state: IslandState
     @ObservedObject var activity: LockCoverActivity
+    var onDismiss: () -> Void = {}
     @ObservedObject private var weather = WeatherService.shared
+    @StateObject private var ui = StandByUIState()
     @AppStorage(StandBySettings.nightKey) private var nightMode = true
+
+    // The warm grey-beige of iPhone StandBy.
+    static let tint = Color(red: 0.67, green: 0.63, blue: 0.59)
 
     var body: some View {
         if activity.active {
             TimelineView(.everyMinute) { context in
                 content(context.date)
             }
+            .onDisappear { ui.islandExpanded = false }
         } else {
             Color.clear
         }
@@ -88,123 +112,124 @@ struct StandByView: View {
         return GeometryReader { geometry in
             let size = geometry.size
             let h = size.height
-            HStack(spacing: size.width * 0.04) {
-                // The big clock.
-                VStack(alignment: .leading, spacing: h * 0.01) {
+            ZStack(alignment: .top) {
+                Color.black
+                    .contentShape(Rectangle())
+                    .onTapGesture {
+                        if ui.islandExpanded {
+                            withAnimation(.spring(response: 0.45, dampingFraction: 0.85)) { ui.islandExpanded = false }
+                        } else {
+                            onDismiss()
+                        }
+                    }
+                HStack(alignment: .top, spacing: size.width * 0.06) {
                     Text(Self.format(now, "HH:mm"))
-                        .font(.system(size: h * 0.36, weight: .heavy, design: .rounded))
+                        .font(.system(size: h * 0.86, weight: .semibold))
+                        .fontWidth(.compressed)
                         .monospacedDigit()
-                        .minimumScaleFactor(0.5)
+                        .foregroundStyle(Self.tint)
                         .lineLimit(1)
-                    Text(Self.format(now, "EEEE, d MMMM").capitalizedFirst)
-                        .font(.system(size: h * 0.045, weight: .semibold, design: .rounded))
-                        .opacity(0.6)
+                        .minimumScaleFactor(0.4)
+                        .padding(.top, -h * 0.12)
+                    VStack(alignment: .leading, spacing: h * 0.012) {
+                        (Text(Self.format(now, "EE").uppercased()).foregroundColor(Self.tint)
+                            + Text(", \(Calendar.current.component(.day, from: now))").foregroundColor(.white))
+                        if let snapshot = weather.snapshot {
+                            Text("\(snapshot.temperature) °C").foregroundStyle(.white)
+                        }
+                    }
+                    .font(.system(size: h * 0.062, weight: .bold, design: .rounded))
+                    .padding(.top, h * 0.13)
+                    .allowsHitTesting(false)
                 }
-                .frame(width: size.width * 0.56, alignment: .leading)
-                VStack(spacing: h * 0.035) {
-                    chargingCard(h: h)
-                    secondCard(h: h)
+                .frame(width: size.width, height: size.height)
+                .allowsHitTesting(false)
+                if state.track != nil {
+                    musicIsland(h: h, width: size.width)
+                        .padding(.top, max(44, h * 0.05))
                 }
-                .frame(maxWidth: .infinity)
             }
-            .padding(.horizontal, size.width * 0.06)
             .frame(width: size.width, height: size.height)
-            .foregroundStyle(.white)
-            .background(Color.black)
             // Night: dim red, easy on the eyes in the dark.
-            .colorMultiply(night ? Color(red: 1, green: 0.18, blue: 0.12) : .white)
-            .opacity(night ? 0.6 : 1)
+            .colorMultiply(night ? Color(red: 1, green: 0.2, blue: 0.14) : .white)
+            .opacity(night ? 0.62 : 1)
             .background(Color.black)
         }
         .ignoresSafeArea()
         .environment(\.colorScheme, .dark)
     }
 
-    private func card<Content: View>(h: CGFloat, @ViewBuilder _ content: () -> Content) -> some View {
-        content()
-            .padding(h * 0.03)
-            .frame(maxWidth: .infinity, minHeight: h * 0.3, alignment: .leading)
-            .background(RoundedRectangle(cornerRadius: h * 0.045, style: .continuous).fill(Color.white.opacity(0.08)))
+    // Compact: cover and waveform; tap → the player. Clicks inside the open
+    // player never leave StandBy.
+    private func musicIsland(h: CGFloat, width: CGFloat) -> some View {
+        let expanded = ui.islandExpanded
+        let shape = RoundedRectangle(cornerRadius: expanded ? 34 : 22, style: .continuous)
+        return Group {
+            if expanded { expandedPlayer } else { compactPlayer }
+        }
+        .padding(.horizontal, expanded ? 22 : 12)
+        .padding(.vertical, expanded ? 20 : 8)
+        .frame(width: expanded ? min(width * 0.42, 460) : 230)
+        .background(shape.fill(Color(white: 0.07)))
+        .overlay(shape.strokeBorder(Color.white.opacity(0.12), lineWidth: 1))
+        .contentShape(shape)
+        .onTapGesture {
+            withAnimation(.spring(response: 0.45, dampingFraction: 0.82)) { ui.islandExpanded.toggle() }
+        }
+        .animation(.spring(response: 0.45, dampingFraction: 0.82), value: expanded)
     }
 
-    private func chargingCard(h: CGFloat) -> some View {
-        let percent = state.power?.percentage ?? 0
-        let charging = state.power?.isCharging ?? false
-        let green = Color(red: 0.25, green: 0.9, blue: 0.45)
-        return card(h: h) {
-            HStack(spacing: h * 0.03) {
-                ZStack {
-                    Circle().stroke(Color.white.opacity(0.15), lineWidth: h * 0.018)
-                    Circle().trim(from: 0, to: CGFloat(percent) / 100)
-                        .stroke(green, style: StrokeStyle(lineWidth: h * 0.018, lineCap: .round))
-                        .rotationEffect(.degrees(-90))
-                    Image(systemName: "bolt.fill")
-                        .font(.system(size: h * 0.05, weight: .bold))
-                        .foregroundStyle(green)
-                }
-                .frame(width: h * 0.17, height: h * 0.17)
-                VStack(alignment: .leading, spacing: h * 0.005) {
-                    Text("\(percent)%")
-                        .font(.system(size: h * 0.075, weight: .bold, design: .rounded))
-                        .monospacedDigit()
-                    Text(percent >= 100 ? "Заряжено" : (charging ? "Заряжается" : "Подключено к питанию"))
-                        .font(.system(size: h * 0.03, weight: .medium))
-                        .opacity(0.6)
-                }
+    private var cover: some View {
+        Group {
+            if let art = state.musicArtwork {
+                Image(nsImage: art).resizable().scaledToFill()
+            } else {
+                Color.white.opacity(0.12).overlay(Image(systemName: "music.note").foregroundStyle(.white))
             }
         }
     }
 
-    @ViewBuilder
-    private func secondCard(h: CGFloat) -> some View {
-        if let track = state.track {
-            card(h: h) {
-                HStack(spacing: h * 0.03) {
-                    Group {
-                        if let art = state.musicArtwork {
-                            Image(nsImage: art).resizable().scaledToFill()
-                        } else {
-                            Color.white.opacity(0.12)
-                                .overlay(Image(systemName: "music.note").font(.system(size: h * 0.05)))
-                        }
-                    }
-                    .frame(width: h * 0.17, height: h * 0.17)
-                    .clipShape(RoundedRectangle(cornerRadius: h * 0.025, style: .continuous))
-                    VStack(alignment: .leading, spacing: h * 0.006) {
-                        Text(track.title)
-                            .font(.system(size: h * 0.04, weight: .bold, design: .rounded))
-                        Text(track.artist)
-                            .font(.system(size: h * 0.03, weight: .medium))
-                            .opacity(0.6)
-                        Image(systemName: track.isPlaying ? "waveform" : "pause.fill")
-                            .font(.system(size: h * 0.03))
-                            .foregroundStyle(state.musicArtworkTint)
-                    }
-                    .lineLimit(1)
+    private var compactPlayer: some View {
+        HStack(spacing: 10) {
+            cover.frame(width: 28, height: 28).clipShape(RoundedRectangle(cornerRadius: 7, style: .continuous))
+            Text(state.track?.title ?? "")
+                .font(.system(size: 13, weight: .semibold))
+                .foregroundStyle(.white)
+                .lineLimit(1)
+            Spacer(minLength: 4)
+            Image(systemName: state.track?.isPlaying == true ? "waveform" : "pause.fill")
+                .font(.system(size: 14, weight: .semibold))
+                .foregroundStyle(state.musicArtworkTint)
+                .symbolEffect(.variableColor.iterative, isActive: state.track?.isPlaying == true)
+        }
+    }
+
+    private var expandedPlayer: some View {
+        VStack(spacing: 16) {
+            HStack(spacing: 14) {
+                cover.frame(width: 72, height: 72).clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+                VStack(alignment: .leading, spacing: 4) {
+                    Text(state.track?.title ?? "")
+                        .font(.system(size: 18, weight: .bold, design: .rounded))
+                    Text(state.track?.artist ?? "")
+                        .font(.system(size: 14))
+                        .opacity(0.65)
                 }
+                .foregroundStyle(.white)
+                .lineLimit(1)
+                Spacer(minLength: 0)
             }
-        } else if let snapshot = weather.snapshot {
-            card(h: h) {
-                HStack(spacing: h * 0.03) {
-                    Image(systemName: WeatherCodes.symbol(snapshot.code, night: IdleWingsView.isNight))
-                        .symbolRenderingMode(.multicolor)
-                        .font(.system(size: h * 0.1))
-                        .frame(width: h * 0.17)
-                    VStack(alignment: .leading, spacing: h * 0.005) {
-                        Text("\(snapshot.temperature)°")
-                            .font(.system(size: h * 0.075, weight: .bold, design: .rounded))
-                        Text(snapshot.place)
-                            .font(.system(size: h * 0.03, weight: .medium))
-                            .opacity(0.6)
-                        if let low = snapshot.low, let high = snapshot.high {
-                            Text("↓ \(low)° ↑ \(high)°")
-                                .font(.system(size: h * 0.028, weight: .medium))
-                                .opacity(0.5)
-                        }
-                    }
-                    .lineLimit(1)
+            HStack(spacing: 40) {
+                Button { state.command(.previous) } label: { Image(systemName: "backward.fill").font(.system(size: 24)) }
+                Button { state.command(.toggle) } label: {
+                    Image(systemName: state.track?.isPlaying == true ? "pause.fill" : "play.fill")
+                        .font(.system(size: 34))
+                        .contentTransition(.symbolEffect(.replace))
                 }
+                Button { state.command(.next) } label: { Image(systemName: "forward.fill").font(.system(size: 24)) }
             }
+            .buttonStyle(.plain)
+            .foregroundStyle(.white)
         }
     }
 

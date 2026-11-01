@@ -1779,6 +1779,7 @@ final class IslandAppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             guard let self else { return }
             self.lockOverlay?.setStandBy(on, on: self.displayScreen())
         }
+        lockOverlayStandByHook()
         stateChangeCounter = state.objectWillChange.sink { _ in PerformanceMonitor.count("state change") }
         iconSwitcher.start()
         // 3.1.11: the artwork-source switches were removed from Settings.
@@ -1823,6 +1824,7 @@ final class IslandAppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         // Unlike the normal media panel, this second panel is noninteractive
         // and only draws a small padlock, never personal/media information.
         lockOverlay = LockScreenOverlay(state: state)
+        lockOverlayStandByHook()
         lockOverlay?.prepare(on: displayScreen())
         lockStatusItem?.title = lockOverlay?.usesPrivateLockSpace == true
             ? "Замочек: экспериментальный SkyLight (не гарантирован)"
@@ -2605,6 +2607,13 @@ final class IslandAppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             return centre - width / 2
         }
         return notchLeft - state.leftWing
+    }
+
+    // 4.1.0: a click on StandBy leaves it (the overlay is created later,
+    // so the hook is attached whenever it exists).
+    private func lockOverlayStandByHook() {
+        guard let overlay = lockOverlay else { return }
+        overlay.onStandByDismiss = { [weak self] in self?.standby.userDismissed() }
     }
 
     // MARK: Idle wings (4.0.0)
