@@ -462,156 +462,44 @@ struct LockWidgetsEditor: View {
     let onDone: () -> Void
     @StateObject private var drag = WidgetDragModel()
 
+    // Geometry of the row for a screen size (split out: one huge body
+    // expression is too much for the type checker).
+    private struct RowLayout {
+        let k: CGFloat
+        let items: [LockWidgetItem]
+        let rowW: CGFloat
+        let rowLeft: CGFloat
+        let top: CGFloat
+        let frame: CGRect
+    }
+
+    private func layout(_ size: CGSize) -> RowLayout {
+        let k = CGFloat(model.scale)
+        let items = model.items
+        let rowW = max(LockWidgetGeometry.rowWidth(items) * k, LockWidgetGeometry.unit * k)
+        let top = size.height * LockWidgetGeometry.rowTop
+        let fullW = (LockWidgetGeometry.unit * 4 + LockWidgetGeometry.gap * 3) * k
+        let frame = CGRect(x: (size.width - fullW) / 2 - 20, y: top - 24,
+                           width: fullW + 40, height: LockWidgetGeometry.height * k + 48)
+        return RowLayout(k: k, items: items, rowW: rowW, rowLeft: (size.width - rowW) / 2, top: top, frame: frame)
+    }
+
     var body: some View {
         GeometryReader { geometry in
             let size = geometry.size
-            let k = CGFloat(model.scale)
-            let items = model.items
-            let rowW = max(LockWidgetGeometry.rowWidth(items) * k, LockWidgetGeometry.unit * k)
-            let rowLeft = (size.width - rowW) / 2
-            let top = size.height * LockWidgetGeometry.rowTop
-            let rowFrame = CGRect(x: (size.width - (LockWidgetGeometry.unit * 4 + LockWidgetGeometry.gap * 3) * k) / 2 - 20,
-                                  y: top - 24,
-                                  width: (LockWidgetGeometry.unit * 4 + LockWidgetGeometry.gap * 3) * k + 40,
-                                  height: LockWidgetGeometry.height * k + 48)
+            let row = layout(size)
             ZStack {
-                ZStack {
-                    LinearGradient(colors: [Color(white: 0.22), Color(white: 0.06)],
-                                   startPoint: .top, endPoint: .bottom)
-                    if let image = wallpaper.image {
-                        Image(nsImage: image).resizable().scaledToFill()
-                            .transition(.opacity)
-                    }
+                backdrop(size)
+                clock(size)
+                rowBox(row)
+                ForEach(Array(row.items.enumerated()), id: \.element.id) { index, item in
+                    rowWidget(item, index: index, row: row)
                 }
-                .animation(.easeOut(duration: 0.35), value: wallpaper.image)
-                .frame(width: size.width, height: size.height)
-                .clipped()
-                .overlay(Color.black.opacity(0.18))
-
-                TimelineView(.everyMinute) { context in
-                    ZStack {
-                        Text(LockCoverWallpaper.date(context.date))
-                            .font(.system(size: size.height * 0.025, weight: .semibold))
-                            .position(x: size.width / 2, y: size.height * 0.1056)
-                        Text(LockCoverWallpaper.time(context.date))
-                            .font(.system(size: size.height * 0.119, weight: .medium, design: .rounded))
-                            .monospacedDigit()
-                            .position(x: size.width / 2, y: size.height * 0.187)
-                    }
-                    .foregroundStyle(.white.opacity(0.9))
-                    .shadow(color: .black.opacity(0.25), radius: 10, y: 3)
-                }
-
-                // The frame of the row, like iPhone's widget box in edit mode.
-                RoundedRectangle(cornerRadius: 22, style: .continuous)
-                    .fill(Color.white.opacity(drag.kind != nil && rowFrame.contains(drag.location) ? 0.16 : 0.08))
-                    .overlay(RoundedRectangle(cornerRadius: 22, style: .continuous)
-                        .strokeBorder(Color.white.opacity(0.35), style: StrokeStyle(lineWidth: 1.2, dash: [6, 5])))
-                    .frame(width: rowFrame.width, height: rowFrame.height)
-                    .position(x: rowFrame.midX, y: rowFrame.midY)
-                    .onTapGesture { withAnimation(.spring(response: 0.4, dampingFraction: 0.86)) { drag.galleryOpen = true } }
-
-                // Widgets in the row.
-                ForEach(Array(items.enumerated()), id: \.element.id) { index, item in
-                    let centre = CGPoint(x: rowLeft + LockWidgetGeometry.centre(of: index, in: items) * k,
-                                         y: top + LockWidgetGeometry.height * k / 2)
-                    let dragging = drag.kind == item.kind && !drag.fromGallery
-                    LockWidgetTile(item: item, state: state)
-                        .scaleEffect(k)
-                        .frame(width: LockWidgetGeometry.width(wide: item.wide) * k, height: LockWidgetGeometry.height * k)
-                        .overlay(alignment: .topLeading) {
-                            Button { model.remove(item.kind) } label: {
-                                Image(systemName: "minus.circle.fill")
-                                    .font(.system(size: 20))
-                                    .symbolRenderingMode(.palette)
-                                    .foregroundStyle(.white, Color(white: 0.35))
-                                    .shadow(radius: 2)
-                            }
-                            .buttonStyle(.plain)
-                            .offset(x: -10, y: -12)
-                            .help("Убрать")
-                        }
-                        .overlay(alignment: .bottomTrailing) {
-                            Button { model.resize(item.kind) } label: {
-                                Image(systemName: item.wide ? "arrow.down.right.and.arrow.up.left" : "arrow.up.left.and.arrow.down.right")
-                                    .font(.system(size: 10, weight: .bold))
-                                    .padding(5)
-                                    .background(Circle().fill(Color(white: 0.3)))
-                                    .foregroundStyle(.white)
-                            }
-                            .buttonStyle(.plain)
-                            .offset(x: 6, y: 8)
-                            .opacity(item.wide || model.freePlaces >= 1 ? 1 : 0.35)
-                            .disabled(!item.wide && model.freePlaces < 1)
-                            .help(item.wide ? "Сделать маленьким" : "Сделать широким")
-                        }
-                        .opacity(dragging ? 0.35 : 1)
-                        .position(centre)
-                        .gesture(DragGesture(minimumDistance: 3, coordinateSpace: .named("editor"))
-                            .onChanged { value in
-                                drag.kind = item.kind
-                                drag.fromGallery = false
-                                drag.location = value.location
-                            }
-                            .onEnded { value in
-                                let x = Double((value.location.x - rowLeft) / max(1, rowW))
-                                let others = model.slots.filter { $0.kind != item.kind.rawValue }
-                                let index = LockWidgetLayoutMath.insertionIndex(x: x, in: others)
-                                model.move(item.kind, to: index)
-                                drag.kind = nil
-                            })
-                }
-
-                // Free places: a «+» like iPhone.
-                if model.freePlaces > 0 && items.count == model.slots.count {
-                    let plusX = items.isEmpty ? size.width / 2 : rowLeft + rowW + LockWidgetGeometry.gap * k + 20 * k
-                    Button { withAnimation(.spring(response: 0.4, dampingFraction: 0.86)) { drag.galleryOpen = true } } label: {
-                        Image(systemName: "plus")
-                            .font(.system(size: 18, weight: .bold))
-                            .foregroundStyle(.white)
-                            .frame(width: 40, height: 40)
-                            .background(Circle().fill(Color.white.opacity(0.22)))
-                    }
-                    .buttonStyle(.plain)
-                    .position(x: min(plusX, rowFrame.maxX - 26), y: top + LockWidgetGeometry.height * k / 2)
-                    .help("Добавить виджет")
-                }
-
-                // The widget being dragged follows the pointer.
-                if let kind = drag.kind {
-                    let item = model.available[kind] ?? LockWidgetItem.placeholder(kind)
-                    let wide = drag.fromGallery ? model.freePlaces >= 2 : model.isWide(kind)
-                    LockWidgetTile(item: { var i = item; i.wide = wide; return i }(), state: state)
-                        .scaleEffect(k * 1.06)
-                        .shadow(color: .black.opacity(0.4), radius: 12, y: 6)
-                        .position(drag.location)
-                        .allowsHitTesting(false)
-                }
-
-                // Top: what to do and «Готово».
-                VStack(spacing: 10) {
-                    Text(model.slots.isEmpty
-                         ? "Нажми «+», чтобы добавить виджеты"
-                         : "«−» убрать · стрелки — размер · перетаскивай, чтобы поменять порядок")
-                        .font(.system(size: 13, weight: .semibold))
-                        .foregroundStyle(.white.opacity(0.85))
-                        .shadow(color: .black.opacity(0.5), radius: 4, y: 1)
-                    HStack(spacing: 10) {
-                        Button("Добавить виджет") {
-                            withAnimation(.spring(response: 0.4, dampingFraction: 0.86)) { drag.galleryOpen = true }
-                        }
-                        .disabled(model.freePlaces == 0)
-                        Button("Готово", action: onDone)
-                            .keyboardShortcut(.defaultAction)
-                            .buttonStyle(.borderedProminent)
-                    }
-                    .controlSize(.large)
-                }
-                .position(x: size.width / 2, y: drag.galleryOpen ? size.height * 0.5 : size.height * 0.93)
-
-                // The gallery slides up from the bottom.
+                plusButton(row, size: size)
+                draggedWidget(row)
+                controls(size)
                 if drag.galleryOpen {
-                    gallery(size: size, rowFrame: rowFrame, rowLeft: rowLeft, rowW: rowW)
+                    gallery(size: size, rowFrame: row.frame, rowLeft: row.rowLeft, rowW: row.rowW)
                         .transition(.move(edge: .bottom).combined(with: .opacity))
                 }
             }
@@ -622,6 +510,174 @@ struct LockWidgetsEditor: View {
         .environment(\.colorScheme, .dark)
         .onAppear { model.editing = true; model.requestRefresh?() }
         .onDisappear { model.editing = false; model.requestRefresh?() }
+    }
+
+    private func openGallery() {
+        withAnimation(.spring(response: 0.4, dampingFraction: 0.86)) { drag.galleryOpen = true }
+    }
+
+    private func backdrop(_ size: CGSize) -> some View {
+        ZStack {
+            LinearGradient(colors: [Color(white: 0.22), Color(white: 0.06)],
+                           startPoint: .top, endPoint: .bottom)
+            if let image = wallpaper.image {
+                Image(nsImage: image).resizable().scaledToFill()
+                    .transition(.opacity)
+            }
+        }
+        .animation(.easeOut(duration: 0.35), value: wallpaper.image)
+        .frame(width: size.width, height: size.height)
+        .clipped()
+        .overlay(Color.black.opacity(0.18))
+    }
+
+    private func clock(_ size: CGSize) -> some View {
+        TimelineView(.everyMinute) { context in
+            ZStack {
+                Text(LockCoverWallpaper.date(context.date))
+                    .font(.system(size: size.height * 0.025, weight: .semibold))
+                    .position(x: size.width / 2, y: size.height * 0.1056)
+                Text(LockCoverWallpaper.time(context.date))
+                    .font(.system(size: size.height * 0.119, weight: .medium, design: .rounded))
+                    .monospacedDigit()
+                    .position(x: size.width / 2, y: size.height * 0.187)
+            }
+            .foregroundStyle(.white.opacity(0.9))
+            .shadow(color: .black.opacity(0.25), radius: 10, y: 3)
+        }
+    }
+
+    // The frame of the row, like iPhone's widget box in edit mode.
+    private func rowBox(_ row: RowLayout) -> some View {
+        let hot = drag.kind != nil && row.frame.contains(drag.location)
+        let shape = RoundedRectangle(cornerRadius: 22, style: .continuous)
+        return shape
+            .fill(Color.white.opacity(hot ? 0.16 : 0.08))
+            .overlay(shape.strokeBorder(Color.white.opacity(0.35), style: StrokeStyle(lineWidth: 1.2, dash: [6, 5])))
+            .frame(width: row.frame.width, height: row.frame.height)
+            .position(x: row.frame.midX, y: row.frame.midY)
+            .onTapGesture { openGallery() }
+    }
+
+    private func rowWidget(_ item: LockWidgetItem, index: Int, row: RowLayout) -> some View {
+        let k = row.k
+        let centre = CGPoint(x: row.rowLeft + LockWidgetGeometry.centre(of: index, in: row.items) * k,
+                             y: row.top + LockWidgetGeometry.height * k / 2)
+        let dragging = drag.kind == item.kind && !drag.fromGallery
+        let canGrow = item.wide || model.freePlaces >= 1
+        return LockWidgetTile(item: item, state: state)
+            .scaleEffect(k)
+            .frame(width: LockWidgetGeometry.width(wide: item.wide) * k, height: LockWidgetGeometry.height * k)
+            .overlay(alignment: .topLeading) { removeButton(item.kind) }
+            .overlay(alignment: .bottomTrailing) { sizeButton(item, enabled: canGrow) }
+            .opacity(dragging ? 0.35 : 1)
+            .position(centre)
+            .gesture(reorderGesture(item.kind, row: row))
+    }
+
+    private func removeButton(_ kind: LockWidgetKind) -> some View {
+        Button { model.remove(kind) } label: {
+            Image(systemName: "minus.circle.fill")
+                .font(.system(size: 20))
+                .symbolRenderingMode(.palette)
+                .foregroundStyle(Color.white, Color(white: 0.35))
+                .shadow(radius: 2)
+        }
+        .buttonStyle(.plain)
+        .offset(x: -10, y: -12)
+        .help("Убрать")
+    }
+
+    private func sizeButton(_ item: LockWidgetItem, enabled: Bool) -> some View {
+        let symbol = item.wide ? "arrow.down.right.and.arrow.up.left" : "arrow.up.left.and.arrow.down.right"
+        return Button { model.resize(item.kind) } label: {
+            Image(systemName: symbol)
+                .font(.system(size: 10, weight: .bold))
+                .padding(5)
+                .background(Circle().fill(Color(white: 0.3)))
+                .foregroundStyle(Color.white)
+        }
+        .buttonStyle(.plain)
+        .offset(x: 6, y: 8)
+        .opacity(enabled ? 1 : 0.35)
+        .disabled(!enabled)
+        .help(item.wide ? "Сделать маленьким" : "Сделать широким")
+    }
+
+    private func reorderGesture(_ kind: LockWidgetKind, row: RowLayout) -> some Gesture {
+        DragGesture(minimumDistance: 3, coordinateSpace: .named("editor"))
+            .onChanged { value in
+                drag.kind = kind
+                drag.fromGallery = false
+                drag.location = value.location
+            }
+            .onEnded { value in
+                let x = Double((value.location.x - row.rowLeft) / max(1, row.rowW))
+                let others = model.slots.filter { $0.kind != kind.rawValue }
+                model.move(kind, to: LockWidgetLayoutMath.insertionIndex(x: x, in: others))
+                drag.kind = nil
+            }
+    }
+
+    // Free places: a «+» like iPhone.
+    @ViewBuilder
+    private func plusButton(_ row: RowLayout, size: CGSize) -> some View {
+        if model.freePlaces > 0 {
+            let x: CGFloat = row.items.isEmpty ? size.width / 2
+                : min(row.rowLeft + row.rowW + (LockWidgetGeometry.gap + 20) * row.k, row.frame.maxX - 26)
+            Button { openGallery() } label: {
+                Image(systemName: "plus")
+                    .font(.system(size: 18, weight: .bold))
+                    .foregroundStyle(Color.white)
+                    .frame(width: 40, height: 40)
+                    .background(Circle().fill(Color.white.opacity(0.22)))
+            }
+            .buttonStyle(.plain)
+            .position(x: x, y: row.top + LockWidgetGeometry.height * row.k / 2)
+            .help("Добавить виджет")
+        }
+    }
+
+    // The widget being dragged follows the pointer.
+    @ViewBuilder
+    private func draggedWidget(_ row: RowLayout) -> some View {
+        if let kind = drag.kind {
+            let base = model.available[kind] ?? LockWidgetItem.placeholder(kind)
+            let wide = drag.fromGallery ? model.freePlaces >= 2 : model.isWide(kind)
+            LockWidgetTile(item: Self.sized(base, wide: wide), state: state)
+                .scaleEffect(row.k * 1.06)
+                .shadow(color: .black.opacity(0.4), radius: 12, y: 6)
+                .position(drag.location)
+                .allowsHitTesting(false)
+        }
+    }
+
+    static func sized(_ item: LockWidgetItem, wide: Bool) -> LockWidgetItem {
+        var copy = item
+        copy.wide = wide
+        return copy
+    }
+
+    // What to do and «Готово».
+    private func controls(_ size: CGSize) -> some View {
+        let hint = model.slots.isEmpty
+            ? "Нажми «+», чтобы добавить виджеты"
+            : "«−» убрать · стрелки — размер · перетаскивай, чтобы поменять порядок"
+        return VStack(spacing: 10) {
+            Text(hint)
+                .font(.system(size: 13, weight: .semibold))
+                .foregroundStyle(.white.opacity(0.85))
+                .shadow(color: .black.opacity(0.5), radius: 4, y: 1)
+            HStack(spacing: 10) {
+                Button("Добавить виджет") { openGallery() }
+                    .disabled(model.freePlaces == 0)
+                Button("Готово", action: onDone)
+                    .keyboardShortcut(.defaultAction)
+                    .buttonStyle(.borderedProminent)
+            }
+            .controlSize(.large)
+        }
+        .position(x: size.width / 2, y: drag.galleryOpen ? size.height * 0.5 : size.height * 0.93)
     }
 
     private func gallery(size: CGSize, rowFrame: CGRect, rowLeft: CGFloat, rowW: CGFloat) -> some View {
@@ -667,10 +723,10 @@ struct LockWidgetsEditor: View {
             ZStack {
                 RoundedRectangle(cornerRadius: 18, style: .continuous).fill(Color.white.opacity(0.07))
                 HStack(spacing: 10) {
-                    LockWidgetTile(item: { var i = item; i.wide = false; return i }(), state: state)
+                    LockWidgetTile(item: Self.sized(item, wide: false), state: state)
                         .scaleEffect(0.8)
                         .frame(width: 70, height: 62)
-                    LockWidgetTile(item: { var i = item; i.wide = true; return i }(), state: state)
+                    LockWidgetTile(item: Self.sized(item, wide: true), state: state)
                         .scaleEffect(0.8)
                         .frame(width: 155, height: 62)
                 }

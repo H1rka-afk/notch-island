@@ -2205,7 +2205,7 @@ struct LockCoverWallpaper: View {
         let h = size.height
         var top = h * 0.255                        // just under the clock
         if widgets.enabled && !widgets.items.isEmpty {
-            top += (LockWidgetsView.tile.height + 6) * CGFloat(widgets.scale)
+            top += (LockWidgetGeometry.height + 6) * CGFloat(widgets.scale)
         }
         top += 18
         let k = CGFloat(display.cardScale)
