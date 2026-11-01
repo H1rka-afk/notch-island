@@ -1658,18 +1658,14 @@ struct NotchSettingsWindowView: View {
                 }
                 rowDivider
                 toggleRow("Живой фон настроек",
-                          subtitle: "Цвета раздела и обложки медленно переливаются за стеклом окна",
+                          subtitle: "Цвета темы, раздела и играющей обложки плавно перетекают за стеклом окна. В энергосбережении — реже, но не замирает",
                           isOn: $settingsAnimatedBackground)
                 rowDivider
-                row("Энергосбережение", subtitle: "Волна плавная, но реже (15 кадров/с), живые фоны стоят. Меньше нагрузки и нагрева") {
-                    Picker("", selection: $energySaverMode) {
-                        Text("Выкл").tag("off")
-                        Text("От батареи").tag("battery")
-                        Text("Всегда").tag("always")
-                    }
-                    .pickerStyle(.segmented)
-                    .labelsHidden()
-                    .frame(width: 250)
+                row("Энергосбережение", subtitle: "Волна и живые фоны обновляются реже. Меньше нагрузки и нагрева") {
+                    SmoothSegmented(selection: $energySaverMode,
+                                    options: [("off", "Выкл"), ("battery", "От батареи"), ("always", "Всегда")],
+                                    accent: accent(.general))
+                        .frame(width: 270)
                 }
                 rowDivider
                 row("Знакомство с Notch Island", subtitle: "Короткий тур: что умеет островок, разрешения, профиль") {
@@ -1857,13 +1853,10 @@ struct NotchSettingsWindowView: View {
     private var mediaSection: some View {
         VStack(alignment: .leading, spacing: 20) {
             group("Развёрнутый плеер", footer: "Новый: крупная обложка, её цвета светятся за кнопками, название приложения, выбор устройства вывода (AirPods, динамики…) и ползунок громкости. Классический — как раньше, компактнее.") {
-                Picker("", selection: $playerStyle) {
-                    Text("Новый").tag("new")
-                    Text("Классический").tag("classic")
-                }
-                .pickerStyle(.segmented)
-                .labelsHidden()
-                .padding(14)
+                SmoothSegmented(selection: $playerStyle,
+                                options: [("new", "Новый"), ("classic", "Классический")],
+                                accent: accent(.media))
+                    .padding(14)
                 .id("search:Развёрнутый плеер")
             }
             // 4.5.0: the spectrogram is part of the player.
@@ -1971,19 +1964,16 @@ struct NotchSettingsWindowView: View {
                 if displayOptions.systemHasGlassControl {
                     rowDivider
                     row("Прозрачность стекла", subtitle: glassSubtitle) {
-                        Picker("", selection: Binding(get: { displayOptions.glassMode },
-                                                      set: {
-                                                          displayOptions.setGlassMode($0)
-                                                          // Show the card right away to see the change.
-                                                          actions.previewLockMedia()
-                                                      })) {
-                            Text("Как в macOS").tag("system")
-                            Text("Своя").tag("custom")
-                        }
-                        .labelsHidden()
-                        .pickerStyle(.segmented)
-                        .fixedSize()
-                        .disabled(displayOptions.reduceTransparency)
+                        SmoothSegmented(selection: Binding(get: { displayOptions.glassMode },
+                                                           set: {
+                                                               displayOptions.setGlassMode($0)
+                                                               // Show the card right away to see the change.
+                                                               actions.previewLockMedia()
+                                                           }),
+                                        options: [("system", "Как в macOS"), ("custom", "Своя")],
+                                        accent: accent(.lock))
+                            .frame(width: 210)
+                            .disabled(displayOptions.reduceTransparency)
                     }
                     if displayOptions.glassMode == "custom" {
                         rowDivider
@@ -2473,12 +2463,9 @@ struct NotchSettingsWindowView: View {
                 VStack(alignment: .leading, spacing: 8) {
                     TextField("Название, например «Ночной город»", text: $snapshot.themeDraftName)
                         .textFieldStyle(.roundedBorder)
-                    Picker("", selection: $snapshot.themeDraftDark) {
-                        Text("Тёмная").tag(true)
-                        Text("Светлая").tag(false)
-                    }
-                    .pickerStyle(.segmented)
-                    .labelsHidden()
+                    SmoothSegmented(selection: $snapshot.themeDraftDark,
+                                    options: [(true, "Тёмная"), (false, "Светлая")],
+                                    accent: accent(.general))
                 }
             }
             HStack(spacing: 14) {
@@ -2807,10 +2794,13 @@ struct SettingsIslandPreview: View {
 }
 
 
-// 3.13.0 — «aurora»: soft blobs in the section's colour and the cover's
-// colour drift behind the glass; with music, the cover itself glows through.
-// Drawn at 1/6 size and scaled up (blurred anyway), 24 frames a second, only
-// while the settings window is open; still with «Reduce motion».
+// 4.5.2 — the living background of Settings. On macOS 15+ a 4×4 mesh
+// gradient whose inner points drift and whose colours slowly trade places
+// (theme / section colour, cover colours) — like a lava lamp behind the
+// glass. Older systems: soft drifting blobs. With music the blurred cover
+// glows through. 30 fps while the window is in front (12 fps in energy
+// saving), still when the window is in the background, with «Reduce
+// motion» or with the switch off.
 struct SettingsAuroraBackground: View {
     let primary: Color
     let secondary: Color
@@ -2818,44 +2808,100 @@ struct SettingsAuroraBackground: View {
     let animated: Bool
     let dark: Bool
     @StateObject private var phase = LivingPhase()
-    // 3.16.3: stands still while the window is in the background.
     @Environment(\.controlActiveState) private var activeState
 
     private static let downscale: CGFloat = 6
     private var moving: Bool {
-        animated && activeState != .inactive && !EnergySaver.isActive
+        animated && activeState != .inactive
             && !NSWorkspace.shared.accessibilityDisplayShouldReduceMotion
     }
 
     var body: some View {
         GeometryReader { geometry in
             let size = geometry.size
-            TimelineView(.animation(minimumInterval: 1.0 / 15.0, paused: !moving)) { context in
+            TimelineView(.animation(minimumInterval: EnergySaver.isActive ? 1.0 / 12.0 : 1.0 / 30.0,
+                                    paused: !moving)) { context in
                 let t = moving ? phase.advance(to: context.date, speed: 1) : phase.value
-                canvas(size: size, t: t)
+                ZStack {
+                    if let artwork {
+                        Image(nsImage: artwork)
+                            .resizable()
+                            .interpolation(.low)
+                            .scaledToFill()
+                            .frame(width: size.width / Self.downscale, height: size.height / Self.downscale)
+                            .clipped()
+                            .blur(radius: 10)
+                            .scaleEffect(Self.downscale * (1.15 + 0.05 * sin(t * 0.3)))
+                            .rotationEffect(.degrees(sin(t * 0.12) * 6))
+                            .frame(width: size.width, height: size.height)
+                            .opacity(0.5)
+                    }
+                    if #available(macOS 15.0, *) {
+                        // Drawn at 1/6 size and scaled up: it is a blur anyway.
+                        mesh(t: t)
+                            .frame(width: size.width / Self.downscale, height: size.height / Self.downscale)
+                            .blur(radius: 5)
+                            .drawingGroup()
+                            .scaleEffect(Self.downscale)
+                            .frame(width: size.width, height: size.height)
+                    } else {
+                        blobs(size: size, t: t)
+                    }
+                }
+                .frame(width: size.width, height: size.height)
+                .clipped()
             }
         }
-        .opacity(dark ? 0.62 : 0.42)
-        .animation(.easeInOut(duration: 0.6), value: primary)
+        .opacity(dark ? 0.72 : 0.5)
+        .animation(.easeInOut(duration: 0.8), value: primary)
+        .animation(.easeInOut(duration: 0.8), value: secondary)
     }
 
-    private func canvas(size: CGSize, t: Double) -> some View {
+    @available(macOS 15.0, *)
+    private func mesh(t: Double) -> some View {
+        // Corner and edge points stay on the border; the four inner points
+        // wander in slow Lissajous loops.
+        func p(_ x: Double, _ y: Double) -> SIMD2<Float> { SIMD2(Float(x), Float(y)) }
+        let w1 = 0.08 * sin(t * 0.55), w2 = 0.08 * cos(t * 0.47 + 1)
+        let points: [SIMD2<Float>] = [
+            p(0, 0), p(0.33 + w1 * 0.6, 0), p(0.66 + w2 * 0.6, 0), p(1, 0),
+            p(0, 0.33 + w2 * 0.6),
+            p(0.33 + 0.12 * sin(t * 0.61), 0.33 + 0.12 * cos(t * 0.53)),
+            p(0.66 + 0.12 * cos(t * 0.49 + 2), 0.33 + 0.12 * sin(t * 0.58 + 1)),
+            p(1, 0.33 + w1 * 0.6),
+            p(0, 0.66 + w1 * 0.6),
+            p(0.33 + 0.12 * cos(t * 0.57 + 3), 0.66 + 0.12 * sin(t * 0.44 + 2)),
+            p(0.66 + 0.12 * sin(t * 0.52 + 4), 0.66 + 0.12 * cos(t * 0.63 + 3)),
+            p(1, 0.66 + w2 * 0.6),
+            p(0, 1), p(0.33 + w2 * 0.6, 1), p(0.66 + w1 * 0.6, 1), p(1, 1)
+        ]
+        let base = dark ? Color.black.opacity(0.0) : Color.white.opacity(0.0)
+        let a = primary, b = secondary
+        let c = primary.opacity(0.55), d = secondary.opacity(0.55)
+        // Colours drift: each inner patch fades between the two palettes.
+        func mix(_ phaseOffset: Double) -> Color {
+            let k = 0.5 + 0.5 * sin(t * 0.35 + phaseOffset)
+            return k > 0.5 ? a.opacity(0.35 + 0.65 * k) : b.opacity(0.35 + 0.65 * (1 - k))
+        }
+        let colors: [Color] = [
+            a, base, d, b,
+            c, mix(0), mix(1.6), base,
+            base, mix(3.1), mix(4.7), c,
+            b, d, base, a
+        ]
+        return MeshGradient(width: 4, height: 4, points: points, colors: colors,
+                            smoothsColors: true)
+            .saturation(1.25)
+    }
+
+    private func blobs(size: CGSize, t: Double) -> some View {
         let small = CGSize(width: size.width / Self.downscale, height: size.height / Self.downscale)
         let d = max(small.width, small.height)
         return ZStack {
-            if let artwork {
-                Image(nsImage: artwork)
-                    .resizable()
-                    .interpolation(.low)
-                    .scaledToFill()
-                    .frame(width: d * 1.2, height: d * 1.2)
-                    .rotationEffect(.degrees(t * 4))
-                    .opacity(0.55)
-            }
-            blob(primary, d: d * 0.85, x: 0.78 + 0.16 * sin(t * 0.21), y: 0.18 + 0.14 * cos(t * 0.17), small: small)
-            blob(secondary, d: d * 0.75, x: 0.22 + 0.18 * cos(t * 0.19 + 1.2), y: 0.82 + 0.12 * sin(t * 0.23), small: small)
-            blob(primary.opacity(0.8), d: d * 0.55, x: 0.30 + 0.20 * sin(t * 0.15 + 2.0), y: 0.30 + 0.18 * cos(t * 0.27 + 0.5), small: small)
-            blob(secondary.opacity(0.85), d: d * 0.5, x: 0.85 + 0.12 * cos(t * 0.25 + 2.6), y: 0.78 + 0.15 * sin(t * 0.19 + 1.1), small: small)
+            blob(primary, d: d * 0.85, x: 0.78 + 0.2 * sin(t * 0.55), y: 0.18 + 0.18 * cos(t * 0.47), small: small)
+            blob(secondary, d: d * 0.75, x: 0.22 + 0.22 * cos(t * 0.51 + 1.2), y: 0.82 + 0.16 * sin(t * 0.6), small: small)
+            blob(primary.opacity(0.8), d: d * 0.55, x: 0.30 + 0.24 * sin(t * 0.43 + 2.0), y: 0.30 + 0.22 * cos(t * 0.66 + 0.5), small: small)
+            blob(secondary.opacity(0.85), d: d * 0.5, x: 0.85 + 0.16 * cos(t * 0.62 + 2.6), y: 0.78 + 0.2 * sin(t * 0.5 + 1.1), small: small)
         }
         .frame(width: small.width, height: small.height)
         .clipped()
@@ -2874,6 +2920,54 @@ struct SettingsAuroraBackground: View {
     }
 }
 
+// 4.5.2 — a segmented control drawn by Notch Island itself. The system one
+// in macOS 26 swells with a glass «pop» on every click (the twitching in
+// the recording); this one only slides its pill to the chosen option.
+struct SmoothSegmented<Value: Hashable>: View {
+    @Binding var selection: Value
+    let options: [(Value, String)]
+    var accent: Color = .accentColor
+    @Environment(\.colorScheme) private var scheme
+    @Environment(\.isEnabled) private var enabled
+
+    var body: some View {
+        GeometryReader { geometry in
+            let count = max(1, options.count)
+            let width = geometry.size.width / CGFloat(count)
+            let index = options.firstIndex(where: { $0.0 == selection }) ?? 0
+            ZStack(alignment: .leading) {
+                Capsule(style: .continuous)
+                    .fill(Color.primary.opacity(scheme == .dark ? 0.10 : 0.07))
+                Capsule(style: .continuous)
+                    .fill(scheme == .dark ? Color.white : Color.white)
+                    .shadow(color: .black.opacity(scheme == .dark ? 0.35 : 0.15), radius: 3, y: 1)
+                    .frame(width: width - 4, height: geometry.size.height - 4)
+                    .offset(x: CGFloat(index) * width + 2)
+                    .animation(.spring(response: 0.32, dampingFraction: 0.86), value: index)
+                HStack(spacing: 0) {
+                    ForEach(0..<options.count, id: \.self) { i in
+                        Button {
+                            selection = options[i].0
+                        } label: {
+                            Text(options[i].1)
+                                .font(.system(size: 12, weight: i == index ? .semibold : .medium))
+                                .foregroundStyle(i == index ? Color.black : Color.primary.opacity(0.75))
+                                .lineLimit(1)
+                                .minimumScaleFactor(0.8)
+                                .frame(width: width, height: geometry.size.height)
+                                .contentShape(Rectangle())
+                        }
+                        .buttonStyle(.plain)
+                        .animation(.easeOut(duration: 0.15), value: index)
+                    }
+                }
+            }
+        }
+        .frame(height: 26)
+        .opacity(enabled ? 1 : 0.45)
+        .accessibilityElement(children: .contain)
+    }
+}
 
 // 3.14.0 — the small on/off pill on a tile: white when on, glass when off.
 struct TilePill: View {
