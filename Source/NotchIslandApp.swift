@@ -297,7 +297,11 @@ final class IslandState: ObservableObject {
     @Published private(set) var pendingSkip: PlaybackCommand?
     @Published private(set) var nextPulse = 0
     @Published private(set) var previousPulse = 0
-    @Published var isExpanded = false
+    @Published var isExpanded = false {
+        // 4.5.0: each opening plays the liquid «drop» once.
+        didSet { if isExpanded && !oldValue { expandDropPulse &+= 1 } }
+    }
+    @Published private(set) var expandDropPulse = 0
     // Full-screen video or music should have an unobstructed top edge. Events
     // and the Clock satellite still work, and the track keeps polling.
     @Published private(set) var mediaSuppressedInFullscreen = false {
@@ -632,9 +636,10 @@ final class IslandState: ObservableObject {
         withAnimation(.easeIn(duration: 0.14)) { timerSatelliteContentVisible = false }
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) { [weak self] in
             guard let self, self.timerSatelliteAnimationToken == token else { return }
-            self.timerSatelliteShrinksInPlace = !home
-            withAnimation(home ? .spring(response: 0.4, dampingFraction: 0.92)
-                               : .easeIn(duration: 0.26)) {
+            // 4.5.0: every exit flows back into the music island (the
+            // liquid neck reappears and swallows the drop).
+            self.timerSatelliteShrinksInPlace = false
+            withAnimation(.spring(response: home ? 0.4 : 0.36, dampingFraction: 0.9)) {
                 self.timerSatellitePresence = 0
             }
         }

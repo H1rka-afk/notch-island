@@ -24,7 +24,7 @@ struct IslandWaveformTests {
         // Live loud music: bars move up and stay inside the bounds.
         let p = P()
         let a = run(p, from: 0, seconds: 2, levels: loud, playing: true, live: true)
-        precondition(a.max > 0.4 && a.max <= 1.08 && a.min >= 0)
+        precondition(a.max > 0.4 && a.max <= 1.0 && a.min >= 0)
 
         // Pause: everything sinks to dots and settles.
         _ = run(p, from: 2, seconds: 2, levels: loud, playing: false, live: true)
@@ -49,7 +49,29 @@ struct IslandWaveformTests {
         let s = P()
         _ = s.step(to: 0, targets: loud)
         let h = s.step(to: 500, targets: loud)
-        precondition(h.allSatisfy { $0.isFinite && $0 <= 1.08 })
+        precondition(h.allSatisfy { $0.isFinite && $0 <= 1.0 })
+
+        // 4.5.0 iPhone-like: no overshoot — a bar never jumps above its target
+        // by more than a hair while following a smooth random walk.
+        let u = P()
+        var t2 = 0.0, overshoot = 0.0
+        while t2 < 4 {
+            let target = P.targets(levels: silent, time: t2, playing: true, live: false)
+            let hs = u.step(to: t2, targets: target)
+            for i in 0..<6 { overshoot = max(overshoot, hs[i] - 1.0) }
+            t2 += 1.0 / 60.0
+        }
+        precondition(overshoot <= 0)
+        // The walk changes over time and is the same for the same moment.
+        precondition(P.pattern(2, 1.0) == P.pattern(2, 1.0))
+        precondition(abs(P.pattern(2, 1.0) - P.pattern(2, 2.3)) > 0.0001 || abs(P.pattern(3, 1.0) - P.pattern(3, 2.3)) > 0.0001)
+        // Edges lower than the middle on average.
+        var edge = 0.0, middle = 0.0
+        for k in 0..<400 {
+            let tt = P.targets(levels: silent, time: Double(k) * 0.05, playing: true, live: false)
+            edge += tt[0] + tt[5]; middle += tt[2] + tt[3]
+        }
+        precondition(middle > edge)
 
         print("IslandWaveformTests: OK")
     }

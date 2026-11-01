@@ -195,6 +195,7 @@ struct NotchSettingsWindowView: View {
     @AppStorage(IdleWings.leftKey) private var wingsLeft = "weather"
     @AppStorage(IdleWings.rightKey) private var wingsRight = "battery"
     @AppStorage(CinemaMode.key) private var cinemaEnabled = true
+    @AppStorage(BannerTheme.key) private var bannerThemeColors = true
     @AppStorage(StandBySettings.enabledKey) private var standbyEnabled = true
     @AppStorage(StandBySettings.keepAwakeKey) private var standbyKeepAwake = true
     @AppStorage(StandBySettings.nightKey) private var standbyNight = true
@@ -332,8 +333,11 @@ struct NotchSettingsWindowView: View {
     // window, a floating glass sidebar, a hero header with a live island
     // preview, and glass cards for the groups.
 
+    // 4.5.0: sections by real category — the spectrogram lives with the
+    // media player, battery and AirPods are «Устройства», focus and
+    // meetings are system banners, the shelf holds files and the clipboard.
     private enum Section: String, CaseIterable {
-        case general, profiles, stats, permissions, island, media, spectrum, lock, notifications, shelf, battery, focus, timer, calendar, airpods
+        case general, profiles, stats, permissions, island, media, lock, notifications, helpers, shelf, devices, timer
 
         var title: String {
             switch self {
@@ -343,15 +347,12 @@ struct NotchSettingsWindowView: View {
             case .permissions: return "Разрешения"
             case .island: return "Островок"
             case .media: return "Медиаплеер"
-            case .spectrum: return "Спектрограмма"
             case .lock: return "Экран блокировки"
-            case .battery: return "Батарея"
-            case .focus: return "Фокусирование"
-            case .timer: return "Таймер"
-            case .airpods: return "AirPods"
             case .notifications: return "Уведомления"
-            case .shelf: return "Полка"
-            case .calendar: return "Календарь"
+            case .helpers: return "Помощники"
+            case .shelf: return "Файлы"
+            case .devices: return "Устройства"
+            case .timer: return "Таймер"
             }
         }
         var icon: String {
@@ -362,15 +363,12 @@ struct NotchSettingsWindowView: View {
             case .permissions: return "checkmark.shield.fill"
             case .island: return "macbook"
             case .media: return "play.fill"
-            case .spectrum: return "waveform"
             case .lock: return "lock.fill"
-            case .battery: return "battery.75percent"
-            case .focus: return "moon.fill"
-            case .timer: return "timer"
-            case .airpods: return "airpodspro"
             case .notifications: return "bell.badge.fill"
+            case .helpers: return "wand.and.stars"
             case .shelf: return "tray.full.fill"
-            case .calendar: return "calendar"
+            case .devices: return "airpodspro"
+            case .timer: return "timer"
             }
         }
         var color: Color {
@@ -381,15 +379,12 @@ struct NotchSettingsWindowView: View {
             case .stats: return Color(red: 0.10, green: 0.72, blue: 0.62)
             case .island: return Color(red: 0.20, green: 0.48, blue: 1.0)
             case .media: return Color(red: 1.0, green: 0.27, blue: 0.40)
-            case .spectrum: return Color(red: 0.66, green: 0.36, blue: 0.95)
             case .lock: return Color(red: 0.36, green: 0.38, blue: 0.45)
-            case .battery: return Color(red: 0.20, green: 0.75, blue: 0.35)
-            case .focus: return Color(red: 0.36, green: 0.35, blue: 0.90)
-            case .timer: return Color(red: 1.0, green: 0.58, blue: 0.0)
-            case .airpods: return Color(red: 0.20, green: 0.68, blue: 0.85)
             case .notifications: return Color(red: 1.0, green: 0.27, blue: 0.23)
+            case .helpers: return Color(red: 0.66, green: 0.36, blue: 0.95)
             case .shelf: return Color(red: 0.04, green: 0.52, blue: 1.0)
-            case .calendar: return Color(red: 1.0, green: 0.42, blue: 0.20)
+            case .devices: return Color(red: 0.20, green: 0.75, blue: 0.35)
+            case .timer: return Color(red: 1.0, green: 0.58, blue: 0.0)
             }
         }
         // One line under the big title.
@@ -399,17 +394,14 @@ struct NotchSettingsWindowView: View {
             case .profiles: return "Готовые наборы функций одним нажатием"
             case .stats: return "Твой день за Маком: работа, музыка, перерывы"
             case .permissions: return "Что Notch Island может делать в macOS"
-            case .island: return "Размер, отклик и поведение островка"
-            case .media: return "Сейчас играет, обложки и жесты"
-            case .spectrum: return "Как музыка оживляет волну"
-            case .lock: return "Плеер, обложка и виджеты на экране блокировки"
-            case .battery: return "Зарядка и предупреждения о заряде"
-            case .focus: return "Баннер при смене режима"
+            case .island: return "Вид, размер и поведение островка"
+            case .media: return "Плеер, спектрограмма, звук, обложки и жесты"
+            case .lock: return "Плеер, обложка, виджеты и StandBy"
+            case .notifications: return "Фокусирование, встречи, сеть и система"
+            case .helpers: return "Исправление раскладки и отдых для глаз"
+            case .shelf: return "Полка, AirDrop, снимки экрана и буфер обмена"
+            case .devices: return "Батарея, AirPods и внешние диски"
             case .timer: return "Таймер прямо в островке"
-            case .airpods: return "Заряд наушников и кейса"
-            case .notifications: return "Системные баннеры в островке"
-            case .shelf: return "Файлы, AirDrop и снимки экрана"
-            case .calendar: return "Встречи и напоминания"
             }
         }
         // Bright colour for switches and the selection; grey sections get blue.
@@ -422,9 +414,9 @@ struct NotchSettingsWindowView: View {
         var group: Int {
             switch self {
             case .general, .profiles, .stats, .permissions: return 0
-            case .island, .media, .spectrum, .lock: return 1
-            case .notifications, .shelf: return 1
-            case .battery, .focus, .timer, .calendar, .airpods: return 2
+            case .island, .media, .lock: return 1
+            case .notifications, .helpers, .shelf: return 1
+            case .devices, .timer: return 2
             }
         }
     }
@@ -562,16 +554,14 @@ struct NotchSettingsWindowView: View {
                             sectionTile(.general)
                         }
                         GridRow {
-                            sectionTile(.island); sectionTile(.media); sectionTile(.spectrum); sectionTile(.lock)
+                            sectionTile(.island); sectionTile(.media); sectionTile(.lock); sectionTile(.notifications)
                         }
                         GridRow {
-                            sectionTile(.notifications); sectionTile(.shelf); sectionTile(.calendar); sectionTile(.permissions)
+                            sectionTile(.helpers); sectionTile(.shelf); sectionTile(.devices); sectionTile(.timer)
                         }
                         GridRow {
-                            sectionTile(.battery); sectionTile(.airpods); sectionTile(.focus); sectionTile(.timer)
-                        }
-                        GridRow {
-                            statsTile.gridCellColumns(4)
+                            statsTile.gridCellColumns(3)
+                            sectionTile(.permissions)
                         }
                     }
                 }
@@ -677,15 +667,13 @@ struct NotchSettingsWindowView: View {
 
     private static func demo(for section: Section) -> IslandDemo {
         switch section {
-        case .media, .spectrum: return .music
-        case .battery: return .charging
-        case .airpods: return .airpods
-        case .focus: return .focus
+        case .media: return .music
+        case .devices: return .airpods
+        case .notifications: return .focus
         case .timer: return .timer
         case .shelf: return .airdrop
         case .lock: return .lock
-        case .calendar: return .meeting
-        case .notifications: return .eyes
+        case .helpers: return .eyes
         case .profiles: return .profile
         case .stats: return .eyes
         case .general, .island, .permissions: return .music
@@ -713,10 +701,7 @@ struct NotchSettingsWindowView: View {
     private func tileSwitch(_ section: Section) -> Binding<Bool>? {
         switch section {
         case .lock: return lockBinding
-        case .focus: return focusBinding
         case .shelf: return labBinding("shelf")
-        case .spectrum: return audioBinding
-        case .calendar: return labBinding("calendar")
         default: return nil
         }
     }
@@ -740,15 +725,12 @@ struct NotchSettingsWindowView: View {
             return missing == 0 ? "Всё разрешено" : "Не хватает: \(missing)"
         case .island: return island.autoNotchSize ? "Размер по чёлке" : "Ширина \(Int(island.notchWidth)) pt"
         case .media: return island.track.map { "♫ \($0.title)" } ?? "Сейчас ничего не играет"
-        case .spectrum: return snapshot.audioCaptureEnabled ? "Живой звук" : "Плавная волна без захвата"
         case .lock: return lockWidgets.enabled ? "Плеер, обложка, виджеты: \(lockWidgets.selected.count)" : "Плеер и обложка"
-        case .battery: return snapshot.batterySummary
-        case .focus: return snapshot.focusStatus
+        case .devices: return snapshot.batterySummary
         case .timer: return "Таймер прямо в островке"
-        case .calendar: return "Встречи и напоминания"
-        case .airpods: return "Заряд наушников и кейса"
-        case .notifications: return "Системные баннеры"
-        case .shelf: return "Файлы, AirDrop, снимки"
+        case .notifications: return "Фокус, встречи, система"
+        case .helpers: return "Раскладка ⌃⌥L и 20-20-20"
+        case .shelf: return "Полка, AirDrop, буфер"
         }
     }
 
@@ -1301,15 +1283,12 @@ struct NotchSettingsWindowView: View {
         case .permissions: permissionsSection
         case .island: islandSection
         case .media: mediaSection
-        case .spectrum: spectrumSection
         case .lock: lockSection
-        case .battery: batterySection
-        case .focus: focusSection
-        case .timer: timerSection
-        case .airpods: airPodsSection
         case .notifications: notificationsSection
+        case .helpers: helpersSection
         case .shelf: shelfSection
-        case .calendar: calendarSection
+        case .devices: devicesSection
+        case .timer: timerSection
         }
     }
 
@@ -1848,6 +1827,9 @@ struct NotchSettingsWindowView: View {
                     .disabled(!wingsEnabled)
                 }
             }
+            group("Баннеры", footer: "Зарядка, AirPods, фокусирование, уведомления и обновление окрашиваются в цвета темы настроек (Основные → Оформление). Предупреждения — низкий заряд, «выключено» — сохраняют свои цвета. С темой «Как в системе» цвета обычные.") {
+                toggleRow("Цвета баннеров по теме", isOn: $bannerThemeColors)
+            }
             group("Режим кинотеатра", footer: "Видеоплеер, браузер или приложение с музыкой открыто на весь экран — островок полностью гаснет: ни плеера, ни баннеров, ни полки. Когда выходишь из полноэкранного режима, всё возвращается.") {
                 toggleRow("Режим кинотеатра", subtitle: "Ничего не отвлекает во время фильма", isOn: $cinemaEnabled)
             }
@@ -1884,80 +1866,85 @@ struct NotchSettingsWindowView: View {
                 .padding(14)
                 .id("search:Развёрнутый плеер")
             }
-            group("Медиаплеер") {
-                toggleRow("Скрывать в полноэкранном режиме",
-                          subtitle: "Когда браузер, видеоплеер или приложение с музыкой открыто на весь экран",
-                          isOn: fullscreenBinding)
-                toggleRow("Скрывать, когда открыт источник музыки",
-                          subtitle: "Приложение, где играет музыка, или вкладка браузера с ней",
-                          isOn: sourceInFrontBinding)
-            }
-            group("Свечение", footer: "При смене трека контур островка на пару секунд подсвечивается цветом новой обложки.") {
-                toggleRow("Свечение в цвет обложки", isOn: coverGlowBinding)
-            }
-            group("Таймер сна", footer: snapshot.sleepTimerStatus) {
-                row("Поставить музыку на паузу через") {
-                    HStack(spacing: 6) {
-                        ForEach([15, 30, 60], id: \.self) { minutes in
-                            Button("\(minutes) мин") { actions.setSleepTimer(minutes) }
-                        }
-                        Button("Выкл") { actions.setSleepTimer(0) }
+            // 4.5.0: the spectrogram is part of the player.
+            Group {
+                group("Спектрограмма", footer: "Шесть полос двигаются как на iPhone: плавно перетекают между высотами, на паузе опускаются в точки. С живым звуком громкость музыки поднимает или опускает волну. Звук не записывается и не сохраняется.") {
+                    toggleRow("Живая спектрограмма", isOn: audioBinding)
+                    rowDivider
+                    toggleRow("Обложка в полосах", subtitle: "Полосы окрашены размытой обложкой песни, как на iPhone. Выключено — один цвет из обложки", isOn: $waveArtwork)
+                    rowDivider
+                    row("Состояние") {
+                        Text(island.audioStatus).font(.system(size: 12)).foregroundStyle(.secondary)
                     }
                 }
-            }
-            group("Жесты", footer: "Наведи курсор на островок с музыкой. Свайп двумя пальцами влево — следующий трек, вправо — предыдущий. Прокрутка вверх и вниз (или колесо мыши) меняет громкость.") {
-                toggleRow("Жесты на медиаплеере", isOn: gesturesBinding)
-            }
-            group("Обложки",
-                  footer: "Сначала у самого плеера, затем в каталогах Яндекс Музыки, Apple Music и Deezer. В журнал названия треков не записываются.") {
-                row("Текущий трек") {
-                    Button("Обновить обложку") { actions.reloadArtwork() }
-                        .disabled(island.track == nil)
+                group("Реакция на звук") {
+                    spectrumRow("Чувствительность", key: \.sensitivity, range: 0.5...2.0)
+                    rowDivider
+                    spectrumRow("Скорость реакции", key: \.attack, range: 0.5...2.0)
+                    rowDivider
+                    spectrumRow("Плавность затухания", key: \.release, range: 0.5...2.5)
+                    rowDivider
+                    spectrumRow("Акцент баса", key: \.bassBoost, range: 0.5...1.8)
+                    rowDivider
+                    spectrumRow("Порог тишины", key: \.noiseGate, range: 0.25...3.0)
                 }
-                rowDivider
-                row("Журнал поиска обложек") {
-                    Button("Открыть") { actions.openArtworkLog() }
-                }
-            }
-            group("Избранное") {
-                row("Spotify") {
-                    Button("Подключить…") { actions.connectSpotify() }
-                }
-                rowDivider
-                row("Яндекс Музыка") {
-                    Button("Настроить…") { actions.setupYandexFavorites() }
+                HStack {
+                    Button("Сбросить настройки") { actions.setSpectrumTuning(.defaults) }
+                    Spacer()
+                    Button("Переподключить аудио") { actions.retryAudio() }
+                        .disabled(!snapshot.audioCaptureEnabled)
                 }
             }
-        }
-    }
-
-    private var spectrumSection: some View {
-        VStack(alignment: .leading, spacing: 20) {
-            group(nil, footer: "Шесть полос реагируют на системный звук. Звук не записывается и не сохраняется.") {
-                toggleRow("Живая спектрограмма", isOn: audioBinding)
-                rowDivider
-                toggleRow("Обложка в полосах", subtitle: "Полосы окрашены размытой обложкой песни, как на iPhone. Выключено — один цвет из обложки", isOn: $waveArtwork)
-                rowDivider
-                row("Состояние") {
-                    Text(island.audioStatus).font(.system(size: 12)).foregroundStyle(.secondary)
+            Group {
+                group("Медиаплеер") {
+                    toggleRow("Скрывать в полноэкранном режиме",
+                              subtitle: "Когда браузер, видеоплеер или приложение с музыкой открыто на весь экран",
+                              isOn: fullscreenBinding)
+                    toggleRow("Скрывать, когда открыт источник музыки",
+                              subtitle: "Приложение, где играет музыка, или вкладка браузера с ней",
+                              isOn: sourceInFrontBinding)
                 }
-            }
-            group("Реакция на звук") {
-                spectrumRow("Чувствительность", key: \.sensitivity, range: 0.5...2.0)
-                rowDivider
-                spectrumRow("Скорость реакции", key: \.attack, range: 0.5...2.0)
-                rowDivider
-                spectrumRow("Плавность затухания", key: \.release, range: 0.5...2.5)
-                rowDivider
-                spectrumRow("Акцент баса", key: \.bassBoost, range: 0.5...1.8)
-                rowDivider
-                spectrumRow("Порог тишины", key: \.noiseGate, range: 0.25...3.0)
-            }
-            HStack {
-                Button("Сбросить настройки") { actions.setSpectrumTuning(.defaults) }
-                Spacer()
-                Button("Переподключить аудио") { actions.retryAudio() }
-                    .disabled(!snapshot.audioCaptureEnabled)
+                group("Свечение", footer: "При смене трека контур островка на пару секунд подсвечивается цветом новой обложки.") {
+                    toggleRow("Свечение в цвет обложки", isOn: coverGlowBinding)
+                }
+                group("Таймер сна", footer: snapshot.sleepTimerStatus) {
+                    row("Поставить музыку на паузу через") {
+                        HStack(spacing: 6) {
+                            ForEach([15, 30, 60], id: \.self) { minutes in
+                                Button("\(minutes) мин") { actions.setSleepTimer(minutes) }
+                            }
+                            Button("Выкл") { actions.setSleepTimer(0) }
+                        }
+                    }
+                }
+                group("Жесты", footer: "Наведи курсор на островок с музыкой. Свайп двумя пальцами влево — следующий трек, вправо — предыдущий. Прокрутка вверх и вниз (или колесо мыши) меняет громкость.") {
+                    toggleRow("Жесты на медиаплеере", isOn: gesturesBinding)
+                }
+                group("Обложки",
+                      footer: "Сначала у самого плеера, затем в каталогах Яндекс Музыки, Apple Music и Deezer. В журнал названия треков не записываются.") {
+                    row("Текущий трек") {
+                        Button("Обновить обложку") { actions.reloadArtwork() }
+                            .disabled(island.track == nil)
+                    }
+                    rowDivider
+                    row("Журнал поиска обложек") {
+                        Button("Открыть") { actions.openArtworkLog() }
+                    }
+                }
+                group("Избранное") {
+                    row("Spotify") {
+                        Button("Подключить…") { actions.connectSpotify() }
+                    }
+                    rowDivider
+                    row("Яндекс Музыка") {
+                        Button("Настроить…") { actions.setupYandexFavorites() }
+                    }
+                }
+                group("Звук", footer: "Баннеры при изменении громкости клавишами и при смене устройства вывода. Нажатие на баннер открывает настройки звука.") {
+                    toggleRow("Громкость", subtitle: "Уровень при изменении громкости клавишами", isOn: labBinding("volume"))
+                    rowDivider
+                    toggleRow("Устройство вывода", subtitle: "AirPods, наушники, динамики; нажатие — настройки звука", isOn: labBinding("output"))
+                }
             }
         }
     }
@@ -2155,73 +2142,6 @@ struct NotchSettingsWindowView: View {
         .frame(minHeight: 40)
     }
 
-    private var batterySection: some View {
-        VStack(alignment: .leading, spacing: 20) {
-            group("Состояние") {
-                HStack(spacing: 12) {
-                    Image(systemName: island.power?.onACPower == true ? "bolt.fill" : "battery.25percent")
-                        .font(.system(size: 20))
-                        .foregroundStyle(island.power?.onACPower == true ? Color.green : Color.orange)
-                        .frame(width: 28)
-                    VStack(alignment: .leading, spacing: 3) {
-                        Text(snapshot.batterySummary).font(.system(size: 13, weight: .semibold))
-                        Text(snapshot.batteryExplanation)
-                            .font(.system(size: 11)).foregroundStyle(.secondary)
-                            .fixedSize(horizontal: false, vertical: true)
-                    }
-                    Spacer(minLength: 0)
-                }
-                .padding(14)
-            }
-            group("Время работы") {
-                row("Осталось от батареи") {
-                    Text(snapshot.batteryTimeText).font(.system(size: 12)).foregroundStyle(.secondary)
-                }
-            }
-            group("Проверка", footer: "Демонстрация на 7 секунд, реальный заряд не меняется. Если островок занят, тест встанет в очередь.") {
-                row("Низкий заряд") {
-                    HStack(spacing: 6) {
-                        ForEach([20, 10, 5, 1], id: \.self) { threshold in
-                            Button("\(threshold)%") { actions.previewLowBattery(threshold) }
-                        }
-                    }
-                }
-                rowDivider
-                row("Подключение зарядки") {
-                    Button("Показать") { actions.previewCharging() }
-                }
-            }
-        }
-    }
-
-    private var focusSection: some View {
-        VStack(alignment: .leading, spacing: 20) {
-            group(nil) {
-                toggleRow("Показывать включение и выключение", isOn: focusBinding)
-                rowDivider
-                HStack(alignment: .top, spacing: 8) {
-                    Image(systemName: snapshot.focusNeedsAccess ? "exclamationmark.triangle.fill" : "moon.fill")
-                        .foregroundStyle(snapshot.focusNeedsAccess ? Color.orange : Color.indigo)
-                    Text(snapshot.focusStatus)
-                        .font(.system(size: 12)).foregroundStyle(.secondary)
-                        .fixedSize(horizontal: false, vertical: true)
-                    Spacer(minLength: 0)
-                }
-                .padding(.horizontal, 14)
-                .padding(.vertical, 10)
-            }
-            group("Доступ", footer: "macOS хранит состояние фокусирования в защищённой папке. Включи Notch Island в «Полном доступе к диску» и перезапусти приложение. Файлы только читаются.") {
-                row("Полный доступ к диску") {
-                    Button("Открыть…") { actions.openFullDiskAccess() }
-                }
-                rowDivider
-                row("Анимация фокусирования") {
-                    Button("Показать") { actions.previewFocus() }
-                }
-            }
-        }
-    }
-
     private var timerSection: some View {
         VStack(alignment: .leading, spacing: 20) {
             group(nil, footer: "Таймер берётся из запущенных «Часов». Нужен «Универсальный доступ» для текущей версии приложения: после обновления выключи и снова включи его.") {
@@ -2267,20 +2187,33 @@ struct NotchSettingsWindowView: View {
 
     private var notificationsSection: some View {
         VStack(alignment: .leading, spacing: 20) {
-            group(nil, footer: "Баннеры появляются тем же островком, что и зарядка. Нажатие на баннер открывает связанное приложение, настройки или файл.") {
-                toggleRow("Громкость", subtitle: "Уровень при изменении громкости клавишами", isOn: labBinding("volume"))
+            group("Фокусирование") {
+                toggleRow("Показывать включение и выключение", isOn: focusBinding)
                 rowDivider
-                toggleRow("Устройство вывода", subtitle: "AirPods, наушники, динамики; нажатие — настройки звука", isOn: labBinding("output"))
-            }
-            group("Исправление раскладки", footer: "Набрал «ghbdtn» вместо «привет»? Нажми ⌃⌥L — выделенный текст (или, если ничего не выделено, слово перед курсором) переведётся на другую раскладку, а клавиатура переключится на нужный язык. Буфер обмена потом возвращается как был. Работает там, где работают ⌘C и ⌘V; нужен «Универсальный доступ».") {
-                toggleRow("Исправлять раскладку по ⌃⌥L", subtitle: "Как Punto Switcher: «ghbdtn» → «привет», «руддщ» → «hello»", isOn: labBinding("layout"))
-            }
-            group("Забота о глазах", footer: "Каждые 20 минут работы за Mac островок на 20 секунд просит посмотреть на что-нибудь вдалеке (метрах в шести) — так глаза меньше устают. Если ты отошёл от Mac на 5 минут, отсчёт начинается заново. Во время созвона (включены камера или микрофон) и на экране блокировки напоминания нет. Нажатие на баннер — пропустить.") {
-                toggleRow("Правило 20-20-20", subtitle: "Напоминание отдохнуть глазам", isOn: labBinding("eyes"))
-                rowDivider
-                row("Как выглядит", subtitle: "Покажет напоминание в островке прямо сейчас — все 20 секунд") {
-                    Button("Показать") { actions.previewEyeBreak() }
+                HStack(alignment: .top, spacing: 8) {
+                    Image(systemName: snapshot.focusNeedsAccess ? "exclamationmark.triangle.fill" : "moon.fill")
+                        .foregroundStyle(snapshot.focusNeedsAccess ? Color.orange : Color.indigo)
+                    Text(snapshot.focusStatus)
+                        .font(.system(size: 12)).foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                    Spacer(minLength: 0)
                 }
+                .padding(.horizontal, 14)
+                .padding(.vertical, 10)
+            }
+            group("Доступ к фокусированию", footer: "macOS хранит состояние фокусирования в защищённой папке. Включи Notch Island в «Полном доступе к диску» и перезапусти приложение. Файлы только читаются.") {
+                row("Полный доступ к диску") {
+                    Button("Открыть…") { actions.openFullDiskAccess() }
+                }
+                rowDivider
+                row("Анимация фокусирования") {
+                    Button("Показать") { actions.previewFocus() }
+                }
+            }
+            group("Встречи и напоминания", footer: "При включении macOS спросит доступ к Календарю или Напоминаниям. События только читаются.") {
+                toggleRow("Встречи", subtitle: "За 10 минут; нажатие — ссылка на звонок или Календарь", isOn: labBinding("calendar"))
+                rowDivider
+                toggleRow("Напоминания", subtitle: "Когда подошёл срок", isOn: labBinding("reminders"))
             }
             group("Приватность и сеть") {
                 toggleRow("Камера и микрофон", subtitle: "Когда их начинает или перестаёт использовать приложение", isOn: labBinding("privacy"))
@@ -2291,27 +2224,74 @@ struct NotchSettingsWindowView: View {
             }
             group("Система") {
                 toggleRow("Нагрев и нагрузка", subtitle: "Сильный нагрев или процессор выше 85% дольше 30 секунд", isOn: labBinding("thermal"))
+            }
+        }
+    }
+
+    // 4.5.0: tools that help while working.
+    private var helpersSection: some View {
+        VStack(alignment: .leading, spacing: 20) {
+            group("Исправление раскладки", footer: "Набрал «ghbdtn» вместо «привет»? Нажми ⌃⌥L — выделенный текст (или, если ничего не выделено, слово перед курсором) переведётся на другую раскладку, а клавиатура переключится на нужный язык. Буфер обмена потом возвращается как был. Работает там, где работают ⌘C и ⌘V; нужен «Универсальный доступ».") {
+                toggleRow("Исправлять раскладку по ⌃⌥L", subtitle: "Как Punto Switcher: «ghbdtn» → «привет», «руддщ» → «hello»", isOn: labBinding("layout"))
+            }
+            group("Забота о глазах", footer: "Каждые 20 минут работы за Mac островок на 20 секунд просит посмотреть на что-нибудь вдалеке (метрах в шести) — так глаза меньше устают. Если ты отошёл от Mac на 5 минут, отсчёт начинается заново. Во время созвона (включены камера или микрофон) и на экране блокировки напоминания нет. Нажатие на баннер — пропустить.") {
+                toggleRow("Правило 20-20-20", subtitle: "Напоминание отдохнуть глазам", isOn: labBinding("eyes"))
                 rowDivider
+                row("Как выглядит", subtitle: "Покажет напоминание в островке прямо сейчас — все 20 секунд") {
+                    Button("Показать") { actions.previewEyeBreak() }
+                }
+            }
+        }
+    }
+
+    // 4.5.0: battery, AirPods and external disks together.
+    private var devicesSection: some View {
+        VStack(alignment: .leading, spacing: 20) {
+            group("Батарея") {
+                HStack(spacing: 12) {
+                    Image(systemName: island.power?.onACPower == true ? "bolt.fill" : "battery.25percent")
+                        .font(.system(size: 20))
+                        .foregroundStyle(island.power?.onACPower == true ? Color.green : Color.orange)
+                        .frame(width: 28)
+                    VStack(alignment: .leading, spacing: 3) {
+                        Text(snapshot.batterySummary).font(.system(size: 13, weight: .semibold))
+                        Text(snapshot.batteryExplanation)
+                            .font(.system(size: 11)).foregroundStyle(.secondary)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
+                    Spacer(minLength: 0)
+                }
+                .padding(14)
+            }
+            group("Время работы") {
+                row("Осталось от батареи") {
+                    Text(snapshot.batteryTimeText).font(.system(size: 12)).foregroundStyle(.secondary)
+                }
+            }
+            group("Проверка батареи", footer: "Демонстрация на 7 секунд, реальный заряд не меняется. Если островок занят, тест встанет в очередь.") {
+                row("Низкий заряд") {
+                    HStack(spacing: 6) {
+                        ForEach([20, 10, 5, 1], id: \.self) { threshold in
+                            Button("\(threshold)%") { actions.previewLowBattery(threshold) }
+                        }
+                    }
+                }
+                rowDivider
+                row("Подключение зарядки") {
+                    Button("Показать") { actions.previewCharging() }
+                }
+            }
+            group("AirPods", footer: "При подключении в островке крутится объёмная модель наушников и виден заряд. Заряд кейса виден, только если macOS его сообщает.") {
+                row("Подключённые AirPods") {
+                    Button("Показать") { actions.previewAirPods() }
+                }
+            }
+            group("Внешние диски") {
                 toggleRow("Внешние диски", subtitle: "Подключение и извлечение флешек и дисков", isOn: labBinding("disks"))
                 ForEach(snapshot.ejectableVolumes, id: \.self) { path in
                     rowDivider
                     row((path as NSString).lastPathComponent) {
                         Button("Извлечь") { actions.ejectVolume(path) }
-                    }
-                }
-            }
-            group("Копирование", footer: "Пароли из менеджеров паролей не показываются и не запоминаются. История — только в памяти, последние 10 текстов.") {
-                toggleRow("«Скопировано»", subtitle: "Короткий баннер при копировании текста, фото или файла", isOn: labBinding("clipboard"))
-                ForEach(Array(snapshot.clipboardHistory.enumerated()), id: \.offset) { _, text in
-                    rowDivider
-                    row(text.replacingOccurrences(of: "\n", with: " ").prefix(60).description) {
-                        Button("Копировать") { actions.copyClipboardItem(text) }
-                    }
-                }
-                if !snapshot.clipboardHistory.isEmpty {
-                    rowDivider
-                    row("Очистить историю") {
-                        Button("Очистить") { actions.clearClipboardHistory() }
                     }
                 }
             }
@@ -2329,24 +2309,19 @@ struct NotchSettingsWindowView: View {
             group("Снимки экрана") {
                 toggleRow("Новые снимки экрана", subtitle: "⇧⌘3, ⇧⌘4, ⇧⌘5: баннер с миниатюрой, снимок попадает на полку", isOn: labBinding("screenshots"))
             }
-        }
-    }
-
-    private var calendarSection: some View {
-        VStack(alignment: .leading, spacing: 20) {
-            group(nil, footer: "При включении macOS спросит доступ к Календарю или Напоминаниям. События только читаются.") {
-                toggleRow("Встречи", subtitle: "За 10 минут; нажатие — ссылка на звонок или Календарь", isOn: labBinding("calendar"))
-                rowDivider
-                toggleRow("Напоминания", subtitle: "Когда подошёл срок", isOn: labBinding("reminders"))
-            }
-        }
-    }
-
-    private var airPodsSection: some View {
-        VStack(alignment: .leading, spacing: 20) {
-            group(nil, footer: "Островок появляется при подключении AirPods. Заряд кейса виден, только если macOS его сообщает.") {
-                row("Подключённые AirPods") {
-                    Button("Показать") { actions.previewAirPods() }
+            group("Копирование", footer: "Пароли из менеджеров паролей не показываются и не запоминаются. История — только в памяти, последние 10 текстов.") {
+                toggleRow("«Скопировано»", subtitle: "Короткий баннер при копировании текста, фото или файла", isOn: labBinding("clipboard"))
+                ForEach(Array(snapshot.clipboardHistory.enumerated()), id: \.offset) { _, text in
+                    rowDivider
+                    row(text.replacingOccurrences(of: "\n", with: " ").prefix(60).description) {
+                        Button("Копировать") { actions.copyClipboardItem(text) }
+                    }
+                }
+                if !snapshot.clipboardHistory.isEmpty {
+                    rowDivider
+                    row("Очистить историю") {
+                        Button("Очистить") { actions.clearClipboardHistory() }
+                    }
                 }
             }
         }
@@ -3113,7 +3088,7 @@ struct SettingsTheme: Identifiable, Equatable {
     }
     static var updateColors: (Color, Color) {
         let palette = current.palette
-        guard palette.count >= 2 else {
+        guard BannerTheme.isEnabled, palette.count >= 2 else {
             return (Color(red: 0.2, green: 0.86, blue: 0.5), Color(red: 0.1, green: 0.7, blue: 0.95))
         }
         return (palette[0], palette[1])

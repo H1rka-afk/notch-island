@@ -5,6 +5,12 @@ import AVFoundation
 import Collaboration
 import OpenDirectory
 
+// 4.5.0: squash-and-stretch of the opening drop.
+struct IslandDropPhase {
+    var x: CGFloat = 1
+    var y: CGFloat = 1
+}
+
 // A black surface grows from the real cutout. The NSWindow grows only once;
 // the shape animates *within* that canvas instead of resizing a hosted view
 // and an NSWindow continuously at the same time.
@@ -170,6 +176,24 @@ struct IslandView: View {
         .animation(IslandMotion.morph, value: state.isExpanded)
         .animation(IslandMotion.morph, value: state.compactRevealed)
         .animation(IslandMotion.content, value: state.eventReturningToMedia)
+        // 4.5.0: opening is a drop of liquid — the sides lag behind the
+        // falling bottom, then the bottom settles with a small rebound.
+        // Never larger than the final size, so nothing is clipped.
+        .keyframeAnimator(initialValue: IslandDropPhase(), trigger: state.expandDropPulse) { content, phase in
+            content.scaleEffect(x: phase.x, y: phase.y, anchor: .top)
+        } keyframes: { _ in
+            KeyframeTrack(\.x) {
+                CubicKeyframe(0.92, duration: 0.13)
+                CubicKeyframe(0.985, duration: 0.17)
+                CubicKeyframe(1.0, duration: 0.22)
+            }
+            KeyframeTrack(\.y) {
+                CubicKeyframe(1.0, duration: 0.16)
+                CubicKeyframe(0.965, duration: 0.14)
+                CubicKeyframe(0.992, duration: 0.12)
+                CubicKeyframe(1.0, duration: 0.16)
+            }
+        }
         // The AppKit window reserves the maximum transparent canvas. Limit
         // hover to the *visible* black silhouette, otherwise the pointer can
         // enter invisible padding and later never trigger another hover when
@@ -468,7 +492,8 @@ struct IslandView: View {
     private func eventContent(_ event: IslandEvent) -> some View {
         if event == .airPods {
             HStack(spacing: 0) {
-                AirPodsCompactLeadingGlyph()
+                AirPodsCompactLeadingGlyph(
+                    headphones: state.airPods?.name.lowercased().contains("max") == true)
                     .frame(width: state.airPodsLeftWing, height: state.eventHeight)
                 Color.clear.frame(width: state.notchWidth, height: state.eventHeight)
                 AirPodsChargeRing(percent: state.airPodsPrimaryBattery)
@@ -586,10 +611,38 @@ private struct ChargingThreeSidedContour: Shape {
 
 private enum ChargingPalette {
     static func color(for percentage: Int?) -> Color {
-        guard let percentage else { return Color(red: 0.24, green: 0.89, blue: 0.52) }
+        let healthy = BannerTheme.tint(Color(red: 0.24, green: 0.89, blue: 0.52))
+        guard let percentage else { return healthy }
+        // Warnings keep their meaning in every theme.
         if percentage < 20 { return Color(red: 1.0, green: 0.25, blue: 0.25) }
         if percentage < 50 { return Color(red: 1.0, green: 0.63, blue: 0.16) }
-        return Color(red: 0.24, green: 0.89, blue: 0.52)
+        return healthy
+    }
+}
+
+// 4.5.0 — banners in the colours of the Settings theme (switchable).
+// Only «neutral» colours change: grey «off/skipped» and warning colours
+// (low battery) keep their meaning. The system theme has no palette, so
+// the original colours stay.
+enum BannerTheme {
+    static let key = "bannerThemeColorsV450"
+    static var isEnabled: Bool { (UserDefaults.standard.object(forKey: key) as? Bool) ?? true }
+
+    static var accent: Color? {
+        guard isEnabled else { return nil }
+        return SettingsTheme.current.palette.first
+    }
+
+    static func tint(_ original: Color) -> Color {
+        guard let accent else { return original }
+        return accent
+    }
+
+    // For notices: grey (off, skipped, nothing to do) stays grey.
+    static func noticeTint(_ original: Color?) -> Color {
+        guard let original else { return .white }
+        if original == .gray || original == .white { return original }
+        return tint(original)
     }
 }
 
@@ -990,7 +1043,7 @@ private struct FocusEventContent: View {
     var body: some View {
         let isOn = presentation?.isOn ?? true
         let mode = presentation?.mode ?? FocusMode.demo
-        let accent = isOn ? FocusPalette.color(for: mode.tintName) : Color.white.opacity(0.5)
+        let accent = isOn ? BannerTheme.tint(FocusPalette.color(for: mode.tintName)) : Color.white.opacity(0.5)
         HStack(spacing: 0) {
             Image(systemName: mode.displaySymbol)
                 .font(.system(size: 14.5, weight: .semibold))
@@ -1069,7 +1122,7 @@ private struct NoticeEventContent: View {
                     Image(systemName: notice?.symbol ?? "circle")
                         .font(.system(size: 14, weight: .semibold))
                         .symbolRenderingMode(.monochrome)
-                        .foregroundStyle(notice?.tint ?? .white)
+                        .foregroundStyle(BannerTheme.noticeTint(notice?.tint))
                         .contentTransition(.symbolEffect(.replace))
                 }
             }
@@ -1086,7 +1139,7 @@ private struct NoticeEventContent: View {
                 if let level = notice?.level {
                     ZStack(alignment: .leading) {
                         Capsule().fill(Color.white.opacity(0.2))
-                        Capsule().fill(notice?.tint ?? .white)
+                        Capsule().fill(BannerTheme.noticeTint(notice?.tint))
                             .frame(width: max(2, 34 * CGFloat(min(1, max(0, level)))))
                     }
                     .frame(width: 34, height: 3)
@@ -1180,25 +1233,17 @@ enum FocusPalette {
     }
 }
 
-// Fixed, upright pair of AirPods. No rotation or continuous animation.
+// 4.5.0: a 3D model of the earbuds spinning around its own axis, like the
+// connection animation on iPhone.
 private struct AirPodsCompactLeadingGlyph: View {
+    var headphones: Bool
+
     var body: some View {
-        RoundedRectangle(cornerRadius: 9, style: .continuous)
-            .fill(Color.white.opacity(0.12))
-            .frame(width: 26, height: 26)
-            .overlay {
-                ZStack {
-                    Image(systemName: "airpod.left")
-                        .font(.system(size: 14, weight: .regular))
-                        .offset(x: -5, y: 0)
-                    Image(systemName: "airpod.right")
-                        .font(.system(size: 14, weight: .regular))
-                        .offset(x: 5, y: 0)
-                }
-                .foregroundStyle(.white)
-            }
-            .shadow(color: .white.opacity(0.08), radius: 1.5, x: 0, y: 1)
+        SpinningEarbudsView(headphones: headphones)
+            .frame(width: 36, height: 36)
+            .shadow(color: .white.opacity(0.12), radius: 3)
             .frame(width: 40, height: 40)
+            .accessibilityLabel(headphones ? "Наушники" : "Наушники-вкладыши")
     }
 }
 
@@ -1216,7 +1261,7 @@ private struct AirPodsChargeRing: View {
                 .stroke(Color.white.opacity(0.12), lineWidth: 2.25)
             Circle()
                 .trim(from: 0, to: max(progress, 0.015))
-                .stroke(Color(red: 0.22, green: 0.86, blue: 0.42), style: StrokeStyle(lineWidth: 2.25, lineCap: .round))
+                .stroke(BannerTheme.tint(Color(red: 0.22, green: 0.86, blue: 0.42)), style: StrokeStyle(lineWidth: 2.25, lineCap: .round))
                 .rotationEffect(.degrees(-90))
                 .opacity(percent == nil ? 0.25 : 1)
         }
@@ -1264,6 +1309,35 @@ private struct AirPodsBatteryPill: View {
 }
 
 
+// 4.5.0: a liquid bridge drawn in absolute coordinates of the satellite's
+// content (x < 0 reaches back into the music island). Straight top along
+// the bezel, a concave bottom whose lowest point is `neck`.
+struct SatelliteBridge: Shape {
+    let left: CGFloat
+    let right: CGFloat
+    let leftDepth: CGFloat
+    let rightDepth: CGFloat
+    let neck: CGFloat
+
+    func path(in rect: CGRect) -> Path {
+        var path = Path()
+        guard right > left + 1 else { return path }
+        let width = right - left
+        let mid = left + width * 0.5
+        path.move(to: CGPoint(x: left, y: 0))
+        path.addLine(to: CGPoint(x: right, y: 0))
+        path.addLine(to: CGPoint(x: right, y: rightDepth - 1))
+        path.addCurve(to: CGPoint(x: mid, y: neck),
+                      control1: CGPoint(x: right - width * 0.18, y: rightDepth - 1),
+                      control2: CGPoint(x: mid + width * 0.22, y: neck))
+        path.addCurve(to: CGPoint(x: left, y: leftDepth - 1),
+                      control1: CGPoint(x: mid - width * 0.22, y: neck),
+                      control2: CGPoint(x: left + width * 0.18, y: leftDepth - 1))
+        path.closeSubpath()
+        return path
+    }
+}
+
 // A dedicated mini-island for the timer, separate from the MacBook notch.
 // Its own NSPanel provides independent hover, so opening the timer never
 // expands the music player or steals its buttons.
@@ -1293,6 +1367,25 @@ struct TimerSatelliteView: View {
         let corner: CGFloat = state.timerExpanded ? 16 : 9
 
         ZStack(alignment: .topLeading) {
+            // 4.5.0: the liquid neck between the music island and the drop.
+            // Thick while they touch, it thins as the drop pulls away and
+            // snaps just before the drop settles — and grows back when the
+            // drop flows home.
+            if presence < 0.98 && !state.timerExpanded {
+                let roofDepth = state.timerTopBleed
+                let leftEdge = -state.timerLeadInset
+                let dropLeft = shapeX + 2
+                let mainDepth = state.timerCompactDiameter + roofDepth
+                let dropDepth = shapeHeight + roofDepth
+                let pull = min(1, max(0, Double(presence) / 0.9))
+                let neckFactor = CGFloat(pow(1 - pull, 1.35))
+                let neck = roofDepth + (min(mainDepth, dropDepth) - roofDepth) * neckFactor
+                SatelliteBridge(left: leftEdge, right: dropLeft + min(corner, shapeWidth / 2),
+                                leftDepth: mainDepth, rightDepth: dropDepth, neck: neck)
+                    .fill(Color.black)
+                    .opacity(neck > roofDepth + 0.3 ? 1 : 0)
+                    .allowsHitTesting(false)
+            }
             // Like the main island: a straight top edge touching the screen
             // bezel, with rounding ONLY at the bottom two corners.
             UnevenRoundedRectangle(topLeadingRadius: 0,

@@ -145,7 +145,9 @@ struct IslandDemoView: View {
         let pods = island.airPods
         let values: [(String, Int)] = [("Л", pods?.left ?? 82), ("П", pods?.right ?? 79), ("Кейс", pods?.caseBattery ?? 95)]
         return HStack(spacing: 16) {
-            Image(systemName: "airpodspro").font(.system(size: 30, weight: .regular)).foregroundStyle(.white)
+            // 4.5.0: the same spinning 3D model as in the island.
+            SpinningEarbudsView(headphones: pods?.name.lowercased().contains("max") == true)
+                .frame(width: 46, height: 46)
             VStack(alignment: .leading, spacing: 2) {
                 Text(pods?.name.isEmpty == false ? pods!.name : "AirPods Pro").font(.system(size: 13, weight: .bold)).foregroundStyle(.white)
                 Text("Подключены").font(.system(size: 11)).foregroundStyle(.green)
