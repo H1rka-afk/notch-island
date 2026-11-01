@@ -158,7 +158,8 @@ struct IslandView: View {
             // collapse. The compact controls crossfade as the card contracts.
             if state.canvasExpanded && state.event == nil {
                 Group {
-                    if state.track != nil { expandedContent }
+                    // 4.0.0: the new player or the classic one (Settings).
+                    if state.track != nil { ExpandedPlayerStyle.isNew ? AnyView(newExpandedContent) : AnyView(expandedContent) }
                     else { expandedTimerContent }
                 }
                 .padding(.top, state.notchHeight + 9 + roof)
@@ -310,6 +311,113 @@ struct IslandView: View {
         }
         .padding(.horizontal, 25)
         .frame(width: state.expandedWidth)
+    }
+
+    // MARK: 4.0.0 — the new expanded player
+
+    // Big cover, the cover's colours glowing behind, title over artist with
+    // the source app, progress, controls with «where the sound goes», and a
+    // volume slider.
+    private var newExpandedContent: some View {
+        VStack(alignment: .leading, spacing: 11) {
+            HStack(alignment: .center, spacing: 14) {
+                if let song = state.track {
+                    albumArt(song, size: 78)
+                        .frame(width: 78, height: 78)
+                        .shadow(color: state.musicArtworkTint.opacity(0.55), radius: 14, y: 4)
+                        .offset(x: state.swipeNudge)
+                }
+                VStack(alignment: .leading, spacing: 3) {
+                    if let source = state.track?.sourceName, !source.isEmpty {
+                        Text(source.uppercased())
+                            .font(.system(size: 9.5, weight: .bold))
+                            .kerning(0.6)
+                            .foregroundStyle(.white.opacity(0.45))
+                    }
+                    Text(state.track?.title ?? "")
+                        .font(.system(size: 16, weight: .bold, design: .rounded))
+                        .foregroundStyle(.white)
+                    Text(state.track?.artist ?? "")
+                        .font(.system(size: 13))
+                        .foregroundStyle(.white.opacity(0.7))
+                }
+                .lineLimit(1)
+                .truncationMode(.tail)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                ZStack {
+                    AudioReactiveBars(playing: state.track?.isPlaying == true,
+                                      live: state.audioLive,
+                                      maxHeight: 40, barWidth: 3.6,
+                                      barSpacing: 2.8, tint: state.musicArtworkTint,
+                                      artwork: state.musicArtwork)
+                        .opacity(state.volumeLevel == nil ? 1 : 0)
+                    if let level = state.volumeLevel {
+                        VolumeLevelGlyph(level: level, compact: false)
+                            .transition(.opacity)
+                    }
+                }
+                .frame(width: 46, height: 46)
+            }
+
+            if (state.track?.duration ?? 0) > 0 {
+                SmoothProgressView(state: state)
+            }
+
+            HStack(spacing: 0) {
+                Group {
+                    if state.favoriteSupported {
+                        AnimatedFavoriteStar(state: state)
+                    } else {
+                        Color.clear.frame(width: 30, height: 40)
+                    }
+                }
+                Spacer(minLength: 9)
+                HStack(spacing: 24) {
+                    Button { state.command(.previous) } label: {
+                        Image(systemName: "backward.fill")
+                            .font(.system(size: 21, weight: .medium))
+                            .symbolEffect(.bounce, value: state.previousPulse)
+                            .frame(width: 40, height: 40)
+                    }
+                    Button { state.command(.toggle) } label: {
+                        Image(systemName: state.track?.isPlaying == true ? "pause.fill" : "play.fill")
+                            .font(.system(size: 28, weight: .semibold))
+                            .contentTransition(.symbolEffect(.replace))
+                            .frame(width: 44, height: 40)
+                    }
+                    Button { state.command(.next) } label: {
+                        Image(systemName: "forward.fill")
+                            .font(.system(size: 21, weight: .medium))
+                            .symbolEffect(.bounce, value: state.nextPulse)
+                            .frame(width: 40, height: 40)
+                    }
+                }
+                .buttonStyle(DynamicIslandButtonStyle())
+                Spacer(minLength: 9)
+                OutputDeviceButton()
+                    .frame(width: 30, height: 40)
+            }
+            .frame(maxWidth: .infinity)
+
+            PlayerVolumeRow(tint: state.musicArtworkTint, externalLevel: state.volumeLevel)
+        }
+        .padding(.horizontal, 25)
+        .frame(width: state.expandedWidth)
+        .background(alignment: .top) {
+            // The cover's colours glowing softly behind the controls.
+            if let cover = ArtworkBlur.blurred(state.musicArtwork) {
+                Image(nsImage: cover)
+                    .resizable()
+                    .scaledToFill()
+                    .frame(width: state.expandedWidth - 16, height: 190)
+                    .blur(radius: 24)
+                    .opacity(0.32)
+                    .mask(LinearGradient(colors: [.white, .white.opacity(0)], startPoint: .top, endPoint: .bottom))
+                    .clipShape(RoundedRectangle(cornerRadius: 26, style: .continuous))
+                    .offset(y: -18)
+                    .allowsHitTesting(false)
+            }
+        }
     }
 
     private var expandedTimerContent: some View {

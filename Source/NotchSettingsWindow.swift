@@ -150,6 +150,7 @@ struct NotchSettingsActions {
     let applyProfile: (String) -> Void
     let showOnboarding: () -> Void
     let previewEyeBreak: () -> Void
+    let previewStandBy: () -> Void
 }
 
 struct NotchSettingsWindowView: View {
@@ -179,6 +180,15 @@ struct NotchSettingsWindowView: View {
     @AppStorage("energySaverModeV3164") private var energySaverMode = "battery"
     @AppStorage("waveArtworkV3180") private var waveArtwork = true
     @AppStorage("githubUpdatesV400") private var githubUpdates = true
+    // 4.0.0
+    @AppStorage(ExpandedPlayerStyle.key) private var playerStyle = "new"
+    @AppStorage(IdleWings.enabledKey) private var wingsEnabled = true
+    @AppStorage(IdleWings.leftKey) private var wingsLeft = "weather"
+    @AppStorage(IdleWings.rightKey) private var wingsRight = "battery"
+    @AppStorage(CinemaMode.key) private var cinemaEnabled = true
+    @AppStorage(StandBySettings.enabledKey) private var standbyEnabled = true
+    @AppStorage(StandBySettings.keepAwakeKey) private var standbyKeepAwake = true
+    @AppStorage(StandBySettings.nightKey) private var standbyNight = true
     // 3.19.0: redraw when the cover's colours change («Обложка» theme).
     @ObservedObject private var coverPalette = CoverPalette.shared
     @AppStorage("lockCoverLayerV387") private var lockCoverLayer = 400
@@ -1607,6 +1617,30 @@ struct NotchSettingsWindowView: View {
 
     private var islandSection: some View {
         VStack(alignment: .leading, spacing: 20) {
+            group("Крылья", footer: "Когда в островке ничего не происходит, по бокам от чёлки тихо видна мелочь на выбор. Как только появляется музыка, баннер или таймер, крылья прячутся. На мышь не реагируют.") {
+                toggleRow("Крылья в покое", subtitle: "Погода, заряд, время или дата рядом с чёлкой", isOn: $wingsEnabled)
+                rowDivider
+                row("Слева") {
+                    Picker("", selection: $wingsLeft) {
+                        ForEach(IdleWings.choices, id: \.id) { Text($0.title).tag($0.id) }
+                    }
+                    .labelsHidden()
+                    .frame(width: 140)
+                    .disabled(!wingsEnabled)
+                }
+                rowDivider
+                row("Справа") {
+                    Picker("", selection: $wingsRight) {
+                        ForEach(IdleWings.choices, id: \.id) { Text($0.title).tag($0.id) }
+                    }
+                    .labelsHidden()
+                    .frame(width: 140)
+                    .disabled(!wingsEnabled)
+                }
+            }
+            group("Режим кинотеатра", footer: "Видеоплеер, браузер или приложение с музыкой открыто на весь экран — островок полностью гаснет: ни плеера, ни баннеров, ни полки. Когда выходишь из полноэкранного режима, всё возвращается.") {
+                toggleRow("Режим кинотеатра", subtitle: "Ничего не отвлекает во время фильма", isOn: $cinemaEnabled)
+            }
             group("Физическая чёлка",
                   footer: island.autoNotchSize
                     ? "Ширина берётся из геометрии дисплея."
@@ -1630,6 +1664,16 @@ struct NotchSettingsWindowView: View {
 
     private var mediaSection: some View {
         VStack(alignment: .leading, spacing: 20) {
+            group("Развёрнутый плеер", footer: "Новый: крупная обложка, её цвета светятся за кнопками, название приложения, выбор устройства вывода (AirPods, динамики…) и ползунок громкости. Классический — как раньше, компактнее.") {
+                Picker("", selection: $playerStyle) {
+                    Text("Новый").tag("new")
+                    Text("Классический").tag("classic")
+                }
+                .pickerStyle(.segmented)
+                .labelsHidden()
+                .padding(14)
+                .id("search:Развёрнутый плеер")
+            }
             group("Медиаплеер") {
                 toggleRow("Скрывать в полноэкранном режиме",
                           subtitle: "Когда браузер, видеоплеер или приложение с музыкой открыто на весь экран",
@@ -1785,6 +1829,19 @@ struct NotchSettingsWindowView: View {
                 rowDivider
                 row("Как выглядит") {
                     Button("Показать") { actions.previewLockMedia() }
+                }
+            }
+            group("StandBy", footer: "Как iPhone на зарядке: Mac заблокирован, подключён к питанию и его не трогают 20 секунд — весь экран становится большими часами с зарядом и музыкой или погодой. Любое нажатие клавиши или движение мыши сразу возвращает обычный экран входа, так что пароль никогда не вводится вслепую.") {
+                toggleRow("StandBy на зарядке", isOn: $standbyEnabled)
+                rowDivider
+                toggleRow("Не гасить экран", subtitle: "Пока StandBy на экране, дисплей не засыпает", isOn: $standbyKeepAwake)
+                    .disabled(!standbyEnabled)
+                rowDivider
+                toggleRow("Ночной режим", subtitle: "С 22:00 до 7:00 — тусклый красный, как на iPhone", isOn: $standbyNight)
+                    .disabled(!standbyEnabled)
+                rowDivider
+                row("Как выглядит", subtitle: "Покажет StandBy на 8 секунд, нажатие — закрыть") {
+                    Button("Показать") { actions.previewStandBy() }
                 }
             }
             group("Виджеты под часами",

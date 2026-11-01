@@ -47,6 +47,7 @@ final class LockCoverActivity: ObservableObject {
     // kept animating at 60 fps behind alpha 0 all day while music played.
     static let media = LockCoverActivity()
     static let widgets = LockCoverActivity()
+    static let standby = LockCoverActivity()     // 4.0.0
     @Published private(set) var active = false
     private var token = UUID()
 
@@ -964,7 +965,101 @@ final class LockScreenOverlay {
         }
     }
 
+    // MARK: StandBy (4.0.0)
+
+    private var standbyWindow: LockIslandPanel?
+    private var standbyPreviewWindow: NSPanel?
+
+    // Full screen, above the card and widgets, never taking a click: the
+    // login stays under it (typing or a mouse move hides StandBy first).
+    func setStandBy(_ on: Bool, on screen: NSScreen?) {
+        if on {
+            guard let screen = screen ?? lastScreen ?? NSScreen.main else { return }
+            let panel: LockIslandPanel
+            if let existing = standbyWindow {
+                panel = existing
+            } else {
+                panel = LockIslandPanel(contentRect: screen.frame, styleMask: [.borderless, .nonactivatingPanel],
+                                        backing: .buffered, defer: false)
+                panel.isOpaque = false
+                panel.backgroundColor = .clear
+                panel.hasShadow = false
+                panel.hidesOnDeactivate = false
+                panel.ignoresMouseEvents = true
+                panel.isMovable = false
+                panel.isReleasedWhenClosed = false
+                panel.canBecomeVisibleWithoutLogin = true
+                panel.level = NSWindow.Level(rawValue: Int(Int32.max - 1))
+                panel.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary, .stationary, .ignoresCycle]
+                panel.contentView = NSHostingView(rootView: StandByView(state: state, activity: LockCoverActivity.standby))
+                panel.alphaValue = 0
+                standbyWindow = panel
+            }
+            panel.setFrame(screen.frame, display: false)
+            LockCoverActivity.standby.show()
+            panel.orderFrontRegardless()
+            _ = bridge.attach(panel)
+            fade(panel, to: 1, duration: 0.6)
+            LockIslandLog.record("standby: on")
+        } else {
+            LockCoverActivity.standby.hide(after: 0.4)
+            if let panel = standbyWindow, panel.alphaValue > 0 {
+                fade(panel, to: 0, duration: 0.3)
+                LockIslandLog.record("standby: off")
+            }
+        }
+    }
+
+    // Settings → «Показать»: StandBy on the desktop for 8 s, a click closes it.
+    func previewStandBy(on screen: NSScreen?) {
+        guard let screen = screen ?? NSScreen.main else { return }
+        let panel = standbyPreviewWindow ?? {
+            let p = NSPanel(contentRect: screen.frame, styleMask: [.borderless, .nonactivatingPanel],
+                            backing: .buffered, defer: false)
+            p.isOpaque = false
+            p.backgroundColor = .clear
+            p.hasShadow = false
+            p.hidesOnDeactivate = false
+            p.isReleasedWhenClosed = false
+            p.level = .screenSaver
+            p.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary, .stationary]
+            return p
+        }()
+        standbyPreviewWindow = panel
+        panel.contentView = FirstClickHostingView(rootView:
+            StandByView(state: state, activity: LockCoverActivity.standby)
+                .contentShape(Rectangle())
+                .onTapGesture { [weak self] in self?.closeStandByPreview() })
+        panel.setFrame(screen.frame, display: false)
+        LockCoverActivity.standby.show()
+        panel.alphaValue = 0
+        panel.orderFrontRegardless()
+        fade(panel, to: 1, duration: 0.4)
+        let token = UUID()
+        standbyPreviewToken = token
+        DispatchQueue.main.asyncAfter(deadline: .now() + 8) { [weak self] in
+            guard let self, self.standbyPreviewToken == token else { return }
+            self.closeStandByPreview()
+        }
+    }
+    private var standbyPreviewToken = UUID()
+
+    private func closeStandByPreview() {
+        guard let panel = standbyPreviewWindow else { return }
+        standbyPreviewToken = UUID()
+        if standbyWindow?.alphaValue ?? 0 == 0 { LockCoverActivity.standby.hide(after: 0.35) }
+        NSAnimationContext.runAnimationGroup({ context in
+            context.duration = 0.3
+            panel.animator().alphaValue = 0
+        }, completionHandler: {
+            panel.orderOut(nil)
+            panel.contentView = nil
+        })
+    }
+
     func hideImmediately() {
+        standbyWindow?.alphaValue = 0
+        LockCoverActivity.standby.hide(after: 0)
         generation += 1
         lockPresentationActive = false
         previewMode = false

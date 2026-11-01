@@ -320,6 +320,21 @@ final class IslandState: ObservableObject {
         mediaVisibilitySettingsChanged?()
     }
     var mediaVisibilitySettingsChanged: (() -> Void)?
+    // 4.0.0: cinema mode — a full-screen video in front: the island and all
+    // banners stay away until it ends.
+    @Published private(set) var cinemaMode = false {
+        didSet { if oldValue != cinemaMode { layoutChanged?() } }
+    }
+    func setCinemaMode(_ on: Bool) {
+        guard on != cinemaMode else { return }
+        if on {
+            resetExpandedImmediately()
+            pointerInsideIsland = false
+            hoverEnter?.cancel(); hoverEnter = nil
+            hoverExit?.cancel(); hoverExit = nil
+        }
+        cinemaMode = on
+    }
     private var mediaSuppressionTarget = false
     private var mediaSuppressionToken = UUID()
 
@@ -456,7 +471,7 @@ final class IslandState: ObservableObject {
     // steps, CPU readings) updates the visible banner in place and simply
     // extends its stay instead of replaying the entrance.
     func presentNotice(_ next: IslandNotice) {
-        guard !isSessionLocked, !unlockTransitionActive else { return }
+        guard !isSessionLocked, !unlockTransitionActive, !cinemaMode else { return }
         if event == .notice, notice?.kind == next.kind, eventRevealed {
             notice = next
             let token = UUID()
@@ -1184,7 +1199,7 @@ final class IslandState: ObservableObject {
     // The main island is for media/events; the Clock timer has a separate
     // satellite window. Do not keep a second, invisible timer in the notch.
     var isVisible: Bool {
-        !isSessionLocked && (event != nil || unlockTransitionActive ||
+        !cinemaMode && !isSessionLocked && (event != nil || unlockTransitionActive ||
             (!mediaSuppressedInFullscreen && (track != nil || timerPresented)) ||
             (track == nil && timerPresented))
     }
@@ -1203,6 +1218,8 @@ final class IslandState: ObservableObject {
     var expandedWidth: CGFloat { max(410, notchWidth + 188) }
     var expandedHeight: CGFloat {
         if track == nil { return max(156, notchHeight + 122) }
+        // 4.0.0: the new player is taller (bigger cover, volume row).
+        if ExpandedPlayerStyle.isNew { return max(268, notchHeight + 232) }
         return max(210, notchHeight + 174)
     }
     // Charging is deliberately compact. Keep the unplugged label roomy,
@@ -1446,7 +1463,7 @@ final class IslandState: ObservableObject {
 
     func show(_ nextEvent: IslandEvent) {
         PerformanceMonitor.write("event \(nextEvent)")
-        guard !isSessionLocked else { return }
+        guard !isSessionLocked, !cinemaMode else { return }
         // A late cable/AirPods event must not cut off the visible open-padlock
         // transition. Queue it until the single-panel handoff is finished.
         if unlockTransitionActive {
@@ -1668,6 +1685,7 @@ final class IslandAppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private var eyeBreakTimer: Timer?
     private let loadSampler = SystemLoadSampler()
     private var stateChangeCounter: AnyCancellable?
+    private let standby = StandByController()
     private var shelfPanel: IslandPanel?
     private var shelfPanelVisible = false
     private var notchDropPanel: IslandPanel?
@@ -1757,6 +1775,10 @@ final class IslandAppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         // The two-command status menu and nonactivating island panels remain.
         NSApp.setActivationPolicy(.regular)
         PerformanceMonitor.start()
+        standby.show = { [weak self] on in
+            guard let self else { return }
+            self.lockOverlay?.setStandBy(on, on: self.displayScreen())
+        }
         stateChangeCounter = state.objectWillChange.sink { _ in PerformanceMonitor.count("state change") }
         iconSwitcher.start()
         // 3.1.11: the artwork-source switches were removed from Settings.
@@ -1909,7 +1931,10 @@ final class IslandAppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         // Tab switches inside a browser have no notification: a light check
         // (one window title through Accessibility) twice a second.
         fullscreenVisibilityTimer = Timer.scheduledTimer(withTimeInterval: 1.0, repeats: true) { [weak self] _ in
-            PerformanceMonitor.measure("media visibility") { self?.refreshMediaFullscreenVisibility() }
+            PerformanceMonitor.measure("media visibility") {
+                self?.refreshMediaFullscreenVisibility()
+                self?.refreshCinemaMode()
+            }
         }
         fullscreenVisibilityTimer?.tolerance = 0.3
 
@@ -2285,6 +2310,7 @@ final class IslandAppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             }
         }
         makeShelfPanels()
+        makeIdleWings()
         applyLaboratory()
     }
 
@@ -2565,7 +2591,7 @@ final class IslandAppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     // The visible LEFT edge of the main island right now.
     private func islandLeftEdge(centre: CGFloat) -> CGFloat {
         let notchLeft = centre - state.notchWidth / 2
-        guard state.isVisible else { return notchLeft }
+        guard state.isVisible else { return idleWingsShown ? notchLeft - IdleWings.wing : notchLeft }
         if state.isExpanded || state.canvasExpanded {
             if state.usesFixedMediaSatelliteCanvas {
                 // With the timer satellite the card grows leftwards from the
@@ -2579,6 +2605,86 @@ final class IslandAppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             return centre - width / 2
         }
         return notchLeft - state.leftWing
+    }
+
+    // MARK: Idle wings (4.0.0)
+
+    private var idleWingsPanel: IslandPanel?
+    private(set) var idleWingsShown = false
+    private var idleWingsObservers: [AnyCancellable] = []
+    private var idleWingsDefaultsObserver: NSObjectProtocol?
+    private var idleWingsToken = UUID()
+
+    // A separate, click-through black window around the notch, shown only
+    // while the island itself is hidden; the island always covers it.
+    private func makeIdleWings() {
+        let panel = IslandPanel(contentRect: .zero, styleMask: [.borderless, .nonactivatingPanel],
+                                backing: .buffered, defer: false)
+        panel.isOpaque = false
+        panel.backgroundColor = .clear
+        panel.hasShadow = false
+        panel.hidesOnDeactivate = false
+        panel.isMovable = false
+        panel.ignoresMouseEvents = true
+        panel.permitsChargingTopBleed = true
+        panel.level = .statusBar
+        panel.collectionBehavior = IslandWindowSpaces.foregroundBehavior
+        let host = NSHostingView(rootView: IdleWingsView(state: state, roof: state.islandTopBleed))
+        host.autoresizingMask = [.width, .height]
+        panel.contentView = host
+        idleWingsPanel = panel
+        idleWingsObservers.append(state.objectWillChange
+            .debounce(for: .milliseconds(120), scheduler: RunLoop.main)
+            .sink { [weak self] _ in self?.updateIdleWings() })
+        idleWingsDefaultsObserver = NotificationCenter.default.addObserver(
+            forName: UserDefaults.didChangeNotification, object: nil, queue: .main) { [weak self] _ in
+            self?.updateIdleWings()
+        }
+        updateIdleWings()
+    }
+
+    private func updateIdleWings() {
+        guard let panel = idleWingsPanel else { return }
+        let screen = displayScreen()
+        let want = IdleWings.isEnabled && (screen?.safeAreaInsets.top ?? 0) > 0 && !state.isVisible
+            && !state.cinemaMode && !isScreenLocked && !state.isSessionLocked
+        if want, let screen {
+            let centre = state.notchCenterX ?? screen.frame.midX
+            let width = state.notchWidth + IdleWings.wing * 2
+            let frame = CGRect(x: centre - width / 2, y: screen.frame.maxY - state.notchHeight,
+                               width: width, height: state.notchHeight + state.islandTopBleed)
+            if panel.frame != frame { panel.setFrame(frame, display: true) }
+            if [IdleWings.left, IdleWings.right].contains("weather") {
+                WeatherService.shared.refreshIfNeeded(allowPrompt: false) {}
+            }
+            guard !idleWingsShown else { return }
+            idleWingsShown = true
+            let token = UUID()
+            idleWingsToken = token
+            // After the island has shrunk back into the notch.
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.35) { [weak self] in
+                guard let self, self.idleWingsToken == token, self.idleWingsShown else { return }
+                panel.alphaValue = 0
+                panel.orderFrontRegardless()
+                NSAnimationContext.runAnimationGroup { context in
+                    context.duration = 0.25
+                    panel.animator().alphaValue = 1
+                }
+                self.updateShelfPanels(on: screen)
+            }
+        } else if idleWingsShown {
+            idleWingsShown = false
+            let token = UUID()
+            idleWingsToken = token
+            NSAnimationContext.runAnimationGroup({ context in
+                context.duration = 0.12
+                panel.animator().alphaValue = 0
+            }, completionHandler: { [weak self] in
+                guard let self, self.idleWingsToken == token, !self.idleWingsShown else { return }
+                panel.orderOut(nil)
+            })
+            if let screen { updateShelfPanels(on: screen) }
+        }
     }
 
     private func makeShelfPanels() {
@@ -2623,7 +2729,7 @@ final class IslandAppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
     private func updateShelfPanels(on screen: NSScreen) {
         guard let panel = shelfPanel, let drop = notchDropPanel else { return }
-        let enabled = LabFeature.shelf.isOn && !state.isSessionLocked && !isScreenLocked
+        let enabled = LabFeature.shelf.isOn && !state.isSessionLocked && !isScreenLocked && !state.cinemaMode
         let centre = state.notchCenterX ?? screen.frame.midX
         // Drop zone: exactly the physical notch (black on black).
         if enabled && screen.safeAreaInsets.top > 0 {
@@ -3134,6 +3240,37 @@ final class IslandAppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     }
 
     private let visibilityQueue = DispatchQueue(label: "app.notchisland.visibility", qos: .userInitiated)
+    private var cinemaCheckBusy = false
+
+    // 4.0.0: a video player or browser in full screen in front → cinema.
+    private func refreshCinemaMode() {
+        guard CinemaMode.isEnabled, !isScreenLocked,
+              let front = NSWorkspace.shared.frontmostApplication,
+              front.processIdentifier != ProcessInfo.processInfo.processIdentifier,
+              let bundle = front.bundleIdentifier,
+              MediaVisibilityPolicy.isMediaApp(bundle) || CinemaMode.videoApps.contains(bundle),
+              let screen = displayScreen() else {
+            if state.cinemaMode { state.setCinemaMode(false); updateIdleWings() }
+            return
+        }
+        guard !cinemaCheckBusy else { return }
+        cinemaCheckBusy = true
+        let pid = front.processIdentifier
+        let frame = screen.frame
+        let primaryX = NSScreen.screens.first?.frame.minX ?? 0
+        visibilityQueue.async { [weak self] in
+            let fullscreen = Self.hasFullscreenWindow(pid: pid, screenFrame: frame, primaryX: primaryX)
+            DispatchQueue.main.async {
+                guard let self else { return }
+                self.cinemaCheckBusy = false
+                if fullscreen != self.state.cinemaMode {
+                    self.state.setCinemaMode(fullscreen)
+                    self.updateIdleWings()
+                    if let screen = self.displayScreen() { self.updateShelfPanels(on: screen) }
+                }
+            }
+        }
+    }
     private var visibilityCheckBusy = false
 
     // A window of this app covering the island's display. Quartz uses
@@ -3222,6 +3359,7 @@ final class IslandAppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         }
         if state.power != fresh { state.power = fresh }
         EnergySaver.onBattery = !fresh.onACPower
+        standby.update(locked: isScreenLocked, onPower: fresh.onACPower)
         let warningThreshold = lowBatteryWarnings.observe(percentage: fresh.percentage,
                                                           onACPower: fresh.onACPower)
         let supplyChanged = lastACPower.map { $0 != fresh.onACPower } ?? false
@@ -3377,6 +3515,7 @@ final class IslandAppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         }
         LockScreenOverlay.logSessionEvent("session locked: source=\(notification.name.rawValue), bit=\(String(describing: screenLockFlag))")
         isScreenLocked = true
+        standby.update(locked: true, onPower: state.power?.onACPower ?? false)
         unlockHandoffInProgress = false
         LockUserIdentity.shared.refresh(force: true)
         // If a 7-second warning was interrupted by the protected screen,
@@ -3434,6 +3573,7 @@ final class IslandAppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         LockScreenOverlay.logSessionEvent("session unlocked: source=\(notification.name.rawValue), bit=\(String(describing: screenLockFlag))")
         lockStatusItem?.title = "Замочек: " + (lockOverlay?.diagnosticSummary ?? "Не проверено")
         isScreenLocked = false
+        standby.update(locked: false, onPower: false)
         stopLockWidgets()
         desktopLockFadeToken = UUID()
         // An early unlock may interrupt a pending desktop fade. Keep the
@@ -3818,7 +3958,11 @@ final class IslandAppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
                 self?.applyProfile(profile)
             },
             showOnboarding: { [weak self] in self?.showOnboarding() },
-            previewEyeBreak: { [weak self] in self?.runEyeBreak() }
+            previewEyeBreak: { [weak self] in self?.runEyeBreak() },
+            previewStandBy: { [weak self] in
+                guard let self else { return }
+                self.lockOverlay?.previewStandBy(on: self.displayScreen())
+            }
         )
     }
 
