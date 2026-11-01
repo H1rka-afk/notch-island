@@ -3525,6 +3525,8 @@ final class IslandAppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         LockScreenOverlay.logSessionEvent("session locked: source=\(notification.name.rawValue), bit=\(String(describing: screenLockFlag))")
         isScreenLocked = true
         standby.update(locked: true, onPower: state.power?.onACPower ?? false)
+        // 4.1.1: StandBy shows the temperature — have it ready.
+        if StandBySettings.isEnabled { WeatherService.shared.refreshIfNeeded(allowPrompt: false) {} }
         unlockHandoffInProgress = false
         LockUserIdentity.shared.refresh(force: true)
         // If a 7-second warning was interrupted by the protected screen,

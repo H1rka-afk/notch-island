@@ -102,6 +102,8 @@ struct StandByView: View {
                 content(context.date)
             }
             .onDisappear { ui.islandExpanded = false }
+            // The temperature: fetched if there is none yet (no location prompt).
+            .onAppear { WeatherService.shared.refreshIfNeeded(allowPrompt: false) {} }
         } else {
             Color.clear
         }
@@ -122,25 +124,26 @@ struct StandByView: View {
                             onDismiss()
                         }
                     }
-                HStack(alignment: .top, spacing: size.width * 0.06) {
+                // 4.1.1: smaller, centred clock; the day and the temperature
+                // sit at its top right, as on iPhone.
+                HStack(alignment: .top, spacing: size.width * 0.035) {
                     Text(Self.format(now, "HH:mm"))
-                        .font(.system(size: h * 0.86, weight: .semibold))
+                        .font(.system(size: h * 0.6, weight: .semibold))
                         .fontWidth(.compressed)
                         .monospacedDigit()
                         .foregroundStyle(Self.tint)
                         .lineLimit(1)
-                        .minimumScaleFactor(0.4)
-                        .padding(.top, -h * 0.12)
-                    VStack(alignment: .leading, spacing: h * 0.012) {
+                        .fixedSize()
+                    VStack(alignment: .leading, spacing: h * 0.008) {
                         (Text(Self.format(now, "EE").uppercased()).foregroundColor(Self.tint)
                             + Text(", \(Calendar.current.component(.day, from: now))").foregroundColor(.white))
-                        if let snapshot = weather.snapshot {
-                            Text("\(snapshot.temperature) °C").foregroundStyle(.white)
-                        }
+                        Text(weather.snapshot.map { "\($0.temperature) °C" } ?? "— °C")
+                            .foregroundStyle(.white)
+                            .opacity(weather.snapshot == nil ? 0.4 : 1)
                     }
-                    .font(.system(size: h * 0.062, weight: .bold, design: .rounded))
-                    .padding(.top, h * 0.13)
-                    .allowsHitTesting(false)
+                    .font(.system(size: h * 0.052, weight: .bold, design: .rounded))
+                    .fixedSize()
+                    .padding(.top, h * 0.075)
                 }
                 .frame(width: size.width, height: size.height)
                 .allowsHitTesting(false)
