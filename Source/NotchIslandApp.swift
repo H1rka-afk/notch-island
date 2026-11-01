@@ -2411,6 +2411,7 @@ final class IslandAppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private func runEyeBreak(counts: Bool = true) {
         eyeBreakTimer?.invalidate()
         eyeBreakCounts = counts
+        EyeBreakSound.play(.start)
         var second = 0
         presentEyeBreak(second)
         let timer = Timer(timeInterval: 1, repeats: true) { [weak self] timer in
@@ -2420,6 +2421,7 @@ final class IslandAppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
                 timer.invalidate()
                 self.eyeBreakTimer = nil
                 if self.eyeBreakCounts { DayStatsStore.shared.record(.eyeBreak) }
+                EyeBreakSound.play(.end)
                 self.state.presentNotice(IslandNotice(
                     kind: .eyeBreak, symbol: "checkmark.circle.fill", tint: Color(red: 0.2, green: 0.8, blue: 0.45),
                     text: "Готово", duration: 1.6, accessibility: "Перерыв для глаз закончен"))

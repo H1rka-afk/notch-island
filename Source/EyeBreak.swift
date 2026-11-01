@@ -1,5 +1,6 @@
 import Foundation
 import CoreGraphics
+import AppKit
 
 // 3.17.0 — counts active time at the Mac (keyboard / mouse / trackpad input)
 // and asks for a 20-second look into the distance every 20 minutes. Never
@@ -40,5 +41,21 @@ final class EyeBreakWatch {
         guard canRemindNow?() ?? true else { return }      // try again in 30 s
         policy.reset()
         onRemind?()
+    }
+}
+
+// 4.6.1 — a short, soft sound when the break starts and when it ends
+// (macOS system sounds, quieter than an alert). Switchable in Settings.
+enum EyeBreakSound {
+    enum Moment { case start, end }
+    static let key = "eyeBreakSoundV461"
+    static var isEnabled: Bool { (UserDefaults.standard.object(forKey: key) as? Bool) ?? true }
+
+    static func play(_ moment: Moment) {
+        guard isEnabled else { return }
+        let name = moment == .start ? "Purr" : "Glass"
+        guard let sound = NSSound(named: NSSound.Name(name))?.copy() as? NSSound else { return }
+        sound.volume = moment == .start ? 0.45 : 0.4
+        sound.play()
     }
 }

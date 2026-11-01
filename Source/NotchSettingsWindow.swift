@@ -199,6 +199,7 @@ struct NotchSettingsWindowView: View {
     @AppStorage(IdleWings.rightKey) private var wingsRight = "battery"
     @AppStorage(CinemaMode.key) private var cinemaEnabled = true
     @AppStorage(BannerTheme.key) private var bannerThemeColors = true
+    @AppStorage(EyeBreakSound.key) private var eyeBreakSound = true
     @AppStorage(StandBySettings.enabledKey) private var standbyEnabled = true
     @AppStorage(StandBySettings.keepAwakeKey) private var standbyKeepAwake = true
     @AppStorage(StandBySettings.nightKey) private var standbyNight = true
@@ -2238,6 +2239,8 @@ struct NotchSettingsWindowView: View {
             }
             group("Забота о глазах", footer: "Каждые 20 минут работы за Mac островок на 20 секунд просит посмотреть на что-нибудь вдалеке (метрах в шести) — так глаза меньше устают. Если ты отошёл от Mac на 5 минут, отсчёт начинается заново. Во время созвона (включены камера или микрофон) и на экране блокировки напоминания нет. Нажатие на баннер — пропустить.") {
                 toggleRow("Правило 20-20-20", subtitle: "Напоминание отдохнуть глазам", isOn: labBinding("eyes"))
+                rowDivider
+                toggleRow("Звук в начале и в конце", subtitle: "Короткий мягкий звук, когда пора смотреть вдаль и когда отдых закончился", isOn: $eyeBreakSound)
                 rowDivider
                 row("Как выглядит", subtitle: "Покажет напоминание в островке прямо сейчас — все 20 секунд") {
                     Button("Показать") { actions.previewEyeBreak() }
