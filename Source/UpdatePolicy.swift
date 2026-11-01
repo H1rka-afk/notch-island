@@ -72,7 +72,7 @@ enum UpdatePolicy {
         return best
     }
 
-    // 4.0.0: the latest GitHub release: version from the tag («v4.0.1»)
+    // 3.21.0: the latest GitHub release: version from the tag («v4.0.1»)
     // and the ready-made archive among its files.
     struct GitHubRelease: Equatable {
         let version: String

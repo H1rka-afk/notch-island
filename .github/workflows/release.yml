@@ -52,6 +52,15 @@ jobs:
         if: steps.exists.outputs.skip != '1'
         run: bash scripts/ci-build.sh
 
+      # One-time cleanup: the first GitHub release was numbered 4.0.0 by
+      # mistake (it is 3.21.0); 4.0.0 is kept for the big release. Safe to
+      # remove this step afterwards.
+      - name: Remove the early 4.0.0 release
+        if: steps.exists.outputs.skip != '1'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release delete v4.0.0 --cleanup-tag --yes || true
+
       - name: Publish release
         if: steps.exists.outputs.skip != '1'
         env:
@@ -59,4 +68,4 @@ jobs:
         run: |
           V="${{ steps.version.outputs.version }}"
           gh release create "v$V" "build/Notch-Island-v$V.zip" \
-            --title "Notch Island $V" --notes-file CHANGES.txt
+            --title "Notch Island $V" --notes-file CHANGES.txt --latest

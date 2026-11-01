@@ -43,7 +43,7 @@ final class AppUpdater {
             ?? FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent("Downloads")
     }
 
-    // 4.0.0: ready-made releases from GitHub are downloaded here by the app
+    // 3.21.0: ready-made releases from GitHub are downloaded here by the app
     // itself; the folder is scanned exactly like «Загрузки».
     static var cacheFolder: URL {
         FileManager.default.homeDirectoryForCurrentUser
@@ -90,7 +90,7 @@ final class AppUpdater {
         timer.tolerance = 4
         RunLoop.main.add(timer, forMode: .common)
         self.timer = timer
-        // 4.0.0: GitHub — shortly after launch, then every 3 hours.
+        // 3.21.0: GitHub — shortly after launch, then every 3 hours.
         DispatchQueue.main.asyncAfter(deadline: .now() + 20) { [weak self] in self?.checkGitHub() }
         let remote = Timer(timeInterval: 3 * 3600, repeats: true) { [weak self] _ in self?.checkGitHub() }
         remote.tolerance = 600
@@ -98,7 +98,7 @@ final class AppUpdater {
         githubTimer = remote
     }
 
-    // MARK: GitHub releases (4.0.0)
+    // MARK: GitHub releases (3.21.0)
 
     // Looks at the latest release; a newer one is downloaded into the cache
     // folder in the background, then offered like an archive in «Загрузки».
@@ -180,7 +180,7 @@ final class AppUpdater {
     }
 
     private static func findCandidate() -> Candidate? {
-        // 4.0.0: the GitHub download cache and «Загрузки»; the newest wins.
+        // 3.21.0: the GitHub download cache and «Загрузки»; the newest wins.
         var best: Candidate?
         for folder in [cacheFolder, downloadsFolder] {
             guard let urls = try? FileManager.default.contentsOfDirectory(

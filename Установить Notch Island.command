@@ -28,7 +28,7 @@ fail() {
 }
 
 cd "$ROOT"
-printf 'Notch Island 4.0.0\n'
+printf 'Notch Island 3.21.0\n'
 printf '========================================================\n'
 
 [[ "$(uname -s)" == "Darwin" ]] || fail "Этот установщик необходимо запустить на Mac."
@@ -39,7 +39,7 @@ if (( MAJOR < 14 )); then
   fail "Требуется macOS Sonoma 14 или новее (у тебя $VERSION)."
 fi
 
-# 4.0.0: releases from GitHub carry a ready-made app (built and tested on
+# 3.21.0: releases from GitHub carry a ready-made app (built and tested on
 # GitHub's Macs). Then nothing is compiled here: it is only signed with this
 # Mac's persistent signature and installed — a matter of seconds.
 PREBUILT="$ROOT/Prebuilt/Notch Island.app"
@@ -312,6 +312,6 @@ fi
 if [[ "$SIGN_MODE" == "adhoc" ]]; then
   notify "Notch Island 3.2.0 установлен" "Приложение установлено. Новая сборка получает новую подпись: в «Полном доступе к диску» и «Универсальном доступе» выключи и снова включи Notch Island, затем перезапусти приложение. Для чтения обложек Яндекс Музыки и таймеров проверь «Универсальный доступ»: macOS может сохранить разрешение от предыдущей сборки, но не признать его для новой. Выключи и вновь включи Notch Island, затем полностью перезапусти приложение. Если не поможет — запусти отдельный файл «Восстановить доступ к таймеру.command» из архива."
 elif [[ "${NOTCH_ISLAND_QUIET:-0}" != "1" ]]; then
-  # 4.0.0: no dialog when the app updates itself — it just reopens.
-  notify "Notch Island 4.0.0 установлен" "Готово! Notch Island подписан постоянной подписью этого Mac. Последний раз включи его в «Универсальном доступе» и «Полном доступе к диску» (настройки откроются на странице «Разрешения») — дальше разрешения будут сохраняться при обновлениях."
+  # 3.21.0: no dialog when the app updates itself — it just reopens.
+  notify "Notch Island 3.21.0 установлен" "Готово! Notch Island подписан постоянной подписью этого Mac. Последний раз включи его в «Универсальном доступе» и «Полном доступе к диску» (настройки откроются на странице «Разрешения») — дальше разрешения будут сохраняться при обновлениях."
 fi
