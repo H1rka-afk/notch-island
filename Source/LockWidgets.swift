@@ -681,86 +681,122 @@ struct LockWidgetsEditor: View {
     }
 
     private func gallery(size: CGSize, rowFrame: CGRect, rowLeft: CGFloat, rowW: CGFloat) -> some View {
-        let height = min(360, size.height * 0.4)
-        return VStack(alignment: .leading, spacing: 12) {
-            HStack {
-                Text("Добавить виджеты")
-                    .font(.system(size: 20, weight: .bold))
-                Spacer()
-                Text(model.freePlaces == 0 ? "Места нет — убери или уменьши виджет"
-                     : "Свободно мест: \(model.freePlaces) из 4")
-                    .font(.system(size: 12, weight: .medium))
-                    .foregroundStyle(.white.opacity(0.6))
-                Button { withAnimation(.spring(response: 0.4, dampingFraction: 0.86)) { drag.galleryOpen = false } } label: {
-                    Image(systemName: "xmark.circle.fill").font(.system(size: 22))
-                        .symbolRenderingMode(.hierarchical)
+        let height: CGFloat = min(360, size.height * 0.4)
+        let width: CGFloat = min(size.width - 80, 1100)
+        let free: Int = model.freePlaces
+        let status: String = free == 0 ? "Места нет — убери или уменьши виджет" : "Свободно мест: \(free) из 4"
+        let shape = RoundedRectangle(cornerRadius: 30, style: .continuous)
+        let header = galleryHeader(status)
+        let cards = ScrollView(.horizontal, showsIndicators: false) {
+            HStack(spacing: 16) {
+                ForEach(LockWidgetKind.allCases) { kind in
+                    galleryCard(kind, rowFrame: rowFrame, rowLeft: rowLeft, rowW: rowW)
                 }
-                .buttonStyle(.plain)
             }
-            ScrollView(.horizontal, showsIndicators: false) {
-                HStack(spacing: 16) {
-                    ForEach(LockWidgetKind.allCases) { kind in
-                        galleryCard(kind, rowFrame: rowFrame, rowLeft: rowLeft, rowW: rowW)
-                    }
-                }
-                .padding(.vertical, 6)
-            }
+            .padding(.vertical, 6)
         }
-        .foregroundStyle(.white)
+        return VStack(alignment: .leading, spacing: 12) {
+            header
+            cards
+        }
+        .foregroundStyle(Color.white)
         .padding(22)
-        .frame(width: min(size.width - 80, 1100), height: height)
-        .background(RoundedRectangle(cornerRadius: 30, style: .continuous).fill(.ultraThinMaterial))
-        .background(RoundedRectangle(cornerRadius: 30, style: .continuous).fill(Color.black.opacity(0.35)))
-        .overlay(RoundedRectangle(cornerRadius: 30, style: .continuous).strokeBorder(Color.white.opacity(0.18), lineWidth: 1))
+        .frame(width: width, height: height)
+        .background(shape.fill(.ultraThinMaterial))
+        .background(shape.fill(Color.black.opacity(0.35)))
+        .overlay(shape.strokeBorder(Color.white.opacity(0.18), lineWidth: 1))
         .position(x: size.width / 2, y: size.height - height / 2 - 30)
+    }
+
+    private func galleryHeader(_ status: String) -> some View {
+        HStack {
+            Text("Добавить виджеты")
+                .font(.system(size: 20, weight: .bold))
+            Spacer()
+            Text(status)
+                .font(.system(size: 12, weight: .medium))
+                .foregroundStyle(Color.white.opacity(0.6))
+            Button {
+                withAnimation(.spring(response: 0.4, dampingFraction: 0.86)) { drag.galleryOpen = false }
+            } label: {
+                Image(systemName: "xmark.circle.fill")
+                    .font(.system(size: 22))
+                    .symbolRenderingMode(.hierarchical)
+            }
+            .buttonStyle(.plain)
+        }
     }
 
     private func galleryCard(_ kind: LockWidgetKind, rowFrame: CGRect, rowLeft: CGFloat, rowW: CGFloat) -> some View {
         let added = model.isSelected(kind)
-        let item = model.available[kind] ?? LockWidgetItem.placeholder(kind)
-        let canWide = model.freePlaces >= 2, canSmall = model.freePlaces >= 1
+        let preview = galleryPreview(kind)
+            .gesture(galleryDrag(kind, added: added, rowFrame: rowFrame, rowLeft: rowLeft, rowW: rowW))
         return VStack(alignment: .leading, spacing: 10) {
-            ZStack {
-                RoundedRectangle(cornerRadius: 18, style: .continuous).fill(Color.white.opacity(0.07))
-                HStack(spacing: 10) {
-                    LockWidgetTile(item: Self.sized(item, wide: false), state: state)
-                        .scaleEffect(0.8)
-                        .frame(width: 70, height: 62)
-                    LockWidgetTile(item: Self.sized(item, wide: true), state: state)
-                        .scaleEffect(0.8)
-                        .frame(width: 155, height: 62)
-                }
-            }
-            .frame(width: 250, height: 96)
-            .gesture(DragGesture(minimumDistance: 4, coordinateSpace: .named("editor"))
-                .onChanged { value in
-                    guard !added, canSmall else { return }
-                    drag.kind = kind
-                    drag.fromGallery = true
-                    drag.location = value.location
-                }
-                .onEnded { value in
-                    defer { drag.kind = nil }
-                    guard !added, canSmall, rowFrame.contains(value.location) else { return }
-                    let x = Double((value.location.x - rowLeft) / max(1, rowW))
-                    model.add(kind, wide: canWide, at: LockWidgetLayoutMath.insertionIndex(x: x, in: model.slots))
-                })
-            Text(kind.title).font(.system(size: 13, weight: .semibold))
-            Text(kind.subtitle).font(.system(size: 11)).foregroundStyle(.white.opacity(0.6)).lineLimit(2)
+            preview
+            Text(kind.title)
+                .font(.system(size: 13, weight: .semibold))
+            Text(kind.subtitle)
+                .font(.system(size: 11))
+                .foregroundStyle(Color.white.opacity(0.6))
+                .lineLimit(2)
                 .frame(width: 250, alignment: .leading)
-            HStack(spacing: 8) {
-                if added {
-                    Label("На экране", systemImage: "checkmark.circle.fill")
-                        .font(.system(size: 12, weight: .semibold))
-                        .foregroundStyle(Color.green)
-                    Button("Убрать") { model.remove(kind) }
-                } else {
-                    Button("Маленький") { model.add(kind, wide: false) }.disabled(!canSmall)
-                    Button("Широкий") { model.add(kind, wide: true) }.disabled(!canWide)
-                }
-            }
-            .controlSize(.small)
+            galleryButtons(kind, added: added)
         }
         .frame(width: 250, alignment: .topLeading)
+    }
+
+    private func galleryPreview(_ kind: LockWidgetKind) -> some View {
+        let item: LockWidgetItem = model.available[kind] ?? LockWidgetItem.placeholder(kind)
+        let small = LockWidgetTile(item: Self.sized(item, wide: false), state: state)
+            .scaleEffect(0.8)
+            .frame(width: 70, height: 62)
+        let wide = LockWidgetTile(item: Self.sized(item, wide: true), state: state)
+            .scaleEffect(0.8)
+            .frame(width: 155, height: 62)
+        return ZStack {
+            RoundedRectangle(cornerRadius: 18, style: .continuous)
+                .fill(Color.white.opacity(0.07))
+            HStack(spacing: 10) {
+                small
+                wide
+            }
+        }
+        .frame(width: 250, height: 96)
+    }
+
+    private func galleryDrag(_ kind: LockWidgetKind, added: Bool, rowFrame: CGRect,
+                             rowLeft: CGFloat, rowW: CGFloat) -> some Gesture {
+        DragGesture(minimumDistance: 4, coordinateSpace: .named("editor"))
+            .onChanged { value in
+                guard !added, model.freePlaces >= 1 else { return }
+                drag.kind = kind
+                drag.fromGallery = true
+                drag.location = value.location
+            }
+            .onEnded { value in
+                defer { drag.kind = nil }
+                guard !added, model.freePlaces >= 1, rowFrame.contains(value.location) else { return }
+                let x = Double((value.location.x - rowLeft) / max(1, rowW))
+                let index = LockWidgetLayoutMath.insertionIndex(x: x, in: model.slots)
+                model.add(kind, wide: model.freePlaces >= 2, at: index)
+            }
+    }
+
+    @ViewBuilder
+    private func galleryButtons(_ kind: LockWidgetKind, added: Bool) -> some View {
+        HStack(spacing: 8) {
+            if added {
+                Label("На экране", systemImage: "checkmark.circle.fill")
+                    .font(.system(size: 12, weight: .semibold))
+                    .foregroundStyle(Color.green)
+                Button("Убрать") { model.remove(kind) }
+            } else {
+                Button("Маленький") { model.add(kind, wide: false) }
+                    .disabled(model.freePlaces < 1)
+                Button("Широкий") { model.add(kind, wide: true) }
+                    .disabled(model.freePlaces < 2)
+            }
+        }
+        .controlSize(.small)
     }
 }
