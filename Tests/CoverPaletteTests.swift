@@ -27,9 +27,16 @@ struct CoverPaletteTests {
         // Colours are vivid even from a dull cover.
         precondition(p2.allSatisfy { $0.hsb.s >= 0.55 && $0.hsb.v >= 0.78 })
 
-        // A grey cover: nothing (the theme uses its default colours).
-        let grey = [PaletteRGB](repeating: PaletteRGB(r: 0.5, g: 0.5, b: 0.5), count: 400)
-        precondition(CoverPaletteMath.palette(from: grey).isEmpty)
+        // 4.5.3: a black-and-white cover gives greys, not violet defaults.
+        let bw = [PaletteRGB](repeating: PaletteRGB(r: 0.05, g: 0.05, b: 0.05), count: 250)
+            + [PaletteRGB](repeating: PaletteRGB(r: 0.95, g: 0.95, b: 0.95), count: 150)
+        let p3 = CoverPaletteMath.palette(from: bw)
+        precondition(p3.count == 4 && p3.allSatisfy { $0.hsb.s < 0.08 }, "\(p3)")
+        // A tiny coloured logo on a b/w cover still gives greys.
+        let logo = bw + [PaletteRGB](repeating: PaletteRGB(r: 0.9, g: 0.1, b: 0.1), count: 12)
+        precondition(CoverPaletteMath.palette(from: logo).allSatisfy { $0.hsb.s < 0.08 })
+        // Empty image: nothing.
+        precondition(CoverPaletteMath.palette(from: []).isEmpty)
         print("CoverPaletteTests: OK")
     }
 }

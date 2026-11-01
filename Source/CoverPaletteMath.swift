@@ -37,9 +37,39 @@ struct PaletteRGB: Equatable, Codable {
 }
 
 enum CoverPaletteMath {
-    // Up to `count` vivid colours, the most present first. Grey covers give
-    // an empty list (the theme then uses its default colours).
+    // 4.5.3: share of clearly coloured pixels below which a cover counts as
+    // black-and-white (a tiny coloured logo does not make it colourful).
+    static let colourfulShare = 0.08
+
+    // Up to `count` colours, the most present first. A black-and-white
+    // cover gives greys (4.5.3; earlier it fell back to violet defaults).
+    // Only an empty image gives an empty list.
     static func palette(from pixels: [PaletteRGB], count: Int = 4) -> [PaletteRGB] {
+        guard !pixels.isEmpty else { return [] }
+        let colourful = pixels.filter { let c = $0.hsb; return c.s >= 0.25 && c.v >= 0.2 }.count
+        if Double(colourful) / Double(pixels.count) < colourfulShare {
+            return monochrome(from: pixels, count: count)
+        }
+        return vivid(from: pixels, count: count)
+    }
+
+    // Greys of a black-and-white cover: a light, a middle and a darker
+    // grey around the cover's own brightness, with the faint cast it has.
+    static func monochrome(from pixels: [PaletteRGB], count: Int) -> [PaletteRGB] {
+        let n = Double(pixels.count)
+        let r = pixels.reduce(0) { $0 + $1.r } / n
+        let g = pixels.reduce(0) { $0 + $1.g } / n
+        let b = pixels.reduce(0) { $0 + $1.b } / n
+        let mean = max(0.001, (r + g + b) / 3)
+        // Keep only a whisper of the cast (cool or warm grey).
+        let cast = (r: 1 + (r / mean - 1) * 0.35, g: 1 + (g / mean - 1) * 0.35, b: 1 + (b / mean - 1) * 0.35)
+        let levels = [0.86, 0.66, 0.76, 0.52]
+        return levels.prefix(count).map { v in
+            PaletteRGB(r: min(1, v * cast.r), g: min(1, v * cast.g), b: min(1, v * cast.b))
+        }
+    }
+
+    static func vivid(from pixels: [PaletteRGB], count: Int) -> [PaletteRGB] {
         let binCount = 12
         var weight = [Double](repeating: 0, count: binCount)
         var hx = [Double](repeating: 0, count: binCount), hy = hx, sat = hx, val = hx

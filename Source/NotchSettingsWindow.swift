@@ -39,6 +39,9 @@ final class NotchSettingsSnapshot: ObservableObject {
     @Published var themeDraftColors: [Color] = [Color(red: 0.95, green: 0.35, blue: 0.45), Color(red: 0.45, green: 0.4, blue: 1.0),
                                                 Color(red: 1.0, green: 0.7, blue: 0.25), Color(red: 0.2, green: 0.75, blue: 0.85)]
     @Published var themeDraftCount = 3
+    // 4.5.3: inline palettes.
+    @Published var themeDraftEditing = 0
+    @Published var standbyColorOpen = false
     @Published var customThemesVersion = 0
     @Published var mediaGesturesEnabled = true
     // 3.2.0 permissions overview.
@@ -199,6 +202,7 @@ struct NotchSettingsWindowView: View {
     @AppStorage(StandBySettings.enabledKey) private var standbyEnabled = true
     @AppStorage(StandBySettings.keepAwakeKey) private var standbyKeepAwake = true
     @AppStorage(StandBySettings.nightKey) private var standbyNight = true
+    @AppStorage(StandBySettings.textColorKey) private var standbyTextColor = ""
     // 3.19.0: redraw when the cover's colours change («Обложка» theme).
     @ObservedObject private var coverPalette = CoverPalette.shared
     @AppStorage("lockCoverLayerV387") private var lockCoverLayer = 400
@@ -2027,6 +2031,29 @@ struct NotchSettingsWindowView: View {
                 toggleRow("Ночной режим", subtitle: "С 22:00 до 7:00 — тусклый красный, как на iPhone", isOn: $standbyNight)
                     .disabled(!standbyEnabled)
                 rowDivider
+                row("Цвет текста", subtitle: "Часы, дата и подписи StandBy. Ночью всё равно становится красным") {
+                    HStack(spacing: 8) {
+                        Circle()
+                            .fill(StandBySettings.decode(standbyTextColor).color)
+                            .frame(width: 22, height: 22)
+                            .overlay(Circle().strokeBorder(Color.primary.opacity(0.2), lineWidth: 1))
+                        Button(snapshot.standbyColorOpen ? "Готово" : "Выбрать") {
+                            withAnimation(.spring(response: 0.35, dampingFraction: 0.85)) { snapshot.standbyColorOpen.toggle() }
+                        }
+                        if !standbyTextColor.isEmpty {
+                            Button("Как на iPhone") { standbyTextColor = "" }
+                        }
+                    }
+                }
+                .disabled(!standbyEnabled)
+                if snapshot.standbyColorOpen {
+                    InlineColorPalette(color: Binding(get: { StandBySettings.decode(standbyTextColor) },
+                                                      set: { standbyTextColor = StandBySettings.encode($0) }))
+                        .padding(.horizontal, 16)
+                        .padding(.bottom, 12)
+                        .transition(.opacity.combined(with: .move(edge: .top)))
+                }
+                rowDivider
                 row("Как выглядит", subtitle: "Покажет StandBy на 8 секунд, нажатие — закрыть") {
                     Button("Показать") { actions.previewStandBy() }
                 }
@@ -2468,17 +2495,32 @@ struct NotchSettingsWindowView: View {
                                     accent: accent(.general))
                 }
             }
-            HStack(spacing: 14) {
+            // 4.5.3: the palette opens right here — pick a colour slot,
+            // then a swatch or the sliders below.
+            HStack(spacing: 10) {
                 ForEach(0..<snapshot.themeDraftCount, id: \.self) { i in
-                    ColorPicker("", selection: Binding(get: { snapshot.themeDraftColors[i] },
-                                                       set: { snapshot.themeDraftColors[i] = $0 }),
-                                supportsOpacity: false)
-                        .labelsHidden()
+                    Button {
+                        withAnimation(.easeOut(duration: 0.2)) { snapshot.themeDraftEditing = i }
+                    } label: {
+                        RoundedRectangle(cornerRadius: 9, style: .continuous)
+                            .fill(snapshot.themeDraftColors[i])
+                            .frame(width: 40, height: 30)
+                            .overlay(RoundedRectangle(cornerRadius: 9, style: .continuous)
+                                .strokeBorder(snapshot.themeDraftEditing == i ? Color.primary : Color.primary.opacity(0.2),
+                                              lineWidth: snapshot.themeDraftEditing == i ? 2.5 : 1))
+                            .overlay(Text("\(i + 1)").font(.system(size: 10, weight: .bold))
+                                .foregroundStyle(.white).shadow(radius: 1))
+                    }
+                    .buttonStyle(.plain)
+                    .help("Цвет \(i + 1)")
                 }
                 Stepper("Цветов: \(snapshot.themeDraftCount)", value: $snapshot.themeDraftCount, in: 2...4)
                     .font(.system(size: 12))
                 Spacer()
             }
+            InlineColorPalette(color: Binding(
+                get: { PaletteRGB(snapshot.themeDraftColors[min(snapshot.themeDraftEditing, snapshot.themeDraftCount - 1)]) },
+                set: { snapshot.themeDraftColors[min(snapshot.themeDraftEditing, snapshot.themeDraftCount - 1)] = $0.color }))
             HStack {
                 Text("Первые два цвета — главные: из них фон и баннеры.")
                     .font(.system(size: 11)).foregroundStyle(.secondary)

@@ -14,6 +14,21 @@ enum StandBySettings {
     static var isEnabled: Bool { (UserDefaults.standard.object(forKey: enabledKey) as? Bool) ?? true }
     static var keepAwake: Bool { (UserDefaults.standard.object(forKey: keepAwakeKey) as? Bool) ?? true }
     static var nightMode: Bool { (UserDefaults.standard.object(forKey: nightKey) as? Bool) ?? true }
+    // 4.5.3: the colour of the clock and text, «r,g,b» (0…1). Default: the
+    // warm grey-beige of iPhone StandBy.
+    static let textColorKey = "standbyTextColorV453"
+    static let defaultTextColor = PaletteRGB(r: 0.67, g: 0.63, b: 0.59)
+    static func decode(_ raw: String) -> PaletteRGB {
+        let parts = raw.split(separator: ",").compactMap { Double($0) }
+        guard parts.count == 3, parts.allSatisfy({ (0...1).contains($0) }) else { return defaultTextColor }
+        return PaletteRGB(r: parts[0], g: parts[1], b: parts[2])
+    }
+    static func encode(_ c: PaletteRGB) -> String {
+        String(format: "%.4f,%.4f,%.4f", min(1, max(0, c.r)), min(1, max(0, c.g)), min(1, max(0, c.b)))
+    }
+    static var textColor: PaletteRGB {
+        decode(UserDefaults.standard.string(forKey: textColorKey) ?? "")
+    }
     static let idleBeforeShow: TimeInterval = 20
 
     static func isNight(_ date: Date = Date()) -> Bool {
@@ -92,9 +107,10 @@ struct StandByView: View {
     @ObservedObject private var weather = WeatherService.shared
     @StateObject private var ui = StandByUIState()
     @AppStorage(StandBySettings.nightKey) private var nightMode = true
+    @AppStorage(StandBySettings.textColorKey) private var textColorRaw = ""
 
-    // The warm grey-beige of iPhone StandBy.
-    static let tint = Color(red: 0.67, green: 0.63, blue: 0.59)
+    // 4.5.3: chosen in Settings; the warm grey-beige of iPhone by default.
+    private var tint: Color { StandBySettings.decode(textColorRaw).color }
 
     var body: some View {
         if activity.active {
@@ -131,11 +147,11 @@ struct StandByView: View {
                         .font(.system(size: h * 0.6, weight: .semibold))
                         .fontWidth(.compressed)
                         .monospacedDigit()
-                        .foregroundStyle(Self.tint)
+                        .foregroundStyle(tint)
                         .lineLimit(1)
                         .fixedSize()
                     VStack(alignment: .leading, spacing: h * 0.008) {
-                        (Text(Self.format(now, "EE").uppercased()).foregroundColor(Self.tint)
+                        (Text(Self.format(now, "EE").uppercased()).foregroundColor(tint)
                             + Text(", \(Calendar.current.component(.day, from: now))").foregroundColor(.white))
                         Text(weather.snapshot.map { "\($0.temperature) °C" } ?? "— °C")
                             .foregroundStyle(.white)
