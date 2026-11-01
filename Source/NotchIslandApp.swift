@@ -1734,6 +1734,7 @@ final class IslandAppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private let airDropWatch = AirDropReceiveWatch()
     private let eyeBreak = EyeBreakWatch()
     private var eyeBreakTimer: Timer?
+    private var eyeBreakCounts = true
     private let loadSampler = SystemLoadSampler()
     private var stateChangeCounter: AnyCancellable?
     private let standby = StandByController()
@@ -1913,6 +1914,7 @@ final class IslandAppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         clockTimers.onSnapshot = { [weak self] snapshot in
             guard let self else { return }
             if let snapshot {
+                if !self.state.timerActive { DayStatsStore.shared.record(.timer) }
                 self.state.applyClockTimer(remaining: snapshot.remaining, paused: snapshot.paused)
                 self.clockStatusItem?.title = "Часы: системный таймер синхронизирован"
                 self.refreshTimerDiagnostics()
@@ -1925,6 +1927,18 @@ final class IslandAppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         state.requestClockTimerToggle = { [weak self] in self?.clockTimers.togglePause() }
         state.requestClockTimerCancel = { [weak self] in self?.clockTimers.cancel() }
         clockTimers.start()
+        // 4.4.0: statistics for the day.
+        let stats = DayStatsStore.shared
+        stats.isLocked = { [weak self] in
+            guard let self else { return false }
+            return self.isScreenLocked || self.state.isSessionLocked
+        }
+        stats.isPlaying = { [weak self] in self?.state.track?.isPlaying == true }
+        stats.currentTrack = { [weak self] in
+            guard let track = self?.state.track else { return nil }
+            return track.title + "\u{1F}" + track.artist
+        }
+        stats.start()
         airPodsMonitor.onConnected = { [weak self] status in
             self?.state.receiveAirPods(status, newlyConnected: true)
         }
@@ -2041,6 +2055,7 @@ final class IslandAppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     }
 
     func applicationWillTerminate(_ notification: Notification) {
+        DayStatsStore.shared.stop()
         mediaTimer?.invalidate()
         batteryTimer?.invalidate()
         fullscreenVisibilityTimer?.invalidate()
@@ -2312,6 +2327,7 @@ final class IslandAppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         }
         airDropWatch.onReceived = { [weak self] urls in
             guard let self, LabFeature.airdrop.isOn, let first = urls.first else { return }
+            DayStatsStore.shared.record(.airdrop)
             if LabFeature.shelf.isOn { self.shelf.add(urls) }
             self.state.presentNotice(IslandNotice(
                 kind: .airdrop, symbol: "checkmark.circle.fill",
@@ -2331,6 +2347,7 @@ final class IslandAppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         eyeBreak.onRemind = { [weak self] in self?.runEyeBreak() }
         AirDropSender.shared.onSent = { [weak self] count in
             guard let self else { return }
+            DayStatsStore.shared.record(.airdrop)
             self.state.presentNotice(IslandNotice(
                 kind: .airdrop, symbol: "paperplane.fill",
                 tint: Color(red: 0.04, green: 0.52, blue: 1.0),
@@ -2355,6 +2372,7 @@ final class IslandAppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         layoutHotKey.onPress = { [weak self] in self?.layoutFixer.run() }
         layoutFixer.pauseClipboardWatch = { [weak self] seconds in self?.clipboardWatch.pause(for: seconds) }
         layoutFixer.onResult = { [weak self] toRussian in
+            DayStatsStore.shared.record(.layoutFix)
             self?.state.presentNotice(IslandNotice(
                 kind: .layoutFix, symbol: "keyboard", tint: Color(red: 0.35, green: 0.6, blue: 1.0),
                 text: toRussian ? "→ RU" : "→ EN", duration: 1.4,
@@ -2385,8 +2403,9 @@ final class IslandAppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
     // 20 seconds in the island: «Вдаль», then the countdown with a bar, then
     // «Готово». A tap on the banner skips the break.
-    private func runEyeBreak() {
+    private func runEyeBreak(counts: Bool = true) {
         eyeBreakTimer?.invalidate()
+        eyeBreakCounts = counts
         var second = 0
         presentEyeBreak(second)
         let timer = Timer(timeInterval: 1, repeats: true) { [weak self] timer in
@@ -2395,6 +2414,7 @@ final class IslandAppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             if second >= EyeBreakPolicy.restSeconds {
                 timer.invalidate()
                 self.eyeBreakTimer = nil
+                if self.eyeBreakCounts { DayStatsStore.shared.record(.eyeBreak) }
                 self.state.presentNotice(IslandNotice(
                     kind: .eyeBreak, symbol: "checkmark.circle.fill", tint: Color(red: 0.2, green: 0.8, blue: 0.45),
                     text: "Готово", duration: 1.6, accessibility: "Перерыв для глаз закончен"))
@@ -2416,6 +2436,7 @@ final class IslandAppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     }
 
     private func stopEyeBreak() {
+        if eyeBreakTimer != nil && eyeBreakCounts { DayStatsStore.shared.record(.eyeSkipped) }
         eyeBreakTimer?.invalidate()
         eyeBreakTimer = nil
         state.presentNotice(IslandNotice(kind: .eyeBreak, symbol: "eye.slash", tint: .gray, text: "Пропущено",
@@ -3667,6 +3688,7 @@ final class IslandAppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             return
         }
         guard isScreenLocked else { return }
+        DayStatsStore.shared.record(.unlock)
         let isExplicitUnlock = notification.name.rawValue == "com.apple.screenIsUnlocked"
         let screenLockFlag = (CGSessionCopyCurrentDictionary() as? [String: Any])?["CGSSessionScreenIsLocked"] as? Bool
         if !isExplicitUnlock && screenLockFlag != false {
@@ -4064,7 +4086,7 @@ final class IslandAppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
                 self?.applyProfile(profile)
             },
             showOnboarding: { [weak self] in self?.showOnboarding() },
-            previewEyeBreak: { [weak self] in self?.runEyeBreak() },
+            previewEyeBreak: { [weak self] in self?.runEyeBreak(counts: false) },
             previewStandBy: { [weak self] in
                 guard let self else { return }
                 self.lockOverlay?.previewStandBy(on: self.displayScreen())

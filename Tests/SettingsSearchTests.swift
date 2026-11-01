@@ -21,7 +21,7 @@ struct SettingsSearchTests {
         precondition(first("полка снимки")?.title == "Новые снимки экрана")
         precondition(SettingsSearch.search("громкость zzzz").isEmpty)
         // Every entry points to a known section.
-        let sections: Set<String> = ["general", "profiles", "permissions", "island", "media", "spectrum",
+        let sections: Set<String> = ["general", "profiles", "stats", "permissions", "island", "media", "spectrum",
                                      "lock", "notifications", "shelf", "battery", "focus", "timer",
                                      "calendar", "airpods"]
         precondition(SettingsSearch.index.allSatisfy { sections.contains($0.section) })

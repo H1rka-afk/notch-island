@@ -166,6 +166,7 @@ struct NotchSettingsWindowView: View {
     @ObservedObject var snapshot: NotchSettingsSnapshot
     @ObservedObject private var displayOptions = SystemDisplayOptions.shared
     @ObservedObject private var lockWidgets = LockWidgetsModel.shared
+    @ObservedObject private var dayStats = DayStatsStore.shared
     @ObservedObject private var weather = WeatherService.shared
 
     private var glassSubtitle: String {
@@ -332,12 +333,13 @@ struct NotchSettingsWindowView: View {
     // preview, and glass cards for the groups.
 
     private enum Section: String, CaseIterable {
-        case general, profiles, permissions, island, media, spectrum, lock, notifications, shelf, battery, focus, timer, calendar, airpods
+        case general, profiles, stats, permissions, island, media, spectrum, lock, notifications, shelf, battery, focus, timer, calendar, airpods
 
         var title: String {
             switch self {
             case .general: return "Основные"
             case .profiles: return "Профили"
+            case .stats: return "Статистика"
             case .permissions: return "Разрешения"
             case .island: return "Островок"
             case .media: return "Медиаплеер"
@@ -356,6 +358,7 @@ struct NotchSettingsWindowView: View {
             switch self {
             case .general: return "gearshape.fill"
             case .profiles: return "square.stack.3d.up.fill"
+            case .stats: return "chart.bar.fill"
             case .permissions: return "checkmark.shield.fill"
             case .island: return "macbook"
             case .media: return "play.fill"
@@ -375,6 +378,7 @@ struct NotchSettingsWindowView: View {
             case .general: return Color(red: 0.55, green: 0.56, blue: 0.60)
             case .permissions: return Color(red: 0.18, green: 0.66, blue: 0.42)
             case .profiles: return Color(red: 0.36, green: 0.35, blue: 0.90)
+            case .stats: return Color(red: 0.10, green: 0.72, blue: 0.62)
             case .island: return Color(red: 0.20, green: 0.48, blue: 1.0)
             case .media: return Color(red: 1.0, green: 0.27, blue: 0.40)
             case .spectrum: return Color(red: 0.66, green: 0.36, blue: 0.95)
@@ -393,6 +397,7 @@ struct NotchSettingsWindowView: View {
             switch self {
             case .general: return "Оформление, обновления и запуск"
             case .profiles: return "Готовые наборы функций одним нажатием"
+            case .stats: return "Твой день за Маком: работа, музыка, перерывы"
             case .permissions: return "Что Notch Island может делать в macOS"
             case .island: return "Размер, отклик и поведение островка"
             case .media: return "Сейчас играет, обложки и жесты"
@@ -400,7 +405,7 @@ struct NotchSettingsWindowView: View {
             case .lock: return "Плеер, обложка и виджеты на экране блокировки"
             case .battery: return "Зарядка и предупреждения о заряде"
             case .focus: return "Баннер при смене режима"
-            case .timer: return "Таймер из приложения «Часы»"
+            case .timer: return "Таймер прямо в островке"
             case .airpods: return "Заряд наушников и кейса"
             case .notifications: return "Системные баннеры в островке"
             case .shelf: return "Файлы, AirDrop и снимки экрана"
@@ -416,7 +421,7 @@ struct NotchSettingsWindowView: View {
         }
         var group: Int {
             switch self {
-            case .general, .profiles, .permissions: return 0
+            case .general, .profiles, .stats, .permissions: return 0
             case .island, .media, .spectrum, .lock: return 1
             case .notifications, .shelf: return 1
             case .battery, .focus, .timer, .calendar, .airpods: return 2
@@ -565,6 +570,9 @@ struct NotchSettingsWindowView: View {
                         GridRow {
                             sectionTile(.battery); sectionTile(.airpods); sectionTile(.focus); sectionTile(.timer)
                         }
+                        GridRow {
+                            statsTile.gridCellColumns(4)
+                        }
                     }
                 }
             }
@@ -679,6 +687,7 @@ struct NotchSettingsWindowView: View {
         case .calendar: return .meeting
         case .notifications: return .eyes
         case .profiles: return .profile
+        case .stats: return .eyes
         case .general, .island, .permissions: return .music
         }
     }
@@ -715,6 +724,8 @@ struct NotchSettingsWindowView: View {
     private func tileStatus(_ section: Section) -> String {
         switch section {
         case .general: return "Тема, обновления, запуск"
+        case .stats:
+            return dayStats.enabled ? "Сегодня за Маком: \(DayStatsMath.duration(dayStats.today.activeSeconds))" : "Выключена"
         case .profiles:
             if let id = UserProfileStore.match(profileValues, in: snapshot.userProfiles),
                let name = snapshot.userProfiles.first(where: { $0.id == id })?.name { return "Сейчас: \(name)" }
@@ -733,7 +744,7 @@ struct NotchSettingsWindowView: View {
         case .lock: return lockWidgets.enabled ? "Плеер, обложка, виджеты: \(lockWidgets.selected.count)" : "Плеер и обложка"
         case .battery: return snapshot.batterySummary
         case .focus: return snapshot.focusStatus
-        case .timer: return "Из приложения «Часы»"
+        case .timer: return "Таймер прямо в островке"
         case .calendar: return "Встречи и напоминания"
         case .airpods: return "Заряд наушников и кейса"
         case .notifications: return "Системные баннеры"
@@ -812,6 +823,175 @@ struct NotchSettingsWindowView: View {
             else if snapshot.hoveredSection == Section.media.rawValue { snapshot.hoveredSection = nil }
         }
         .help("Открыть «Медиаплеер»")
+    }
+
+    // MARK: - 4.4.0 Statistics for the day
+
+    // Wide tile on the home screen: today at a glance.
+    private var statsTile: some View {
+        let shape = RoundedRectangle(cornerRadius: 24, style: .continuous)
+        let color = accent(.stats)
+        let today = dayStats.today
+        return HStack(spacing: 18) {
+            VStack(alignment: .leading, spacing: 4) {
+                Image(systemName: "chart.bar.fill").font(.system(size: 17, weight: .bold))
+                Spacer(minLength: 0)
+                Text("СЕГОДНЯ").font(.system(size: 10, weight: .heavy)).kerning(0.8).opacity(0.7)
+                Text("Статистика").font(.system(size: 17, weight: .heavy, design: .rounded))
+            }
+            .frame(width: 110, alignment: .leading)
+            if dayStats.enabled {
+                statsMetric("За Маком", DayStatsMath.duration(today.activeSeconds), "desktopcomputer")
+                statsMetric("Музыка", DayStatsMath.duration(today.musicSeconds), "music.note")
+                statsMetric("Треки", "\(today.tracks)", "music.note.list")
+                statsMetric("Отдых глазам", "\(today.eyeBreaks)", "eye")
+            } else {
+                Text("Статистика выключена — включи её в разделе").font(.system(size: 13, weight: .medium)).opacity(0.85)
+            }
+            Spacer(minLength: 0)
+            weekBars(height: 54, compact: true)
+                .frame(width: 150)
+        }
+        .foregroundStyle(.white)
+        .padding(16)
+        .frame(maxWidth: .infinity, minHeight: 104, maxHeight: 104)
+        .background {
+            ZStack {
+                shape.fill(LinearGradient(colors: [color, color.opacity(0.55), Color(red: 0.05, green: 0.25, blue: 0.45)],
+                                          startPoint: .topLeading, endPoint: .bottomTrailing))
+                shape.fill(LinearGradient(colors: [Color.white.opacity(0.2), .clear], startPoint: .top, endPoint: .center))
+            }
+        }
+        .clipShape(shape)
+        .overlay(shape.strokeBorder(Color.white.opacity(0.3), lineWidth: 1))
+        .shadow(color: color.opacity(0.4), radius: 12, y: 5)
+        .contentShape(shape)
+        .onTapGesture { open(.stats) }
+        .onHover { inside in
+            if inside { snapshot.hoveredSection = Section.stats.rawValue }
+            else if snapshot.hoveredSection == Section.stats.rawValue { snapshot.hoveredSection = nil }
+        }
+        .help("Открыть «Статистику»")
+    }
+
+    private func statsMetric(_ title: String, _ value: String, _ icon: String) -> some View {
+        VStack(alignment: .leading, spacing: 3) {
+            Image(systemName: icon).font(.system(size: 12, weight: .semibold)).opacity(0.8)
+            Text(value)
+                .font(.system(size: 17, weight: .heavy, design: .rounded))
+                .monospacedDigit()
+                .lineLimit(1)
+                .minimumScaleFactor(0.7)
+            Text(title.uppercased()).font(.system(size: 9, weight: .heavy)).kerning(0.6).opacity(0.7)
+        }
+        .frame(minWidth: 64, alignment: .leading)
+    }
+
+    // Seven days of time at the Mac (bar) with the music part inside it.
+    private func weekBars(height: CGFloat, compact: Bool) -> some View {
+        let week = dayStats.week
+        let peak = max(3600, week.map(\.activeSeconds).max() ?? 0)
+        return HStack(alignment: .bottom, spacing: compact ? 6 : 12) {
+            ForEach(week, id: \.day) { day in
+                let isToday = day.day == week.last?.day
+                VStack(spacing: 4) {
+                    ZStack(alignment: .bottom) {
+                        Capsule().fill(Color.primary.opacity(compact ? 0 : 0.06))
+                            .frame(height: height)
+                        Capsule()
+                            .fill(compact ? Color.white.opacity(isToday ? 0.95 : 0.5)
+                                          : accent(.stats).opacity(isToday ? 1 : 0.55))
+                            .frame(height: max(3, height * CGFloat(day.activeSeconds / peak)))
+                        if !compact {
+                            Capsule()
+                                .fill(Color(red: 1.0, green: 0.27, blue: 0.40).opacity(0.85))
+                                .frame(height: max(0, height * CGFloat(min(day.musicSeconds, day.activeSeconds) / peak)))
+                                .padding(.horizontal, 5)
+                        }
+                    }
+                    .frame(maxWidth: compact ? 12 : 30)
+                    Text(DayStatsMath.weekday(day.day))
+                        .font(.system(size: compact ? 8.5 : 11, weight: isToday ? .heavy : .medium))
+                        .opacity(isToday ? 1 : 0.7)
+                    if !compact {
+                        Text(day.activeSeconds >= 60 ? DayStatsMath.duration(day.activeSeconds)
+                                                     .replacingOccurrences(of: " мин", with: "м")
+                                                     .replacingOccurrences(of: " ч", with: "ч") : "—")
+                            .font(.system(size: 9.5, weight: .medium))
+                            .foregroundStyle(.secondary)
+                            .lineLimit(1)
+                            .minimumScaleFactor(0.7)
+                    }
+                }
+                .frame(maxWidth: .infinity)
+                .help("\(DayStatsMath.weekday(day.day)): за Маком \(DayStatsMath.duration(day.activeSeconds)), музыка \(DayStatsMath.duration(day.musicSeconds))")
+            }
+        }
+        .animation(.spring(response: 0.5, dampingFraction: 0.85), value: week.map(\.activeSeconds))
+    }
+
+    private func statsCard(_ title: String, _ value: String, _ detail: String, _ icon: String, _ color: Color) -> some View {
+        VStack(alignment: .leading, spacing: 6) {
+            HStack(spacing: 6) {
+                Image(systemName: icon).font(.system(size: 13, weight: .bold)).foregroundStyle(color)
+                Text(title).font(.system(size: 11.5, weight: .semibold)).foregroundStyle(.secondary)
+            }
+            Text(value)
+                .font(.system(size: 24, weight: .heavy, design: .rounded))
+                .monospacedDigit()
+                .lineLimit(1)
+                .minimumScaleFactor(0.6)
+            Text(detail).font(.system(size: 11)).foregroundStyle(.secondary).lineLimit(2)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+        .padding(14)
+        .frame(maxWidth: .infinity, minHeight: 104, alignment: .topLeading)
+        .settingsCard(cornerRadius: 18)
+    }
+
+    private var statsSection: some View {
+        let today = dayStats.today
+        let week = dayStats.week
+        let weekActive = week.reduce(0) { $0 + $1.activeSeconds }
+        let activeDays = max(1, week.filter { $0.activeSeconds >= 60 }.count)
+        let p = DayStatsMath.plural
+        return VStack(alignment: .leading, spacing: 20) {
+            if dayStats.enabled {
+                VStack(alignment: .leading, spacing: 7) {
+                    tileHeader("Сегодня")
+                    LazyVGrid(columns: [GridItem(.adaptive(minimum: 150), spacing: 12)], spacing: 12) {
+                        statsCard("За Маком", DayStatsMath.duration(today.activeSeconds),
+                                  "Когда ты печатал или двигал мышью", "desktopcomputer", accent(.stats))
+                        statsCard("Музыка", DayStatsMath.duration(today.musicSeconds),
+                                  "\(today.tracks) \(p(today.tracks, "трек", "трека", "треков"))",
+                                  "music.note", Color(red: 1.0, green: 0.27, blue: 0.40))
+                        statsCard("Отдых глазам", "\(today.eyeBreaks)",
+                                  today.eyeSkipped > 0 ? "Пропущено: \(today.eyeSkipped)" : "Перерывов по правилу 20-20-20",
+                                  "eye.fill", Color(red: 0.25, green: 0.8, blue: 0.85))
+                        statsCard("Разблокировки", "\(today.unlocks)",
+                                  "Сколько раз открывал Mac", "lock.open.fill", Color(red: 0.55, green: 0.56, blue: 0.60))
+                        statsCard("Таймеры", "\(today.timers)",
+                                  "Запущено в «Часах»", "timer", Color(red: 1.0, green: 0.58, blue: 0.0))
+                        statsCard("Мелочи", "\(today.layoutFixes + today.airdrops)",
+                                  "Раскладка ⌃⌥L: \(today.layoutFixes) · AirDrop: \(today.airdrops)",
+                                  "sparkles", Color(red: 0.36, green: 0.35, blue: 0.90))
+                    }
+                }
+                group("Неделя", footer: "Столбик — время за Маком, розовая часть внутри — сколько из него играла музыка. В среднем \(DayStatsMath.duration(weekActive / Double(activeDays))) в день.") {
+                    weekBars(height: 120, compact: false)
+                        .padding(.horizontal, 16)
+                        .padding(.vertical, 14)
+                }
+            }
+            group("Настройки", footer: "Считается только на этом Маке и никуда не отправляется. Хранятся последние 7 дней.") {
+                toggleRow("Вести статистику", isOn: Binding(get: { dayStats.enabled },
+                                                           set: { dayStats.setEnabled($0) }))
+                rowDivider
+                row("Сбросить статистику") {
+                    Button("Сбросить") { dayStats.reset() }
+                }
+            }
+        }
     }
 
     // The active profile, one click to change it.
@@ -1117,6 +1297,7 @@ struct NotchSettingsWindowView: View {
         switch currentSection {
         case .general: generalSection
         case .profiles: profilesSection
+        case .stats: statsSection
         case .permissions: permissionsSection
         case .island: islandSection
         case .media: mediaSection
