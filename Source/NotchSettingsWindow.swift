@@ -32,6 +32,14 @@ final class NotchSettingsSnapshot: ObservableObject {
     // 3.20.0: what is new in the waiting version; the tour inside Settings.
     @Published var updateNotes: [String] = []
     @Published var onboardingVisible = false
+    // 4.2.0: «own theme» editor.
+    @Published var themeEditorOpen = false
+    @Published var themeDraftName = ""
+    @Published var themeDraftDark = true
+    @Published var themeDraftColors: [Color] = [Color(red: 0.95, green: 0.35, blue: 0.45), Color(red: 0.45, green: 0.4, blue: 1.0),
+                                                Color(red: 1.0, green: 0.7, blue: 0.25), Color(red: 0.2, green: 0.75, blue: 0.85)]
+    @Published var themeDraftCount = 3
+    @Published var customThemesVersion = 0
     @Published var mediaGesturesEnabled = true
     // 3.2.0 permissions overview.
     @Published var permAccessibility = false
@@ -1465,8 +1473,15 @@ struct NotchSettingsWindowView: View {
                 // 3.16.0: three plain themes and colour themes.
                 LazyVGrid(columns: [GridItem(.adaptive(minimum: 104), spacing: 10)], spacing: 10) {
                     ForEach(SettingsTheme.all) { item in themeSwatch(item) }
+                    if !snapshot.themeEditorOpen { newThemeButton }
                 }
                 .padding(12)
+                .id(snapshot.customThemesVersion)
+                if snapshot.themeEditorOpen {
+                    rowDivider
+                    themeEditor
+                        .transition(.opacity.combined(with: .move(edge: .top)))
+                }
                 rowDivider
                 toggleRow("Живой фон настроек",
                           subtitle: "Цвета раздела и обложки медленно переливаются за стеклом окна",
@@ -2239,6 +2254,110 @@ struct NotchSettingsWindowView: View {
                   disabled: !snapshot.audioCaptureEnabled)
     }
 
+    // MARK: 4.2.0 Own themes
+
+    private var newThemeButton: some View {
+        Button {
+            withAnimation(.spring(response: 0.35, dampingFraction: 0.85)) {
+                snapshot.themeDraftName = ""
+                snapshot.themeEditorOpen = true
+            }
+        } label: {
+            VStack(spacing: 7) {
+                RoundedRectangle(cornerRadius: 14, style: .continuous)
+                    .strokeBorder(Color.primary.opacity(0.3), style: StrokeStyle(lineWidth: 1.5, dash: [5, 4]))
+                    .frame(height: 52)
+                    .overlay(Image(systemName: "plus").font(.system(size: 18, weight: .semibold)).foregroundStyle(.secondary))
+                Text("Своя тема").font(.system(size: 11, weight: .medium)).foregroundStyle(.secondary)
+            }
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .help("Создать тему из своих цветов")
+    }
+
+    private var themeEditor: some View {
+        let colors = Array(snapshot.themeDraftColors.prefix(snapshot.themeDraftCount))
+        return VStack(alignment: .leading, spacing: 12) {
+            HStack(spacing: 12) {
+                // Live preview: background, two tiles, a switch.
+                ZStack {
+                    RoundedRectangle(cornerRadius: 14, style: .continuous)
+                        .fill(LinearGradient(colors: snapshot.themeDraftDark
+                                             ? [PaletteRGB(colors[0]).scaled(0.3).color, Color(white: 0.06)]
+                                             : [PaletteRGB(colors[0]).mixedWithWhite(0.82).color, .white],
+                                             startPoint: .topLeading, endPoint: .bottomTrailing))
+                    HStack(spacing: 6) {
+                        ForEach(0..<colors.count, id: \.self) { i in
+                            RoundedRectangle(cornerRadius: 8, style: .continuous)
+                                .fill(LinearGradient(colors: [colors[i], colors[i].opacity(0.7)],
+                                                     startPoint: .topLeading, endPoint: .bottomTrailing))
+                                .frame(width: 26, height: 34)
+                        }
+                    }
+                }
+                .frame(width: 150, height: 64)
+                VStack(alignment: .leading, spacing: 8) {
+                    TextField("Название, например «Ночной город»", text: $snapshot.themeDraftName)
+                        .textFieldStyle(.roundedBorder)
+                    Picker("", selection: $snapshot.themeDraftDark) {
+                        Text("Тёмная").tag(true)
+                        Text("Светлая").tag(false)
+                    }
+                    .pickerStyle(.segmented)
+                    .labelsHidden()
+                }
+            }
+            HStack(spacing: 14) {
+                ForEach(0..<snapshot.themeDraftCount, id: \.self) { i in
+                    ColorPicker("", selection: Binding(get: { snapshot.themeDraftColors[i] },
+                                                       set: { snapshot.themeDraftColors[i] = $0 }),
+                                supportsOpacity: false)
+                        .labelsHidden()
+                }
+                Stepper("Цветов: \(snapshot.themeDraftCount)", value: $snapshot.themeDraftCount, in: 2...4)
+                    .font(.system(size: 12))
+                Spacer()
+            }
+            HStack {
+                Text("Первые два цвета — главные: из них фон и баннеры.")
+                    .font(.system(size: 11)).foregroundStyle(.secondary)
+                Spacer()
+                Button("Отмена") {
+                    withAnimation(.spring(response: 0.35, dampingFraction: 0.85)) { snapshot.themeEditorOpen = false }
+                }
+                .keyboardShortcut(.cancelAction)
+                Button("Сохранить") { saveDraftTheme() }
+                    .keyboardShortcut(.defaultAction)
+                    .buttonStyle(.borderedProminent)
+            }
+        }
+        .padding(14)
+    }
+
+    private func saveDraftTheme() {
+        let colors = snapshot.themeDraftColors.prefix(snapshot.themeDraftCount).map { PaletteRGB($0) }
+        let theme = CustomThemeStore.add(name: snapshot.themeDraftName, dark: snapshot.themeDraftDark, colors: Array(colors))
+        withAnimation(.spring(response: 0.35, dampingFraction: 0.85)) {
+            snapshot.themeEditorOpen = false
+            snapshot.customThemesVersion += 1
+        }
+        selectTheme(theme.id)
+    }
+
+    private func deleteCustomTheme(_ item: SettingsTheme) {
+        let alert = NSAlert()
+        alert.messageText = "Удалить тему «\(item.name)»?"
+        alert.informativeText = "Готовые темы не удаляются — только свои."
+        alert.alertStyle = .warning
+        alert.addButton(withTitle: "Удалить")
+        alert.addButton(withTitle: "Отмена")
+        guard alert.runModal() == .alertFirstButtonReturn else { return }
+        if settingsAppearance == item.id { selectTheme("system") }
+        CustomThemeStore.delete(item.id)
+        withAnimation(.spring(response: 0.35, dampingFraction: 0.85)) { snapshot.customThemesVersion += 1 }
+    }
+
     private func themeSwatch(_ item: SettingsTheme) -> some View {
         let selected = settingsAppearance == item.id
         let shape = RoundedRectangle(cornerRadius: 14, style: .continuous)
@@ -2275,6 +2394,20 @@ struct NotchSettingsWindowView: View {
         }
         .buttonStyle(.plain)
         .help(item.dark == nil ? "\(item.name): светлая или тёмная вслед за macOS" : item.name)
+        // 4.2.0: only the user's own themes have a delete button.
+        .overlay(alignment: .topTrailing) {
+            if CustomThemeStore.isCustom(item.id) {
+                Button { deleteCustomTheme(item) } label: {
+                    Image(systemName: "xmark.circle.fill")
+                        .font(.system(size: 15))
+                        .symbolRenderingMode(.palette)
+                        .foregroundStyle(.white, Color.black.opacity(0.55))
+                }
+                .buttonStyle(.plain)
+                .offset(x: 5, y: -5)
+                .help("Удалить тему «\(item.name)»")
+            }
+        }
     }
 
     private func themeChoice(_ title: String, icon: String, value: String) -> some View {
@@ -2710,7 +2843,9 @@ struct SettingsTheme: Identifiable, Equatable {
     private static func rgb(_ r: Double, _ g: Double, _ b: Double) -> Color { Color(red: r, green: g, blue: b) }
 
     // 3.19.0: the fixed themes plus «Обложка», built from the current cover.
-    static var all: [SettingsTheme] { fixed + [cover] }
+    // 4.2.0: plus the user's own themes, at the end.
+    static var all: [SettingsTheme] { fixed + [cover] + CustomThemeStore.themes.map(SettingsTheme.from) }
+    static var builtInNames: [String] { fixed.map(\.name) + ["Обложка"] }
 
     static var cover: SettingsTheme {
         let p = CoverPalette.shared.colors

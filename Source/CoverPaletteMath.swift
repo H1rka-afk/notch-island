@@ -1,7 +1,7 @@
 import Foundation
 
 // 3.19.0 — the colours of a cover for the «Обложка» theme (pure, tested).
-struct PaletteRGB: Equatable {
+struct PaletteRGB: Equatable, Codable {
     var r: Double, g: Double, b: Double
 
     var hsb: (h: Double, s: Double, v: Double) {
