@@ -11,7 +11,7 @@ import Foundation
 // • «Свой» — the user's own combination, remembered when a preset is chosen
 //   and restored when «Свой» is picked again.
 enum IslandProfile: String, CaseIterable {
-    case iphone, extended, custom
+    case iphone, quiet, extended, custom
 }
 
 enum IslandProfiles {
@@ -23,7 +23,10 @@ enum IslandProfiles {
                              "hideFullscreen", "hideSource",
                              // 3.11.0: lock-screen player, widgets under the
                              // clock, the living cover background.
-                             "lockMedia", "lockWidgets", "coverAnimated"]
+                             "lockMedia", "lockWidgets", "coverAnimated",
+                             // 4.3.3: StandBy, idle wings, cinema mode and
+                             // the new expanded player.
+                             "standby", "wings", "cinema", "playerNew"]
     static var allKeys: [String] { labKeys + islandKeys }
 
     // Calendar and reminders depend on a macOS permission: «Максимум» turns
@@ -37,7 +40,17 @@ enum IslandProfiles {
         case .iphone:
             var values = Dictionary(uniqueKeysWithValues: allKeys.map { ($0, false) })
             for key in ["privacy", "lockIsland", "focus", "hideFullscreen", "hideSource", "airdrop",
-                        "lockMedia", "lockWidgets", "coverAnimated", "eyes"] {
+                        "lockMedia", "lockWidgets", "coverAnimated", "eyes",
+                        "standby", "cinema", "playerNew"] {
+                values[key] = true
+            }
+            return values
+        case .quiet:
+            // 4.3.3 «Тихий»: only music, the timer and the lock screen —
+            // no banners, no wings, nothing that pops up uninvited.
+            var values = Dictionary(uniqueKeysWithValues: allKeys.map { ($0, false) })
+            for key in ["lockIsland", "hideFullscreen", "hideSource", "lockMedia",
+                        "cinema", "playerNew"] {
                 values[key] = true
             }
             return values
@@ -48,7 +61,7 @@ enum IslandProfiles {
 
     // Which preset the current switches equal; .custom when none.
     static func match(_ current: [String: Bool]) -> IslandProfile {
-        for profile in [IslandProfile.iphone, .extended] {
+        for profile in [IslandProfile.iphone, .quiet, .extended] {
             guard let preset = preset(profile) else { continue }
             let equal = allKeys.allSatisfy { key in
                 if profile == .extended && permissionDependent.contains(key) { return true }

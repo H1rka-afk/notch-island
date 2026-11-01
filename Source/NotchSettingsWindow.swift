@@ -345,7 +345,7 @@ struct NotchSettingsWindowView: View {
             case .lock: return "Экран блокировки"
             case .battery: return "Батарея"
             case .focus: return "Фокусирование"
-            case .timer: return "Таймер «Часов»"
+            case .timer: return "Таймер"
             case .airpods: return "AirPods"
             case .notifications: return "Уведомления"
             case .shelf: return "Полка"
@@ -720,6 +720,7 @@ struct NotchSettingsWindowView: View {
                let name = snapshot.userProfiles.first(where: { $0.id == id })?.name { return "Сейчас: \(name)" }
             switch IslandProfiles.match(profileValues) {
             case .iphone: return "Сейчас: Как на iPhone"
+            case .quiet: return "Сейчас: Тихий"
             case .extended: return "Сейчас: Максимум"
             case .custom: return "Сейчас: Свой"
             }
@@ -1146,6 +1147,10 @@ struct NotchSettingsWindowView: View {
         values["lockMedia"] = lockScreenMedia
         values["lockWidgets"] = lockWidgets.enabled
         values["coverAnimated"] = lockCoverAnimated
+        values["standby"] = standbyEnabled
+        values["wings"] = wingsEnabled
+        values["cinema"] = cinemaEnabled
+        values["playerNew"] = playerStyle == "new"
         return values
     }
 
@@ -1163,14 +1168,21 @@ struct NotchSettingsWindowView: View {
                             title: "Как на iPhone", icon: "iphone.gen3",
                             color: Color(red: 0.20, green: 0.48, blue: 1.0),
                             summary: "Только то, что умеет Dynamic Island и экран блокировки iPhone. Плеер прячется, когда открыто приложение с музыкой.",
-                            features: ["Сейчас играет", "Зарядка", "AirPods", "Фокусирование",
+                            features: ["Сейчас играет", "Новый плеер", "Зарядка", "AirPods", "Фокусирование",
                                        "Таймер", "Замочек", "Камера и микрофон", "AirDrop",
-                                       "Плеер на экране блокировки", "Виджеты под часами", "Живой фон обложки"])
+                                       "StandBy", "Кинотеатр", "Плеер на экране блокировки",
+                                       "Виджеты под часами", "Живой фон обложки", "20-20-20"])
+                profileCard(.quiet, active: active,
+                            title: "Тихий", icon: "moon.fill",
+                            color: Color(red: 0.36, green: 0.42, blue: 0.55),
+                            summary: "Только музыка, таймер и экран блокировки. Никаких всплывающих баннеров и крыльев — островок не отвлекает.",
+                            features: ["Сейчас играет", "Новый плеер", "Таймер", "Замочек",
+                                       "Плеер на экране блокировки", "Кинотеатр"])
                 profileCard(.extended, active: active,
                             title: "Максимум", icon: "sparkles",
                             color: Color(red: 0.66, green: 0.36, blue: 0.95),
-                            summary: "Всё, что умеет Notch Island: полка, снимки и записи экрана, буфер обмена, системные баннеры, жесты и свечение.",
-                            features: ["Всё из iPhone", "Полка", "AirDrop с полки", "Снимки экрана", "«Скопировано»",
+                            summary: "Всё, что умеет Notch Island: полка, снимки и записи экрана, буфер обмена, системные баннеры, крылья, жесты и свечение.",
+                            features: ["Всё из iPhone", "Крылья", "Исправление раскладки", "Полка", "AirDrop с полки", "Снимки экрана", "«Скопировано»",
                                        "Громкость", "Устройство вывода", "VPN и интернет", "Диски",
                                        "Нагрев", "Жесты", "Свечение", "⌃⌥N", "Календарь*"])
                 profileCard(.custom, active: active,
@@ -1332,7 +1344,9 @@ struct NotchSettingsWindowView: View {
             "hotkey": "⌃⌥N", "airdrop": "AirDrop", "lockIsland": "Замочек", "focus": "Фокусирование",
             "gestures": "Жесты", "coverGlow": "Свечение", "hideFullscreen": "Прятать в полноэкранном",
             "hideSource": "Прятать при открытом плеере", "lockMedia": "Плеер на экране блокировки",
-            "lockWidgets": "Виджеты под часами", "coverAnimated": "Живой фон обложки"
+            "lockWidgets": "Виджеты под часами", "coverAnimated": "Живой фон обложки",
+            "eyes": "20-20-20", "layout": "Раскладка ⌃⌥L", "standby": "StandBy", "wings": "Крылья",
+            "cinema": "Кинотеатр", "playerNew": "Новый плеер"
         ]
         let on = IslandProfiles.allKeys.filter { profile.values[$0] == true }.compactMap { names[$0] }
         return on.isEmpty ? ["Всё выключено"] : on
@@ -2054,7 +2068,7 @@ struct NotchSettingsWindowView: View {
                     Button("Показать") { actions.previewTimer() }
                 }
                 rowDivider
-                row("Таймер «Часов»") {
+                row("Найти таймер в «Часах»") {
                     Button("Проверить") { actions.refreshClock() }
                 }
                 rowDivider

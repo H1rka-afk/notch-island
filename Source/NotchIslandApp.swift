@@ -595,10 +595,17 @@ final class IslandState: ObservableObject {
     @Published private(set) var timerSatelliteContentVisible = false
     @Published private(set) var timerSatelliteShrinksInPlace = false
     private var timerSatelliteAnimationToken = UUID()
+    // 4.3.3 — while the satellite is leaving, the music island keeps the
+    // layout it had next to it, and the readout keeps the last time instead
+    // of jumping to 00:00. Everything switches once the drop is gone.
+    @Published private(set) var timerSatelliteExiting = false
+    private var timerExitRemaining: TimeInterval?
 
     func animateTimerSatelliteIn() {
         let token = UUID()
         timerSatelliteAnimationToken = token
+        timerSatelliteExiting = false
+        timerExitRemaining = nil
         // Re-entry during an exit continues from the current shape.
         if timerSatelliteShrinksInPlace || timerSatellitePresence <= 0.01 {
             timerSatelliteShrinksInPlace = false
@@ -621,6 +628,7 @@ final class IslandState: ObservableObject {
     func animateTimerSatelliteOut(home: Bool, completion: @escaping () -> Void) {
         let token = UUID()
         timerSatelliteAnimationToken = token
+        timerSatelliteExiting = true
         withAnimation(.easeIn(duration: 0.14)) { timerSatelliteContentVisible = false }
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) { [weak self] in
             guard let self, self.timerSatelliteAnimationToken == token else { return }
@@ -633,6 +641,11 @@ final class IslandState: ObservableObject {
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.52) { [weak self] in
             guard let self, self.timerSatelliteAnimationToken == token else { return }
             completion()
+            self.timerSatelliteExiting = false
+            self.timerExitRemaining = nil
+            self.timerSatelliteShrinksInPlace = false
+            // Now the music island may take its usual layout.
+            self.layoutChanged?()
         }
     }
     // Never resize the NSPanel during hover: only the BLACK SwiftUI surface
@@ -658,7 +671,8 @@ final class IslandState: ObservableObject {
     // to the camera cutout because IslandView right-aligns it in this canvas.
     // The black silhouette, rather than the NSPanel, expands to the LEFT.
     var usesFixedMediaSatelliteCanvas: Bool {
-        track != nil && showsTimerSatellite && event == nil && !unlockTransitionActive
+        track != nil && (showsTimerSatellite || timerSatelliteExiting) &&
+            event == nil && !unlockTransitionActive
     }
 
     // Hover on an NSPanel may briefly report an exit while AppKit grows the
@@ -786,11 +800,17 @@ final class IslandState: ObservableObject {
 
     func clearClockTimer() {
         guard timerActive else { return }
+        // 4.3.3: freeze the readout for the exit animation.
+        if showsTimerSatellite { timerExitRemaining = timerRemaining() }
         timerFinishedAt = nil
         timerPaused = false
         pausedTimerRemaining = 0
-        timerActive = false
-        resetTimerSatellite()
+        // An open satellite folds smoothly instead of snapping to compact
+        // in the same frame as the drop starts to shrink.
+        withAnimation(.spring(response: 0.3, dampingFraction: 0.9)) {
+            resetTimerSatellite()
+            timerActive = false
+        }
         if track == nil { collapsePlayer() }
     }
 
@@ -801,6 +821,7 @@ final class IslandState: ObservableObject {
 
     func timerRemaining(at now: Date = Date()) -> TimeInterval {
         if !timerActive {
+            if let frozen = timerExitRemaining { return frozen }
             return timerPreviewActive ? max(0, timerPreviewDeadline.timeIntervalSince(now)) : 0
         }
         if timerFinishedAt != nil { return 0 }
@@ -2526,6 +2547,11 @@ final class IslandAppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         values["lockMedia"] = (UserDefaults.standard.object(forKey: LockScreenOverlay.mediaKey) as? Bool) ?? true
         values["lockWidgets"] = LockWidgetsModel.shared.enabled
         values["coverAnimated"] = (UserDefaults.standard.object(forKey: "lockCoverAnimatedV395") as? Bool) ?? true
+        // 4.3.3
+        values["standby"] = StandBySettings.isEnabled
+        values["wings"] = IdleWings.isEnabled
+        values["cinema"] = CinemaMode.isEnabled
+        values["playerNew"] = ExpandedPlayerStyle.isNew
         return values
     }
 
@@ -2577,6 +2603,17 @@ final class IslandAppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         if let on = values["lockMedia"] { UserDefaults.standard.set(on, forKey: LockScreenOverlay.mediaKey) }
         if let on = values["lockWidgets"], on != LockWidgetsModel.shared.enabled { LockWidgetsModel.shared.setEnabled(on) }
         if let on = values["coverAnimated"] { UserDefaults.standard.set(on, forKey: "lockCoverAnimatedV395") }
+        // 4.3.3
+        if let on = values["standby"] { UserDefaults.standard.set(on, forKey: StandBySettings.enabledKey) }
+        if let on = values["wings"] { UserDefaults.standard.set(on, forKey: IdleWings.enabledKey) }
+        if let on = values["cinema"] {
+            UserDefaults.standard.set(on, forKey: CinemaMode.key)
+            if !on && state.cinemaMode { state.setCinemaMode(false) }
+        }
+        if let on = values["playerNew"] {
+            UserDefaults.standard.set(on ? "new" : "classic", forKey: ExpandedPlayerStyle.key)
+        }
+        updateIdleWings()
         refreshLabSnapshot()
     }
 

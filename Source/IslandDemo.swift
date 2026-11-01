@@ -16,7 +16,7 @@ enum IslandDemo: String, CaseIterable, Equatable {
         case .charging: return "Зарядка — молния и процент прямо в островке"
         case .airpods: return "AirPods — заряд наушников и кейса при подключении"
         case .focus: return "Фокусирование — баннер при включении режима"
-        case .timer: return "Таймер «Часов» — обратный отсчёт рядом с чёлкой"
+        case .timer: return "Таймер — обратный отсчёт рядом с чёлкой"
         case .airdrop: return "AirDrop — процент приёма и файл на полке"
         case .lock: return "Экран блокировки — замочек, плеер и виджеты"
         case .meeting: return "Встреча через 10 минут — нажми, чтобы подключиться"

@@ -42,6 +42,15 @@ struct IslandProfilesTests {
             precondition(iphone[key] == true && extended[key] == true, key)
         }
 
+        // 4.3.3: StandBy, wings, cinema and the player style are managed too.
+        let quiet = IslandProfiles.preset(.quiet)!
+        precondition(Set(quiet.keys) == Set(IslandProfiles.allKeys))
+        for key in ["standby", "cinema", "playerNew"] { precondition(iphone[key] == true, key) }
+        precondition(iphone["wings"] == false && extended["wings"] == true)
+        precondition(quiet["airdrop"] == false && quiet["cinema"] == true && quiet["lockIsland"] == true)
+        precondition(IslandProfiles.match(quiet) == .quiet)
+        precondition(IslandProfiles.match(iphone) == .iphone)
+
         // User profiles: clean names, unique names, matching, export/import.
         precondition(UserProfileStore.cleanName("   ") == "Мой профиль")
         precondition(UserProfileStore.cleanName(String(repeating: "я", count: 99)).count == UserProfileStore.maxName)
