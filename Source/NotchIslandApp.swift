@@ -641,12 +641,22 @@ final class IslandState: ObservableObject {
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.52) { [weak self] in
             guard let self, self.timerSatelliteAnimationToken == token else { return }
             completion()
-            self.timerSatelliteExiting = false
-            self.timerExitRemaining = nil
-            self.timerSatelliteShrinksInPlace = false
-            // Now the music island may take its usual layout.
-            self.layoutChanged?()
+            self.finishTimerSatelliteExit()
         }
+    }
+
+    // Ends the exit: the music island takes its usual layout in one step,
+    // without an animated slide.
+    func finishTimerSatelliteExit() {
+        timerExitRemaining = nil
+        guard timerSatelliteExiting else { return }
+        var transaction = Transaction()
+        transaction.disablesAnimations = true
+        withTransaction(transaction) {
+            timerSatelliteExiting = false
+            timerSatelliteShrinksInPlace = false
+        }
+        layoutChanged?()
     }
     // Never resize the NSPanel during hover: only the BLACK SwiftUI surface
     // changes its dimensions. A fixed transparent canvas prevents window
@@ -800,17 +810,25 @@ final class IslandState: ObservableObject {
 
     func clearClockTimer() {
         guard timerActive else { return }
-        // 4.3.3: freeze the readout for the exit animation.
-        if showsTimerSatellite { timerExitRemaining = timerRemaining() }
+        // 4.3.4: the exit flag must be up BEFORE timerActive changes —
+        // that change re-lays out the music panel at once. Raised later
+        // (from the satellite window), the music island had already left
+        // its fixed canvas: it vanished and slid back in from the right.
+        if showsTimerSatellite {
+            timerExitRemaining = timerRemaining()
+            timerSatelliteExiting = true
+        }
         timerFinishedAt = nil
         timerPaused = false
         pausedTimerRemaining = 0
-        // An open satellite folds smoothly instead of snapping to compact
-        // in the same frame as the drop starts to shrink.
-        withAnimation(.spring(response: 0.3, dampingFraction: 0.9)) {
+        // An open satellite folds smoothly; the music island itself must
+        // not animate here (no implicit transaction around timerActive).
+        if timerExpanded {
+            withAnimation(.spring(response: 0.3, dampingFraction: 0.9)) { resetTimerSatellite() }
+        } else {
             resetTimerSatellite()
-            timerActive = false
         }
+        timerActive = false
         if track == nil { collapsePlayer() }
     }
 
@@ -3133,7 +3151,15 @@ final class IslandAppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             let frame = CGRect(x: leftEdge,
                                y: screen.frame.maxY - size.height + roof,
                                width: size.width, height: size.height)
-            if window.frame != frame { window.setFrame(frame, display: true) }
+            if window.frame != frame {
+                let resized = window.frame.size != frame.size
+                window.setFrame(frame, display: true)
+                // 4.3.4: when the canvas changes size (e.g. the timer
+                // satellite just left), let SwiftUI lay out in the SAME
+                // pass — otherwise one frame shows the old alignment in the
+                // new window and the island seems to jump.
+                if resized { window.contentView?.layoutSubtreeIfNeeded() }
+            }
             if !panelIsVisible {
                 window.orderFrontRegardless()
                 panelIsVisible = true
@@ -3179,7 +3205,12 @@ final class IslandAppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         let inset = state.timerLeadInset
         if !state.showsTimerSatellite {
             timerPinnedX = nil
-            guard timerPanelIsVisible else { return }
+            guard timerPanelIsVisible else {
+                if state.timerSatelliteExiting && Date() >= timerWindowTransitionEnds {
+                    state.finishTimerSatelliteExit()
+                }
+                return
+            }
             timerPanelIsVisible = false
             let token = UUID()
             timerWindowTransitionToken = token
