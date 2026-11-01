@@ -591,7 +591,7 @@ final class LockScreenOverlay {
     }
 
     func resetWidgetsPosition(on screen: NSScreen?) {
-        LockWidgetsModel.shared.resetOffsets()
+        // 4.6.0: widgets stand in the row under the clock; nothing to reset.
     }
 
     private func prepareWidgets(on screen: NSScreen) {

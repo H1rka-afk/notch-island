@@ -729,7 +729,7 @@ struct NotchSettingsWindowView: View {
             return missing == 0 ? "Всё разрешено" : "Не хватает: \(missing)"
         case .island: return island.autoNotchSize ? "Размер по чёлке" : "Ширина \(Int(island.notchWidth)) pt"
         case .media: return island.track.map { "♫ \($0.title)" } ?? "Сейчас ничего не играет"
-        case .lock: return lockWidgets.enabled ? "Плеер, обложка, виджеты: \(lockWidgets.selected.count)" : "Плеер и обложка"
+        case .lock: return lockWidgets.enabled ? "Плеер, обложка, виджеты: \(lockWidgets.slots.count)" : "Плеер и обложка"
         case .devices: return snapshot.batterySummary
         case .timer: return "Таймер прямо в островке"
         case .notifications: return "Фокус, встречи, система"
@@ -2059,7 +2059,7 @@ struct NotchSettingsWindowView: View {
                 }
             }
             group("Виджеты под часами",
-                  footer: "Как на iPhone: до \(LockWidgetsModel.maxCount) виджетов под часами экрана блокировки — без фона, только значок и надписи. Виджет без данных (AirPods не подключены, таймер не запущен, фокус выключен) не показывается. Погода — сервис Open-Meteo: ему передаётся только название города.") {
+                  footer: "Как на iPhone: под часами четыре места — маленький круглый виджет занимает одно, широкий два. «Изменить виджеты…» открывает экран блокировки: «+» — галерея с живыми превью (нажми или перетащи виджет в ряд), «−» — убрать, стрелки — размер, перетаскивание — порядок. Виджет без данных (AirPods не подключены, таймер не запущен) на экране блокировки не показывается. Погода — сервис Open-Meteo: ему передаётся только название города.") {
                 toggleRow("Показывать виджеты", isOn: Binding(get: { lockWidgets.enabled },
                                                             set: { lockWidgets.setEnabled($0) }))
                 rowDivider
@@ -2072,10 +2072,20 @@ struct NotchSettingsWindowView: View {
                                            }),
                           range: 0.6...1, step: 0.05,
                           disabled: !lockWidgets.enabled)
-                ForEach(LockWidgetKind.allCases) { kind in
+                rowDivider
+                // 4.6.0: the row as it looks, and the iPhone-style editor.
+                HStack(spacing: 12) {
+                    widgetRowPreview
+                    Spacer(minLength: 8)
+                    Button("Изменить виджеты…") { actions.previewLockWidgets() }
+                        .buttonStyle(.borderedProminent)
+                        .disabled(!lockWidgets.enabled)
+                }
+                .padding(.horizontal, 14)
+                .padding(.vertical, 10)
+                .id("search:Изменить виджеты")
+                if lockWidgets.isSelected(.weather) {
                     rowDivider
-                    widgetRow(kind)
-                    if kind == .weather && lockWidgets.isSelected(.weather) {
                         toggleRow("Определять город автоматически",
                                   subtitle: weather.status,
                                   isOn: Binding(get: { weather.autoLocate }, set: {
@@ -2100,16 +2110,6 @@ struct NotchSettingsWindowView: View {
                             }
                         }
                     }
-                }
-                rowDivider
-                row("Положение", subtitle: "«Настроить» открывает экран блокировки поверх рабочего стола: перетаскивай виджеты по одному, «Готово» — сохранить") {
-                    HStack(spacing: 8) {
-                        Button("Сбросить") { actions.resetLockWidgetsPosition() }
-                            .disabled(!lockWidgets.hasCustomPlaces)
-                        Button("Настроить") { actions.previewLockWidgets() }
-                            .disabled(!lockWidgets.enabled || lockWidgets.selected.isEmpty)
-                    }
-                }
             }
             group("Проверка") {
                 row("Анимация замка") {
@@ -2123,40 +2123,25 @@ struct NotchSettingsWindowView: View {
         }
     }
 
-    private func widgetRow(_ kind: LockWidgetKind) -> some View {
-        let selected = lockWidgets.isSelected(kind)
-        let index = lockWidgets.selected.firstIndex(of: kind)
-        let full = lockWidgets.selected.count >= LockWidgetsModel.maxCount
-        return HStack(spacing: 10) {
-            Image(systemName: kind.symbol)
-                .font(.system(size: 14, weight: .semibold))
-                .foregroundStyle(selected ? Color.accentColor : Color.secondary)
-                .frame(width: 22)
-            VStack(alignment: .leading, spacing: 2) {
-                Text(selected && index != nil ? "\(index! + 1). \(kind.title)" : kind.title)
-                    .font(.system(size: 13))
-                Text(kind.subtitle).font(.system(size: 11)).foregroundStyle(.secondary)
+    // 4.6.0: a miniature of the row under the clock: four places, wide
+    // widgets take two, free places are dashed.
+    private var widgetRowPreview: some View {
+        HStack(spacing: 6) {
+            ForEach(Array(lockWidgets.slots.enumerated()), id: \.offset) { _, slot in
+                let kind = LockWidgetKind(rawValue: slot.kind)
+                RoundedRectangle(cornerRadius: slot.wide ? 10 : 17, style: .continuous)
+                    .fill(Color.accentColor.opacity(0.18))
+                    .overlay(Image(systemName: kind?.symbol ?? "square").font(.system(size: 13, weight: .semibold))
+                        .foregroundStyle(Color.accentColor))
+                    .frame(width: slot.wide ? 76 : 34, height: 34)
+                    .help(kind?.title ?? "")
             }
-            Spacer(minLength: 8)
-            if selected, let index {
-                Button { lockWidgets.move(kind, by: -1) } label: { Image(systemName: "chevron.up") }
-                    .buttonStyle(.borderless)
-                    .disabled(index == 0)
-                    .help("Левее")
-                Button { lockWidgets.move(kind, by: 1) } label: { Image(systemName: "chevron.down") }
-                    .buttonStyle(.borderless)
-                    .disabled(index == lockWidgets.selected.count - 1)
-                    .help("Правее")
+            ForEach(0..<lockWidgets.freePlaces, id: \.self) { _ in
+                RoundedRectangle(cornerRadius: 17, style: .continuous)
+                    .strokeBorder(Color.primary.opacity(0.25), style: StrokeStyle(lineWidth: 1, dash: [4, 3]))
+                    .frame(width: 34, height: 34)
             }
-            Toggle("", isOn: Binding(get: { selected }, set: { lockWidgets.toggle(kind, on: $0) }))
-                .labelsHidden()
-                .toggleStyle(.switch)
-                .controlSize(.small)
-                .disabled(!lockWidgets.enabled || (!selected && full))
         }
-        .padding(.horizontal, 14)
-        .padding(.vertical, 8)
-        .frame(minHeight: 40)
     }
 
     private var timerSection: some View {

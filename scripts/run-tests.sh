@@ -32,4 +32,5 @@ run_test WidgetFormatTests "$SRC/WidgetFormat.swift" Tests/WidgetFormatTests.swi
 run_test WallpaperStoreTests "$SRC/WallpaperStore.swift" "$SRC/AirDropFormat.swift" Tests/WallpaperStoreTests.swift
 run_test LayoutConverterTests "$SRC/LayoutConverter.swift" Tests/LayoutConverterTests.swift
 run_test DayStatsTests "$SRC/DayStats.swift" Tests/DayStatsTests.swift
+run_test LockWidgetLayoutTests "$SRC/LockWidgetLayout.swift" Tests/LockWidgetLayoutTests.swift
 exit $FAILED

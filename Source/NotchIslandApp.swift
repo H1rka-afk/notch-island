@@ -2530,9 +2530,13 @@ final class IslandAppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private func refreshLockWidgets() {
         PerformanceMonitor.count("lock widgets")
         let model = LockWidgetsModel.shared
-        guard model.enabled, !model.selected.isEmpty else { model.publish([:]); return }
+        if model.requestRefresh == nil {
+            model.requestRefresh = { [weak self] in self?.refreshLockWidgets() }
+        }
+        // 4.6.0: the editor's gallery shows live data of every widget.
+        guard model.editing || (model.enabled && !model.selected.isEmpty) else { model.publish([:]); return }
         var available: [LockWidgetKind: LockWidgetItem] = [:]
-        let wanted = Set(model.selected)
+        let wanted = model.editing ? Set(LockWidgetKind.allCases) : Set(model.selected)
         if wanted.contains(.weather) || wanted.contains(.sun) {
             let weather = WeatherService.shared
             if let item = LockWidgetBuilder.weather(weather.snapshot) { available[.weather] = item }
