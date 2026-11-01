@@ -34,6 +34,7 @@ final class ClockTimerBridge {
     private var lastScanHasPlaybackEvidence = false
     private var lastScanConfirmedNoTimer = false
     private var lastScanClockReadable = false
+    private var lastScanTimerSetupVisible = false
 
     // Commands are serialized on the main queue and kept pending until Clock
     // actually confirms the result, or a bounded verification period expires.
@@ -45,21 +46,90 @@ final class ClockTimerBridge {
     private var commandBusy = false
     private var forceDeepNext = false
 
+    // 4.3.1 — adaptive polling. A fixed 8 s timer made a new timer appear
+    // 8–16 s late (a countdown needs two decreasing samples) and kept the
+    // island up long after a cancel in Clock. Now: 1.5 s while Clock is in
+    // front, was just used, or a timer is on screen; 6 s when Clock merely
+    // runs; 15 s when it is not running at all.
+    private var lastClockActivity = Date.distantPast
+    private var hurryNext = false
+    private var workspaceObservers: [NSObjectProtocol] = []
+    private var running = false
+    private var setupVisibleReads = 0
+    private var firstNoTimerRead: Date?
+
     func start() {
-        pollTimer?.invalidate()
-        // Use the same actual Clock field extraction for automatic and manual
-        // polling; only logging differs. The old 80-node automatic scan missed
-        // timers found by the 300-node "Check timer" diagnostic.
-        pollTimer = Timer.scheduledTimer(withTimeInterval: 8.0, repeats: true) { [weak self] _ in
-            self?.refresh()
-        }
-        pollTimer?.tolerance = 0.8
+        running = true
+        if workspaceObservers.isEmpty { observeClockApp() }
         refresh()
+        scheduleNext()
     }
 
     func stop() {
+        running = false
         pollTimer?.invalidate()
         pollTimer = nil
+        let center = NSWorkspace.shared.notificationCenter
+        workspaceObservers.forEach { center.removeObserver($0) }
+        workspaceObservers = []
+    }
+
+    private func scheduleNext() {
+        pollTimer?.invalidate()
+        guard running else { return }
+        let interval = hurryNext ? 1.1 : currentInterval()
+        hurryNext = false
+        let timer = Timer(timeInterval: interval, repeats: false) { [weak self] _ in
+            guard let self else { return }
+            if self.busy { self.scheduleNext() } else { self.refresh() }
+        }
+        timer.tolerance = min(0.4, interval * 0.15)
+        RunLoop.main.add(timer, forMode: .common)
+        pollTimer = timer
+    }
+
+    private var clockIsHot: Bool {
+        guard let clock = clockApp() else { return false }
+        return clock.isActive || Date().timeIntervalSince(lastClockActivity) < 40
+    }
+
+    private func currentInterval() -> TimeInterval {
+        guard clockApp() != nil else { return lastConfirmed != nil ? 3 : 15 }
+        if clockIsHot || lastConfirmed != nil { return 1.5 }
+        return 6
+    }
+
+    // Switching to or away from Clock, launching or quitting it are exactly
+    // the moments a timer appears or goes away: scan right then.
+    private func observeClockApp() {
+        let center = NSWorkspace.shared.notificationCenter
+        let names: [Notification.Name] = [
+            NSWorkspace.didActivateApplicationNotification,
+            NSWorkspace.didDeactivateApplicationNotification,
+            NSWorkspace.didLaunchApplicationNotification,
+            NSWorkspace.didTerminateApplicationNotification
+        ]
+        for name in names {
+            workspaceObservers.append(center.addObserver(forName: name, object: nil, queue: .main) { [weak self] note in
+                guard let self,
+                      let app = note.userInfo?[NSWorkspace.applicationUserInfoKey] as? NSRunningApplication,
+                      Self.isClock(app) else { return }
+                self.lastClockActivity = Date()
+                if self.busy {
+                    self.hurryNext = true
+                    self.scheduleNext()
+                } else {
+                    self.forceDeepNext = true
+                    self.refresh()
+                }
+            })
+        }
+    }
+
+    private static func isClock(_ app: NSRunningApplication) -> Bool {
+        let id = (app.bundleIdentifier ?? "").lowercased()
+        return id == "com.apple.clock" || id == "com.apple.mobiletimer" ||
+            app.bundleURL?.lastPathComponent == "Clock.app"
     }
 
     private var diagnoseNext = false
@@ -207,17 +277,23 @@ final class ClockTimerBridge {
         let logging = diagnoseNext
         let deep = logging || forceDeepNext
         forceDeepNext = false
+        // While Clock is in use or a timer is on screen, a complete scan
+        // every 3 s instead of every 24 s: that is what finds a new timer
+        // and confirms a cancel made in Clock itself.
+        let deepInterval: TimeInterval = (clockIsHot || lastConfirmed != nil) ? 3 : 24
         worker.async { [weak self] in
             guard let self else { return }
-            let result = self.captureTimer(detailedScan: deep)
+            let result = self.captureTimer(detailedScan: deep, deepInterval: deepInterval)
             let reason = self.scanReason
             let details = self.scanDetails
             let playbackEvidence = self.lastScanHasPlaybackEvidence
             let confirmedNoTimer = self.lastScanConfirmedNoTimer
             let readableClock = self.lastScanClockReadable
+            let setupVisible = self.lastScanTimerSetupVisible
             DispatchQueue.main.async { [weak self] in
                 guard let self else { return }
                 self.busy = false
+                defer { self.scheduleNext() }
                 if logging {
                     self.diagnoseNext = false
                     self.writeDiagnostics(status: reason, details: details,
@@ -290,11 +366,30 @@ final class ClockTimerBridge {
                 // observation. Never let an old, stopped timer hang forever.
                 if confirmedNoTimer {
                     self.reliableNoTimerReads += 1
+                    if self.firstNoTimerRead == nil { self.firstNoTimerRead = Date() }
                 } else {
                     self.reliableNoTimerReads = 0
+                    self.firstNoTimerRead = nil
                 }
-                if result == nil && self.reliableNoTimerReads >= 2 &&
+                // Clock shows its timer set-up screen (Start button, no
+                // Pause/Resume) — the timer was cancelled or finished in
+                // Clock itself. Two such reads (~1 s apart) are enough.
+                if result == nil && setupVisible && readableClock {
+                    self.setupVisibleReads += 1
+                    if self.lastConfirmed != nil && self.setupVisibleReads < 2 { self.hurryNext = true }
+                } else {
+                    self.setupVisibleReads = 0
+                }
+                // Otherwise a readable Clock without any countdown may simply
+                // be another tab (World Clock, Alarms), so ask for two full
+                // scans at least 20 s apart before giving up on the timer.
+                let longAbsence = self.reliableNoTimerReads >= 2 &&
+                    Date().timeIntervalSince(self.firstNoTimerRead ?? Date()) >= 20
+                if result == nil && (self.setupVisibleReads >= 2 || longAbsence) &&
                    self.pendingCommand == nil {
+                    self.setupVisibleReads = 0
+                    self.reliableNoTimerReads = 0
+                    self.firstNoTimerRead = nil
                     self.lastConfirmed = nil
                     self.misses = 0
                     self.lastDiagnostic = "Часы: активный таймер не обнаружен"
@@ -304,6 +399,7 @@ final class ClockTimerBridge {
                 }
                 if let result {
                     self.reliableNoTimerReads = 0
+                    self.firstNoTimerRead = nil
                     self.misses = 0
                     self.lastConfirmed = (result, Date())
                     self.lastDiagnostic = commandStatus ?? ("Часы: найден таймер · " +
@@ -311,6 +407,11 @@ final class ClockTimerBridge {
                     self.onSnapshot?(result)
                 } else {
                     self.misses += 1
+                    if self.clockIsHot && reason.hasPrefix("отсчёт не подтверждён") && self.lastConfirmed == nil {
+                        // A time value is visible but not yet proven to tick:
+                        // look again in a moment instead of after a full cycle.
+                        self.hurryNext = true
+                    }
                     self.lastDiagnostic = commandStatus ?? "Часы: " + reason
                     // Missing AX data is not evidence of pause or cancellation.
                     // Preserve only the last actually observed timer state.
@@ -423,10 +524,11 @@ final class ClockTimerBridge {
         return nodes + derived
     }
 
-    private func captureTimer(detailedScan: Bool) -> ObservedClockTimer? {
+    private func captureTimer(detailedScan: Bool, deepInterval: TimeInterval = 24) -> ObservedClockTimer? {
         lastScanHasPlaybackEvidence = false
         lastScanConfirmedNoTimer = false
         lastScanClockReadable = false
+        lastScanTimerSetupVisible = false
         let basicTrust = AXIsProcessTrusted()
         let optionKey = kAXTrustedCheckOptionPrompt.takeUnretainedValue() as String
         let refreshedTrust = AXIsProcessTrustedWithOptions([optionKey: false] as CFDictionary)
@@ -449,7 +551,7 @@ final class ClockTimerBridge {
         // Keep periodic deep scans for automatic discovery, but use a small
         // quick scan in between. Manual Check always gets a complete scan.
         let deepScan = detailedScan ||
-            Date().timeIntervalSince(lastDeepAutoScan) >= 24
+            Date().timeIntervalSince(lastDeepAutoScan) >= deepInterval
         if deepScan { lastDeepAutoScan = Date() }
         let nodeLimit = deepScan ? 300 : 125
         let depthLimit = deepScan ? 12 : 9
@@ -472,6 +574,8 @@ final class ClockTimerBridge {
             }
             let enriched = withDigitSiblingCandidates(nodes)
             lastScanClockReadable = roots.count > 0 && nodes.count >= 4
+            lastScanTimerSetupVisible = ClockTimerControlPolicy.showsTimerSetup(
+                labels: nodes.map(\.label))
             let duration = Int(Date().timeIntervalSince(scanStarted) * 1000)
             scanDetails = "Clock pid=\(clock.processIdentifier), windows=\(windows.count), roots=\(roots.count), nodes=\(nodes.count), digitGroups=\(enriched.count - nodes.count), AXscan=\(duration)ms, detailed=\(detailedScan), deep=\(deepScan)"
             if let found = extractTimer(from: enriched, source: "Clock", allowUnlabelled: true) {

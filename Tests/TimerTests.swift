@@ -143,6 +143,10 @@ import Foundation
         precondition(!ClockTimerControlPolicy.confirmsCancel(missingChecks: 1, reliableMissing: true))
         precondition(!ClockTimerControlPolicy.confirmsCancel(missingChecks: 3, reliableMissing: false))
         precondition(ClockTimerControlPolicy.confirmsCancel(missingChecks: 2, reliableMissing: true))
+        precondition(ClockTimerControlPolicy.showsTimerSetup(labels: ["Таймеры", "05:00", "Старт"]))
+        precondition(ClockTimerControlPolicy.showsTimerSetup(labels: ["Timers", "Start"]))
+        precondition(!ClockTimerControlPolicy.showsTimerSetup(labels: ["Старт", "Пауза", "04:12"]))
+        precondition(!ClockTimerControlPolicy.showsTimerSetup(labels: ["Мировые часы", "Москва"]))
         print("PASS timer parsing/routing/geometry/continuity/control confirmation")
     }
 }

@@ -42,6 +42,21 @@ enum ClockTimerControlPolicy {
         hasEvidence && observedPaused == expectedPaused
     }
 
+    // 4.3.1 — Clock's timer set-up screen: a Start button and no
+    // Pause/Resume control anywhere. Seen right after a cancel (or when a
+    // timer finished) in Clock itself; other tabs have no Start button.
+    static func showsTimerSetup(labels: [String]) -> Bool {
+        var start = false
+        for label in labels {
+            let text = label.lowercased().trimmingCharacters(in: .whitespacesAndNewlines)
+            guard !text.isEmpty, text.count <= 24 else { continue }
+            let action = button(for: text)
+            if action == .pause || action == .resume { return false }
+            if ["start", "старт", "начать", "запустить"].contains(text) { start = true }
+        }
+        return start
+    }
+
     static func confirmsCancel(missingChecks: Int, reliableMissing: Bool) -> Bool {
         reliableMissing && missingChecks >= 2
     }
