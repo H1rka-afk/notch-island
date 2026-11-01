@@ -470,6 +470,15 @@ final class IslandState: ObservableObject {
     // another kind of banner. A repeated notice of the same kind (volume
     // steps, CPU readings) updates the visible banner in place and simply
     // extends its stay instead of replaying the entrance.
+    // 4.3.2 — whether a banner would actually appear right now (the same
+    // conditions presentNotice checks). Reminders wait for a free island
+    // instead of being dropped silently.
+    var canPresentNoticeNow: Bool {
+        !isSessionLocked && !unlockTransitionActive && !cinemaMode &&
+            !isExpanded && !canvasExpanded && scheduledEvent == nil &&
+            (event == nil || event == .notice)
+    }
+
     func presentNotice(_ next: IslandNotice) {
         guard !isSessionLocked, !unlockTransitionActive, !cinemaMode else { return }
         if event == .notice, notice?.kind == next.kind, eventRevealed {
@@ -2277,6 +2286,7 @@ final class IslandAppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         eyeBreak.canRemindNow = { [weak self] in
             guard let self else { return false }
             return !self.isScreenLocked && !self.state.isSessionLocked
+                && self.state.canPresentNoticeNow
                 && !PrivacyMonitor.cameraInUse() && !PrivacyMonitor.microphoneInUse()
         }
         eyeBreak.onRemind = { [weak self] in self?.runEyeBreak() }

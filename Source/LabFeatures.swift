@@ -190,9 +190,52 @@ final class PrivacyMonitor {
         }
     }
 
+    // 4.3.2 — asks which *processes* are recording, not whether the input
+    // device is busy. AirPods and other headsets are one device for input
+    // and output, so plain music playback kept them "running" and looked
+    // like a call: the 20-20-20 reminder then never came.
     static func microphoneInUse() -> Bool {
+        if #available(macOS 14.4, *), let recording = processesRecordingInput() {
+            return recording
+        }
         guard let device = SystemVolume.defaultInputDeviceID() else { return false }
+        if device == SystemVolume.defaultOutputDeviceID() { return false }
         return SystemVolume.isRunningSomewhere(device)
+    }
+
+    @available(macOS 14.4, *)
+    private static func processesRecordingInput() -> Bool? {
+        let system = AudioObjectID(kAudioObjectSystemObject)
+        var address = AudioObjectPropertyAddress(
+            mSelector: kAudioHardwarePropertyProcessObjectList,
+            mScope: kAudioObjectPropertyScopeGlobal,
+            mElement: kAudioObjectPropertyElementMain)
+        var size = UInt32(0)
+        guard AudioObjectGetPropertyDataSize(system, &address, 0, nil, &size) == noErr else { return nil }
+        let count = Int(size) / MemoryLayout<AudioObjectID>.size
+        guard count > 0 else { return false }
+        var processes = [AudioObjectID](repeating: 0, count: count)
+        guard AudioObjectGetPropertyData(system, &address, 0, nil, &size, &processes) == noErr else { return nil }
+        let me = getpid()
+        for process in processes {
+            var pidAddress = AudioObjectPropertyAddress(
+                mSelector: kAudioProcessPropertyPID,
+                mScope: kAudioObjectPropertyScopeGlobal,
+                mElement: kAudioObjectPropertyElementMain)
+            var pid = pid_t(0)
+            var pidSize = UInt32(MemoryLayout<pid_t>.size)
+            if AudioObjectGetPropertyData(process, &pidAddress, 0, nil, &pidSize, &pid) == noErr,
+               pid == me { continue }
+            var inputAddress = AudioObjectPropertyAddress(
+                mSelector: kAudioProcessPropertyIsRunningInput,
+                mScope: kAudioObjectPropertyScopeGlobal,
+                mElement: kAudioObjectPropertyElementMain)
+            var running = UInt32(0)
+            var runningSize = UInt32(MemoryLayout<UInt32>.size)
+            if AudioObjectGetPropertyData(process, &inputAddress, 0, nil, &runningSize, &running) == noErr,
+               running != 0 { return true }
+        }
+        return false
     }
 
     static func cameraInUse() -> Bool {
