@@ -18,6 +18,7 @@ enum LabFeature: String, CaseIterable {
     case clipboard, screenshots, shelf, calendar, reminders, hotkey
     case airdrop     // 3.9.4
     case eyes        // 3.17.0: the 20-20-20 rule
+    case layout      // 4.3.0: fix text typed in the wrong layout
 
     var key: String { "lab.\(rawValue).v330" }
 
@@ -407,10 +408,15 @@ final class ClipboardWatch {
 
     func stop() { timer?.invalidate(); timer = nil }
 
+    // 4.3.0: Notch Island itself uses the clipboard for a moment (layout fix).
+    private var pausedUntil = Date.distantPast
+    func pause(for seconds: TimeInterval) { pausedUntil = Date().addingTimeInterval(seconds) }
+
     private func poll() {
         let board = NSPasteboard.general
         guard board.changeCount != lastChange else { return }
         lastChange = board.changeCount
+        if Date() < pausedUntil { return }
         if ignoreNextChange { ignoreNextChange = false; return }
         let types = board.types?.map(\.rawValue) ?? []
         // Password managers mark secrets; never show or remember them.
@@ -636,19 +642,33 @@ final class IslandHotKey {
     var onPress: (() -> Void)?
     private var reference: EventHotKeyRef?
     private var handler: EventHandlerRef?
+    // 4.3.0: several hot keys — each handler answers only its own id.
+    private let keyCode: Int
+    private let modifiers: Int
+    let hotKeyID: UInt32
+
+    init(keyCode: Int = kVK_ANSI_N, modifiers: Int = controlKey | optionKey, id: UInt32 = 1) {
+        self.keyCode = keyCode
+        self.modifiers = modifiers
+        self.hotKeyID = id
+    }
 
     func register() {
         guard reference == nil else { return }
         var spec = EventTypeSpec(eventClass: OSType(kEventClassKeyboard), eventKind: UInt32(kEventHotKeyPressed))
         let context = Unmanaged.passUnretained(self).toOpaque()
-        InstallEventHandler(GetApplicationEventTarget(), { _, _, userData in
-            guard let userData else { return noErr }
+        InstallEventHandler(GetApplicationEventTarget(), { _, event, userData in
+            guard let userData, let event else { return OSStatus(eventNotHandledErr) }
             let hotKey = Unmanaged<IslandHotKey>.fromOpaque(userData).takeUnretainedValue()
+            var pressed = EventHotKeyID()
+            let status = GetEventParameter(event, EventParamName(kEventParamDirectObject), EventParamType(typeEventHotKeyID),
+                                           nil, MemoryLayout<EventHotKeyID>.size, nil, &pressed)
+            guard status == noErr, pressed.id == hotKey.hotKeyID else { return OSStatus(eventNotHandledErr) }
             DispatchQueue.main.async { hotKey.onPress?() }
             return noErr
         }, 1, &spec, context, &handler)
-        let id = EventHotKeyID(signature: OSType(0x4E495348), id: 1) // 'NISH'
-        RegisterEventHotKey(UInt32(kVK_ANSI_N), UInt32(controlKey | optionKey), id,
+        let id = EventHotKeyID(signature: OSType(0x4E495348), id: hotKeyID) // 'NISH'
+        RegisterEventHotKey(UInt32(keyCode), UInt32(modifiers), id,
                             GetApplicationEventTarget(), 0, &reference)
     }
 

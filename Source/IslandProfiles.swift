@@ -18,7 +18,7 @@ enum IslandProfiles {
     // Switches managed by profiles. Lab features use their raw names.
     static let labKeys = ["volume", "output", "privacy", "vpn", "network", "thermal", "disks",
                           "clipboard", "screenshots", "shelf", "calendar", "reminders", "hotkey",
-                          "airdrop", "eyes"]
+                          "airdrop", "eyes", "layout"]
     static let islandKeys = ["lockIsland", "focus", "gestures", "coverGlow",
                              "hideFullscreen", "hideSource",
                              // 3.11.0: lock-screen player, widgets under the

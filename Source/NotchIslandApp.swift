@@ -57,7 +57,7 @@ struct IslandNotice: Equatable {
     enum Kind: String {
         case volume, output, microphone, camera, vpn, network, thermal, cpu
         case disk, clipboard, screenshot, meeting, reminder, sleepTimer, shelf
-        case airdrop, eyeBreak
+        case airdrop, eyeBreak, layoutFix
     }
     enum Tap: Equatable {
         case none
@@ -1679,6 +1679,9 @@ final class IslandAppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private let screenshotWatch = ScreenshotWatch()
     private let agenda = AgendaWatch()
     private let hotKey = IslandHotKey()
+    // 4.3.0: ⌃⌥L — fix the layout of the selected text / last word.
+    private let layoutHotKey = IslandHotKey(keyCode: kVK_ANSI_L, modifiers: controlKey | optionKey, id: 2)
+    private let layoutFixer = LayoutFixer()
     private let shelf = ShelfModel()
     private let airDropWatch = AirDropReceiveWatch()
     private let eyeBreak = EyeBreakWatch()
@@ -2300,6 +2303,19 @@ final class IslandAppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
                 text: "Пора", tap: .openApp("com.apple.reminders"), duration: 6,
                 accessibility: "Напоминание: \(title)"))
         }
+        layoutHotKey.onPress = { [weak self] in self?.layoutFixer.run() }
+        layoutFixer.pauseClipboardWatch = { [weak self] seconds in self?.clipboardWatch.pause(for: seconds) }
+        layoutFixer.onResult = { [weak self] toRussian in
+            self?.state.presentNotice(IslandNotice(
+                kind: .layoutFix, symbol: "keyboard", tint: Color(red: 0.35, green: 0.6, blue: 1.0),
+                text: toRussian ? "→ RU" : "→ EN", duration: 1.4,
+                accessibility: toRussian ? "Текст переведён на русскую раскладку" : "Текст переведён на английскую раскладку"))
+        }
+        layoutFixer.onNothing = { [weak self] in
+            self?.state.presentNotice(IslandNotice(
+                kind: .layoutFix, symbol: "keyboard", tint: .gray, text: "Нечего", duration: 1.2,
+                accessibility: "Нет выделенного текста для исправления раскладки"))
+        }
         hotKey.onPress = { [weak self] in
             guard let self else { return }
             if self.state.isExpanded { self.state.collapsePlayer(force: true) } else { self.state.expandPlayer() }
@@ -2369,6 +2385,7 @@ final class IslandAppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         LabFeature.airdrop.isOn ? airDropWatch.start() : airDropWatch.stop()
         LabFeature.eyes.isOn ? eyeBreak.start() : eyeBreak.stop()
         LabFeature.hotkey.isOn ? hotKey.register() : hotKey.unregister()
+        LabFeature.layout.isOn ? layoutHotKey.register() : layoutHotKey.unregister()
         agenda.calendarEnabled = LabFeature.calendar.isOn
         agenda.remindersEnabled = LabFeature.reminders.isOn
         (agenda.calendarEnabled || agenda.remindersEnabled) ? agenda.start() : agenda.stop()
@@ -2379,7 +2396,7 @@ final class IslandAppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private func stopLaboratory() {
         outputMonitor.stop(); privacyMonitor.stop(); networkWatch.stopVPN(); networkWatch.stopInternet()
         loadMonitor.stop(); diskWatch.stop(); clipboardWatch.stop(); screenshotWatch.stop(); airDropWatch.stop(); eyeBreak.stop()
-        agenda.stop(); hotKey.unregister(); sleepTimer?.invalidate()
+        agenda.stop(); hotKey.unregister(); layoutHotKey.unregister(); sleepTimer?.invalidate()
     }
 
     private func setLabFeature(_ raw: String, _ on: Bool) {

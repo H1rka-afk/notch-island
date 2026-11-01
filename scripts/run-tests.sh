@@ -30,4 +30,5 @@ run_test CoverPaletteTests "$SRC/CoverPaletteMath.swift" Tests/CoverPaletteTests
 run_test EyeBreakTests "$SRC/EyeBreakPolicy.swift" Tests/EyeBreakTests.swift
 run_test WidgetFormatTests "$SRC/WidgetFormat.swift" Tests/WidgetFormatTests.swift
 run_test WallpaperStoreTests "$SRC/WallpaperStore.swift" "$SRC/AirDropFormat.swift" Tests/WallpaperStoreTests.swift
+run_test LayoutConverterTests "$SRC/LayoutConverter.swift" Tests/LayoutConverterTests.swift
 exit $FAILED
