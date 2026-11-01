@@ -1,0 +1,96 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>CFBundleDevelopmentRegion</key>
+	<string>ru</string>
+	<key>CFBundleDisplayName</key>
+	<string>Notch Island</string>
+	<key>CFBundleExecutable</key>
+	<string>NotchIsland</string>
+	<key>CFBundleIdentifier</key>
+	<string>app.notchisland.desktop</string>
+	<key>CFBundleInfoDictionaryVersion</key>
+	<string>6.0</string>
+	<key>CFBundleName</key>
+	<string>Notch Island</string>
+	<key>CFBundlePackageType</key>
+	<string>APPL</string>
+	<key>CFBundleShortVersionString</key>
+	<string>4.0.0</string>
+	<key>CFBundleVersion</key>
+	<string>300</string>
+	<key>CFBundleURLTypes</key>
+	<array>
+		<dict>
+			<key>CFBundleURLName</key>
+			<string>Notch Island Spotify OAuth callback</string>
+			<key>CFBundleURLSchemes</key>
+			<array>
+				<string>notchisland</string>
+			</array>
+		</dict>
+	</array>
+	<key>LSMinimumSystemVersion</key>
+	<string>14.0</string>
+	<key>LSUIElement</key>
+	<false/>
+	<key>NSAppleEventsUsageDescription</key>
+	<string>Notch Island управляет воспроизведением и изменяет избранное через интерфейс Apple Music и Яндекс Музыки. Для Яндекс Музыки в браузере доступ через Apple Events только после разрешения. Для отдельного приложения требуется Универсальный доступ; OAuth-токен не нужен.</string>
+	<key>NSAudioCaptureUsageDescription</key>
+	<string>Notch Island анализирует только громкость и частотные полосы системного аудио для живой спектрограммы. Запись экрана не выполняется, звук не сохраняется и не отправляется.</string>
+	<key>NSCalendarsFullAccessUsageDescription</key>
+	<string>Notch Island показывает в островке ближайшую встречу за 10 минут до начала. События только читаются и никуда не отправляются.</string>
+	<key>NSCalendarsUsageDescription</key>
+	<string>Notch Island показывает в островке ближайшую встречу за 10 минут до начала.</string>
+	<key>NSRemindersFullAccessUsageDescription</key>
+	<string>Notch Island показывает в островке напоминание, когда подошёл его срок. Напоминания только читаются.</string>
+	<key>NSRemindersUsageDescription</key>
+	<string>Notch Island показывает в островке напоминание, когда подошёл его срок.</string>
+	<key>NSLocationUsageDescription</key>
+	<string>Notch Island определяет город для виджета погоды на экране блокировки. Координаты не сохраняются; их получают только сервис погоды Open-Meteo и геокодер Apple (для названия города).</string>
+	<key>NSLocationWhenInUseUsageDescription</key>
+	<string>Notch Island определяет город для виджета погоды на экране блокировки. Координаты не сохраняются; их получают только сервис погоды Open-Meteo и геокодер Apple (для названия города).</string>
+	<key>NSBluetoothAlwaysUsageDescription</key>
+	<string>Notch Island показывает подключение AirPods и доступный системе заряд наушников и кейса; не сканирует устройства поблизости.</string>
+	<key>NSHighResolutionCapable</key>
+	<true/>
+	<key>UTExportedTypeDeclarations</key>
+	<array>
+		<dict>
+			<key>UTTypeIdentifier</key>
+			<string>app.notchisland.profile</string>
+			<key>UTTypeDescription</key>
+			<string>Профиль Notch Island</string>
+			<key>UTTypeConformsTo</key>
+			<array>
+				<string>public.json</string>
+			</array>
+			<key>UTTypeTagSpecification</key>
+			<dict>
+				<key>public.filename-extension</key>
+				<array>
+					<string>notchprofile</string>
+				</array>
+			</dict>
+		</dict>
+	</array>
+	<key>CFBundleDocumentTypes</key>
+	<array>
+		<dict>
+			<key>CFBundleTypeName</key>
+			<string>Профиль Notch Island</string>
+			<key>CFBundleTypeRole</key>
+			<string>Viewer</string>
+			<key>LSHandlerRank</key>
+			<string>Owner</string>
+			<key>LSItemContentTypes</key>
+			<array>
+				<string>app.notchisland.profile</string>
+			</array>
+		</dict>
+	</array>
+	<key>CFBundleIconFile</key>
+	<string>NotchIsland</string>
+</dict>
+</plist>

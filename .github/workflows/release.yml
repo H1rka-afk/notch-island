@@ -1,0 +1,62 @@
+name: Build and release
+
+# Every push to main: if Source/Info.plist has a version that is not released
+# yet, build a universal app on a GitHub Mac, run the tests and publish
+# Notch-Island-v<version>.zip as a release. Notch Island picks it up itself.
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: release
+  cancel-in-progress: false
+
+jobs:
+  release:
+    runs-on: macos-26
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Version
+        id: version
+        run: echo "version=$(/usr/libexec/PlistBuddy -c 'Print CFBundleShortVersionString' Source/Info.plist)" >> "$GITHUB_OUTPUT"
+
+      - name: Already released?
+        id: exists
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          if gh release view "v${{ steps.version.outputs.version }}" >/dev/null 2>&1; then
+            echo "skip=1" >> "$GITHUB_OUTPUT"
+            echo "v${{ steps.version.outputs.version }} is already released"
+          fi
+
+      - name: Newest Xcode
+        if: steps.exists.outputs.skip != '1'
+        run: |
+          ls -d /Applications/Xcode*.app || true
+          XC="$(ls -d /Applications/Xcode_*.app 2>/dev/null | sort -V | tail -1)"
+          if [ -n "$XC" ]; then sudo xcode-select -s "$XC"; fi
+          xcodebuild -version
+          xcrun --sdk macosx --show-sdk-version
+
+      - name: Tests
+        if: steps.exists.outputs.skip != '1'
+        run: bash scripts/run-tests.sh
+
+      - name: Build
+        if: steps.exists.outputs.skip != '1'
+        run: bash scripts/ci-build.sh
+
+      - name: Publish release
+        if: steps.exists.outputs.skip != '1'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          V="${{ steps.version.outputs.version }}"
+          gh release create "v$V" "build/Notch-Island-v$V.zip" \
+            --title "Notch Island $V" --notes-file CHANGES.txt
