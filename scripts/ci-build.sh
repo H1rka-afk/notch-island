@@ -22,7 +22,7 @@ printf 'APPL????' > "$APP/Contents/PkgInfo"
 # The exact sources and frameworks of the installer.
 FILES=()
 while IFS= read -r name; do FILES+=("$SRC/$name"); done < <(
-  grep -o '"\$SRC/[A-Za-z]*\.swift"' "$INSTALLER" | sed 's/"\$SRC\///; s/"//')
+  grep -o '"\$SRC/[A-Za-z0-9]*\.swift"' "$INSTALLER" | sed 's/"\$SRC\///; s/"//')
 FRAMEWORKS=()
 while IFS= read -r fw; do FRAMEWORKS+=(-framework "$fw"); done < <(
   grep -o -- '-framework [A-Za-z]*' "$INSTALLER" | awk '{print $2}' | awk '!seen[$0]++')
