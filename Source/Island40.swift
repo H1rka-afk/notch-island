@@ -197,32 +197,64 @@ struct IdleWingsView: View {
 
 // The current output (AirPods, speakers…); click → choose another.
 struct OutputDeviceButton: View {
-    var size: CGFloat = 16
+    // 4.8.4: a plain button drawn by us (the size really follows `size`;
+    // a SwiftUI Menu ignored it) that opens the list as a menu.
+    var size: CGFloat = 20
     @StateObject private var route = LockOutputRoute()
     @StateObject private var list = OutputDeviceList()
 
     var body: some View {
-        Menu {
-            ForEach(list.devices) { device in
-                Button {
-                    SystemVolume.setDefaultOutput(device.id)
-                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) { route.refresh() }
-                } label: {
-                    Label(device.name, systemImage: device.name == route.name ? "checkmark" : device.symbol)
-                }
+        Button {
+            list.refresh()
+            OutputMenu.show(devices: list.devices, current: route.name) { device in
+                SystemVolume.setDefaultOutput(device.id)
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) { route.refresh() }
             }
-            if list.devices.isEmpty { Text("Нет устройств вывода") }
         } label: {
             Image(systemName: route.symbol)
-                .font(.system(size: size, weight: .medium))
-                .foregroundStyle(.white.opacity(0.85))
+                .font(.system(size: size, weight: .semibold))
+                .foregroundStyle(.white.opacity(0.84))
+                .frame(width: 30, height: 43)
+                .contentShape(Rectangle())
         }
-        .menuStyle(.borderlessButton)
-        .menuIndicator(.hidden)
-        .fixedSize()
+        .buttonStyle(DynamicIslandButtonStyle())
         .help("Звук: \(route.name)")
+        .accessibilityLabel("Звук: \(route.name). Выбрать устройство")
         .onAppear { route.refresh(); list.refresh() }
-        .simultaneousGesture(TapGesture().onEnded { list.refresh() })
+    }
+}
+
+// Shows the outputs as a native menu under the pointer.
+enum OutputMenu {
+    private final class Target: NSObject {
+        let pick: (AudioOutputDevice) -> Void
+        let devices: [AudioOutputDevice]
+        init(devices: [AudioOutputDevice], pick: @escaping (AudioOutputDevice) -> Void) {
+            self.devices = devices; self.pick = pick
+        }
+        @objc func choose(_ item: NSMenuItem) {
+            guard devices.indices.contains(item.tag) else { return }
+            pick(devices[item.tag])
+        }
+    }
+    private static var target: Target?
+
+    static func show(devices: [AudioOutputDevice], current: String, pick: @escaping (AudioOutputDevice) -> Void) {
+        let menu = NSMenu()
+        let target = Target(devices: devices, pick: pick)
+        Self.target = target
+        if devices.isEmpty {
+            menu.addItem(NSMenuItem(title: "Нет устройств вывода", action: nil, keyEquivalent: ""))
+        }
+        for (index, device) in devices.enumerated() {
+            let item = NSMenuItem(title: device.name, action: #selector(Target.choose(_:)), keyEquivalent: "")
+            item.target = target
+            item.tag = index
+            item.image = NSImage(systemSymbolName: device.symbol, accessibilityDescription: nil)
+            item.state = device.name == current ? .on : .off
+            menu.addItem(item)
+        }
+        menu.popUp(positioning: nil, at: NSEvent.mouseLocation, in: nil)
     }
 }
 

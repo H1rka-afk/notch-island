@@ -77,6 +77,15 @@ enum WaveLook {
     static let colorKey = "waveColorV483"
     static let blurKey = "waveBlurV483"
     static let sizeKey = "waveSizeV483"
+    // 4.8.4: frames per second of the waveform.
+    static let fpsKey = "waveFPSV484"
+    static let fpsChoices = [15, 24, 30, 60, 120]
+    static var fps: Int {
+        let v = UserDefaults.standard.integer(forKey: fpsKey)
+        return fpsChoices.contains(v) ? v : 30
+    }
+    static let defaultBlur = 0.4
+    static let defaultSize = 1.0
 
     static let styles: [(id: String, title: String)] = [
         ("artwork", "Обложка"), ("tint", "Цвет обложки"), ("custom", "Свой цвет")
@@ -96,5 +105,22 @@ enum WaveLook {
 
     static func encodeColor(_ c: PaletteRGB) -> String {
         String(format: "%.4f,%.4f,%.4f", min(1, max(0, c.r)), min(1, max(0, c.g)), min(1, max(0, c.b)))
+    }
+}
+
+// 4.8.4 — sizes of the island chosen in Settings.
+enum IslandLook {
+    static let expandedKey = "islandExpandedScaleV484"
+    static let compactArtworkKey = "islandCompactArtworkScaleV484"
+    static let expandedRange = 0.85...1.15
+    static let compactArtworkRange = 0.75...1.25
+
+    static var expandedScale: CGFloat {
+        let v = (UserDefaults.standard.object(forKey: expandedKey) as? Double) ?? 1
+        return CGFloat(min(expandedRange.upperBound, max(expandedRange.lowerBound, v)))
+    }
+    static var compactArtworkScale: CGFloat {
+        let v = (UserDefaults.standard.object(forKey: compactArtworkKey) as? Double) ?? 1
+        return CGFloat(min(compactArtworkRange.upperBound, max(compactArtworkRange.lowerBound, v)))
     }
 }

@@ -1273,12 +1273,14 @@ final class IslandState: ObservableObject {
     var compactDisplayHeight: CGFloat { track != nil ? mediaCompactHeight : notchHeight }
     // 4.8.0: about 10 % smaller; the contents are drawn at 92 % (IslandView)
     // and the open shape has 13 pt concave «drop» curves on each side.
-    var expandedWidth: CGFloat { max(376, notchWidth + 166) }
+    // 4.8.4: times the size chosen in Settings (85–115 %).
+    var expandedWidth: CGFloat { max(376, notchWidth + 166) * IslandLook.expandedScale }
     var expandedHeight: CGFloat {
-        if track == nil { return max(146, notchHeight + 112) }
+        let k = IslandLook.expandedScale
+        if track == nil { return max(146, notchHeight + 112) * k }
         // 4.0.0: the new player is taller (bigger cover, volume row).
-        if ExpandedPlayerStyle.isNew { return max(248, notchHeight + 212) }
-        return max(196, notchHeight + 160)
+        if ExpandedPlayerStyle.isNew { return max(248, notchHeight + 212) * k }
+        return max(196, notchHeight + 160) * k
     }
     // Charging is deliberately compact. Keep the unplugged label roomy,
     // because "От батареи" is significantly longer than "Зарядка".

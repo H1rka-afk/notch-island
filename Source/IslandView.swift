@@ -231,7 +231,7 @@ struct IslandView: View {
                 }
                 .padding(.top, state.notchHeight + 9 + roof)
                 // 4.8.0: a smaller card — the contents are drawn at 92 %.
-                .scaleEffect(0.92, anchor: .top)
+                .scaleEffect(0.92 * IslandLook.expandedScale, anchor: .top)
                 .opacity(expanded ? 1 : 0)
                 .blur(radius: expanded ? 0 : 10)
                 .scaleEffect(expanded ? 1 : 0.88, anchor: .top)
@@ -302,7 +302,8 @@ struct IslandView: View {
     private func compactContent() -> some View {
         HStack(spacing: 0) {
             if let song = state.track {
-                albumArt(song, size: 22)
+                // 4.8.4: size chosen in Settings (75–125 %).
+                albumArt(song, size: 22 * IslandLook.compactArtworkScale)
                     .offset(x: state.swipeNudge * 0.5)
                     .frame(width: state.leftWing, height: state.compactDisplayHeight)
             }
@@ -411,8 +412,8 @@ struct IslandView: View {
                 Spacer(minLength: 9)
                 // 4.8.2: «where the sound goes», as in the new player.
                 // 4.8.3: larger in the classic player.
-                OutputDeviceButton(size: 22)
-                    .frame(width: 40, height: 43)
+                OutputDeviceButton(size: 20)
+                    .frame(width: 30, height: 43)
             }
             .frame(maxWidth: .infinity)
 
@@ -971,7 +972,7 @@ private struct SmoothProgressView: View {
 
 // Responsive press + spring-back like the supplied iPhone reference.
 // The hit region stays constant, so the island never jolts when tapped.
-private struct DynamicIslandButtonStyle: ButtonStyle {
+struct DynamicIslandButtonStyle: ButtonStyle {
     func makeBody(configuration: Configuration) -> some View {
         configuration.label
             .foregroundStyle(configuration.isPressed ? Color.white.opacity(0.73) : Color.white)
@@ -1014,7 +1015,7 @@ private struct AudioReactiveBars: View {
     }
 
     var body: some View {
-        TimelineView(.animation(minimumInterval: EnergySaver.isActive ? 1.0 / 15.0 : 1.0 / 30.0,
+        TimelineView(.animation(minimumInterval: 1.0 / Double(EnergySaver.isActive ? min(15, WaveLook.fps) : WaveLook.fps),
                                 paused: !animating)) { context in
             let time = context.date.timeIntervalSinceReferenceDate
             let heights = PerformanceMonitor.measure("wave") {

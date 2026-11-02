@@ -195,6 +195,9 @@ struct NotchSettingsWindowView: View {
     @AppStorage(WaveLook.colorKey) private var waveColor = ""
     @AppStorage(WaveLook.blurKey) private var waveBlur = 0.4
     @AppStorage(WaveLook.sizeKey) private var waveSize = 1.0
+    @AppStorage(WaveLook.fpsKey) private var waveFPS = 30
+    @AppStorage(IslandLook.expandedKey) private var expandedScale = 1.0
+    @AppStorage(IslandLook.compactArtworkKey) private var compactArtworkScale = 1.0
     @AppStorage("githubUpdatesV400") private var githubUpdates = true
     // 4.0.0
     @AppStorage(ExpandedPlayerStyle.key) private var playerStyle = "new"
@@ -1838,6 +1841,16 @@ struct NotchSettingsWindowView: View {
             group("Режим кинотеатра", footer: "Видеоплеер, браузер или приложение с музыкой открыто на весь экран — островок полностью гаснет: ни плеера, ни баннеров, ни полки. Когда выходишь из полноэкранного режима, всё возвращается.") {
                 toggleRow("Режим кинотеатра", subtitle: "Ничего не отвлекает во время фильма", isOn: $cinemaEnabled)
             }
+            // 4.8.4: sizes of the island.
+            group("Размеры островка", footer: "Раскрытый островок — плеер и таймер, когда наводишь курсор. Новый размер применяется при следующем раскрытии.") {
+                resettableSlider("Раскрытый островок", value: "\(Int((expandedScale * 100).rounded()))%",
+                                 binding: $expandedScale, range: IslandLook.expandedRange, step: 0.05,
+                                 defaultValue: 1)
+                rowDivider
+                resettableSlider("Обложка в закрытом", value: "\(Int((compactArtworkScale * 100).rounded()))%",
+                                 binding: $compactArtworkScale, range: IslandLook.compactArtworkRange, step: 0.05,
+                                 defaultValue: 1)
+            }
             group("Физическая чёлка",
                   footer: island.autoNotchSize
                     ? "Ширина берётся из геометрии дисплея."
@@ -2478,8 +2491,8 @@ struct NotchSettingsWindowView: View {
         .id("search:Вид полос")
         if waveStyle == "artwork" {
             rowDivider
-            sliderRow("Размытие обложки", value: "\(Int((waveBlur * 100).rounded()))%",
-                      binding: $waveBlur, range: 0...1)
+            resettableSlider("Размытие обложки", value: "\(Int((waveBlur * 100).rounded()))%",
+                             binding: $waveBlur, range: 0...1, defaultValue: WaveLook.defaultBlur)
         }
         if waveStyle == "custom" {
             rowDivider
@@ -2489,8 +2502,32 @@ struct NotchSettingsWindowView: View {
                 .padding(.vertical, 10)
         }
         rowDivider
-        sliderRow("Размер спектрограммы", value: "\(Int((waveSize * 100).rounded()))%",
-                  binding: $waveSize, range: 0.7...1.3, step: 0.05)
+        resettableSlider("Размер спектрограммы", value: "\(Int((waveSize * 100).rounded()))%",
+                         binding: $waveSize, range: 0.7...1.3, step: 0.05, defaultValue: WaveLook.defaultSize)
+        rowDivider
+        row("Кадров в секунду", subtitle: waveFPS > 60
+            ? "120 — для экранов ProMotion; больше нагрузка на процессор"
+            : (waveFPS >= 60 ? "Очень плавно, нагрузка выше" : "В энергосбережении — не больше 15")) {
+            SmoothSegmented(selection: $waveFPS,
+                            options: WaveLook.fpsChoices.map { ($0, "\($0)") },
+                            accent: accent(.media))
+                .frame(width: 250)
+        }
+    }
+
+    // 4.8.4: a slider with «Сбросить» next to it.
+    private func resettableSlider(_ title: String, value: String, binding: Binding<Double>,
+                                  range: ClosedRange<Double>, step: Double? = nil,
+                                  defaultValue: Double) -> some View {
+        HStack(spacing: 0) {
+            sliderRow(title, value: value, binding: binding, range: range, step: step)
+            Button("Сбросить") {
+                withAnimation(.easeOut(duration: 0.2)) { binding.wrappedValue = defaultValue }
+            }
+            .controlSize(.small)
+            .disabled(abs(binding.wrappedValue - defaultValue) < 0.001)
+            .padding(.trailing, 16)
+        }
     }
 
     // 4.8.0: ready-made spectrogram profiles as tiles under the sliders.
