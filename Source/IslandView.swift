@@ -5,6 +5,59 @@ import AVFoundation
 import Collaboration
 import OpenDirectory
 
+// 4.8.0 — the island's black shape: straight along the top of the screen
+// (hidden above the bezel by `roof`), rounded at the bottom and, when
+// `flare` > 0, with concave curves where the sides meet the screen edge,
+// like a drop of liquid hanging from it. Both values animate.
+struct IslandSilhouette: Shape {
+    var bottomRadius: CGFloat
+    var flare: CGFloat
+    var roof: CGFloat
+
+    var animatableData: AnimatablePair<CGFloat, CGFloat> {
+        get { AnimatablePair(bottomRadius, flare) }
+        set { bottomRadius = newValue.first; flare = newValue.second }
+    }
+
+    func path(in rect: CGRect) -> Path {
+        let w = rect.width, h = rect.height
+        let f = max(0, min(flare, w / 4, (h - roof) / 3))
+        let r = max(0, min(bottomRadius, (w - 2 * f) / 2, (h - roof - f) / 2))
+        let left = rect.minX + f, right = rect.maxX - f
+        let top = rect.minY + roof
+        var p = Path()
+        p.move(to: CGPoint(x: rect.minX, y: rect.minY))
+        p.addLine(to: CGPoint(x: rect.maxX, y: rect.minY))
+        p.addLine(to: CGPoint(x: rect.maxX, y: top))
+        // concave curve from the screen edge into the right side
+        p.addQuadCurve(to: CGPoint(x: right, y: top + f), control: CGPoint(x: right, y: top))
+        p.addLine(to: CGPoint(x: right, y: rect.maxY - r))
+        p.addArc(center: CGPoint(x: right - r, y: rect.maxY - r), radius: r,
+                 startAngle: .degrees(0), endAngle: .degrees(90), clockwise: false)
+        p.addLine(to: CGPoint(x: left + r, y: rect.maxY))
+        p.addArc(center: CGPoint(x: left + r, y: rect.maxY - r), radius: r,
+                 startAngle: .degrees(90), endAngle: .degrees(180), clockwise: false)
+        p.addLine(to: CGPoint(x: left, y: top + f))
+        p.addQuadCurve(to: CGPoint(x: rect.minX, y: top), control: CGPoint(x: left, y: top))
+        p.closeSubpath()
+        return p
+    }
+}
+
+// 4.8.0: blur + scale + opacity for the cover change transition.
+struct ArtworkSwap: ViewModifier {
+    let blur: CGFloat
+    let scale: CGFloat
+    let opacity: Double
+
+    func body(content: Content) -> some View {
+        content
+            .blur(radius: blur)
+            .scaleEffect(scale)
+            .opacity(opacity)
+    }
+}
+
 // 4.5.0: squash-and-stretch of the opening drop.
 struct IslandDropPhase {
     var x: CGFloat = 1
@@ -50,11 +103,12 @@ struct IslandView: View {
         let isCharging = state.event == .charging || state.event == .lowBattery
         let unlockCorner: CGFloat = state.unlockTransitionActive
             ? 13 + 4 * state.unlockSurfaceProgress : 13
-        let shape = UnevenRoundedRectangle(topLeadingRadius: 0,
-                                           bottomLeadingRadius: expanded ? 23 : unlockCorner,
-                                           bottomTrailingRadius: expanded ? 23 : unlockCorner,
-                                           topTrailingRadius: 0,
-                                           style: .continuous)
+        // 4.8.0: like a drop hanging from the screen edge — when open, the
+        // top corners flow into the bezel with soft concave curves instead
+        // of meeting it at a sharp angle.
+        let shape = IslandSilhouette(bottomRadius: expanded ? 26 : unlockCorner,
+                                     flare: expanded ? 13 : 0,
+                                     roof: roof)
 
         ZStack(alignment: .top) {
             // The only background is shared by media, charging, AirPods and
@@ -116,7 +170,10 @@ struct IslandView: View {
                     .padding(.top, roof)
                     .opacity((showCompact ? 1.0 : 0.0) *
                              (state.unlockTransitionActive ? state.unlockMediaOpacity : 1.0))
-                    .scaleEffect(x: state.compactRevealed ? 1 : 0.97, y: 1)
+                    // 4.8.0: contents arrive and leave like on iPhone — from
+                    // and into a soft blur, slightly smaller.
+                    .blur(radius: showCompact ? 0 : 6)
+                    .scaleEffect(x: state.compactRevealed ? 1 : 0.86, y: showCompact ? 1 : 0.86)
                     .allowsHitTesting(state.event == nil && !expanded)
             }
 
@@ -152,8 +209,8 @@ struct IslandView: View {
                     .frame(width: state.eventWidth, height: state.eventHeight)
                     .padding(.top, roof)
                     .opacity(state.eventContentVisible ? 1 : 0)
-                    .blur(radius: state.eventContentVisible ? 0 : 4)
-                    .scaleEffect(state.eventContentVisible ? 1 : 0.92)
+                    .blur(radius: state.eventContentVisible ? 0 : 8)
+                    .scaleEffect(state.eventContentVisible ? 1 : 0.8)
                     .allowsHitTesting(state.eventRevealed && state.eventContentVisible)
                     .mask(alignment: .top) {
                         shape.frame(width: width, height: height)
@@ -169,13 +226,31 @@ struct IslandView: View {
                     else { expandedTimerContent }
                 }
                 .padding(.top, state.notchHeight + 9 + roof)
+                // 4.8.0: a smaller card — the contents are drawn at 92 %.
+                .scaleEffect(0.92, anchor: .top)
                 .opacity(expanded ? 1 : 0)
+                .blur(radius: expanded ? 0 : 10)
+                .scaleEffect(expanded ? 1 : 0.88, anchor: .top)
                 .allowsHitTesting(expanded)
             }
         }
         .animation(IslandMotion.morph, value: state.isExpanded)
         .animation(IslandMotion.morph, value: state.compactRevealed)
         .animation(IslandMotion.content, value: state.eventReturningToMedia)
+        // 4.8.0: every change of shape (appearing, a banner taking over,
+        // going back) gives the iPhone's tiny liquid squash.
+        .keyframeAnimator(initialValue: IslandDropPhase(), trigger: state.islandMorphPulse) { content, phase in
+            content.scaleEffect(x: phase.x, y: phase.y, anchor: .top)
+        } keyframes: { _ in
+            KeyframeTrack(\.x) {
+                CubicKeyframe(0.975, duration: 0.12)
+                CubicKeyframe(1.0, duration: 0.3)
+            }
+            KeyframeTrack(\.y) {
+                CubicKeyframe(0.93, duration: 0.14)
+                CubicKeyframe(1.0, duration: 0.32)
+            }
+        }
         // 4.5.0: opening is a drop of liquid — the sides lag behind the
         // falling bottom, then the bottom settles with a small rebound.
         // Never larger than the final size, so nothing is clipped.
@@ -465,13 +540,25 @@ struct IslandView: View {
     // the Apple Music/Spotify/Safari application icon.
     @ViewBuilder
     private func albumArt(_ song: PlayingTrack, size: CGFloat) -> some View {
-        Group {
+        // 4.8.0: a new cover arrives with a soft «focus pull» — from a blur
+        // and slightly larger — while the old one fades out underneath.
+        ZStack {
             if let image = state.musicArtwork {
                 Image(nsImage: image).resizable().scaledToFill()
+                    .frame(width: size, height: size)
+                    .id(ObjectIdentifier(image))
+                    .transition(.asymmetric(
+                        insertion: .modifier(active: ArtworkSwap(blur: 8, scale: 1.16, opacity: 0),
+                                             identity: ArtworkSwap(blur: 0, scale: 1, opacity: 1)),
+                        removal: .modifier(active: ArtworkSwap(blur: 4, scale: 0.92, opacity: 0),
+                                           identity: ArtworkSwap(blur: 0, scale: 1, opacity: 1))))
             } else {
                 placeholderArtwork(size: size)
+                    .transition(.opacity)
             }
         }
+        .animation(.spring(response: 0.55, dampingFraction: 0.86),
+                   value: state.musicArtwork.map(ObjectIdentifier.init))
         .frame(width: size, height: size)
         .clipShape(RoundedRectangle(cornerRadius: size < 35 ? 6 : 10, style: .continuous))
         .accessibilityLabel("Обложка трека: \(song.title)")
@@ -1759,6 +1846,14 @@ private struct LockCardSurface: ViewModifier {
     func body(content: Content) -> some View {
         if display.reduceTransparency {
             legacy(content)
+        } else if display.cardStyle != "glass" {
+            // 4.8.0: other looks for the lock-screen card.
+            content
+                .shadow(color: .black.opacity(display.cardStyle == "none" ? 0.6 : 0.3),
+                        radius: display.cardStyle == "none" ? 6 : 2.5, y: 1)
+                .background {
+                    LockCardAltSurface(style: display.cardStyle, tint: tint, scale: scale, cardSize: cardSize)
+                }
         } else {
             content
                 .shadow(color: .black.opacity(0.28 + 0.2 * (1 - display.effectiveGlassTint)), radius: 2.5, y: 1)
@@ -1814,6 +1909,62 @@ private struct LockCardSurface: ViewModifier {
             .overlay(RoundedRectangle(cornerRadius: 24, style: .continuous)
                 .strokeBorder(Color.white.opacity(display.increaseContrast ? 0.42 : 0.10),
                               lineWidth: display.increaseContrast ? 1.3 : 0.8))
+    }
+}
+
+// 4.8.0 — the card without Liquid Glass: frosted, dark, in the cover's
+// colours, or no card at all (just the text with a soft shadow).
+struct LockCardAltSurface: View {
+    var style: String
+    var tint: Color
+    var scale: CGFloat = 1
+    var cardSize: CGSize = LockScreenMediaCard.size
+
+    private var card: CGSize { CGSize(width: cardSize.width * scale, height: cardSize.height * scale) }
+    private var panel: CGSize {
+        let m = LockScreenMediaCard.margin * scale
+        return CGSize(width: card.width + m * 2, height: card.height + m * 2)
+    }
+    private var shape: RoundedRectangle { RoundedRectangle(cornerRadius: 36 * scale, style: .continuous) }
+
+    var body: some View {
+        ZStack {
+            if style != "none" {
+                shape.fill(Color.black.opacity(0.32))
+                    .frame(width: card.width, height: card.height)
+                    .blur(radius: 16)
+                    .offset(y: 9)
+                    .opacity(0.7)
+            }
+            switch style {
+            case "frosted":
+                LockCardBlur(strength: 1, tinted: false)
+                    .clipShape(shape)
+                    .frame(width: card.width, height: card.height)
+                shape.fill(Color.white.opacity(0.10))
+                    .frame(width: card.width, height: card.height)
+                shape.strokeBorder(Color.white.opacity(0.28), lineWidth: 1)
+                    .frame(width: card.width, height: card.height)
+            case "dark":
+                shape.fill(Color(white: 0.07).opacity(0.92))
+                    .frame(width: card.width, height: card.height)
+                shape.strokeBorder(Color.white.opacity(0.10), lineWidth: 1)
+                    .frame(width: card.width, height: card.height)
+            case "cover":
+                shape.fill(LinearGradient(colors: [tint.opacity(0.95), tint.opacity(0.55), Color.black.opacity(0.7)],
+                                          startPoint: .topLeading, endPoint: .bottomTrailing))
+                    .frame(width: card.width, height: card.height)
+                shape.fill(Color.black.opacity(0.22))
+                    .frame(width: card.width, height: card.height)
+                shape.strokeBorder(Color.white.opacity(0.22), lineWidth: 1)
+                    .frame(width: card.width, height: card.height)
+            default:
+                EmptyView()      // «none»: no card, only the contents
+            }
+        }
+        .frame(width: panel.width, height: panel.height)
+        .allowsHitTesting(false)
+        .animation(.easeInOut(duration: 0.3), value: tint)
     }
 }
 
@@ -2014,6 +2165,19 @@ final class SystemDisplayOptions: NSObject, ObservableObject {
 
     static let glassKey = "NSGlassTintAmount"
     static let glassModeKey = "lockCardGlassModeV362"
+    // 4.8.0: «glass» (Liquid Glass), «frosted», «dark», «cover», «none».
+    static let cardStyleKey = "lockCardStyleV480"
+    static let cardStyles: [(id: String, title: String)] = [
+        ("glass", "Стекло"), ("frosted", "Матовое"), ("dark", "Тёмное"), ("cover", "Цвет обложки"), ("none", "Без карточки")
+    ]
+    @Published private(set) var cardStyle: String =
+        UserDefaults.standard.string(forKey: "lockCardStyleV480") ?? "glass"
+
+    func setCardStyle(_ style: String) {
+        guard Self.cardStyles.contains(where: { $0.id == style }) else { return }
+        cardStyle = style
+        UserDefaults.standard.set(style, forKey: Self.cardStyleKey)
+    }
 
     // Our own switch is offered only where macOS itself has the control.
     var systemHasGlassControl: Bool {

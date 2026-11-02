@@ -1886,6 +1886,9 @@ struct NotchSettingsWindowView: View {
                     rowDivider
                     spectrumRow("Порог тишины", key: \.noiseGate, range: 0.25...3.0)
                 }
+                group("Готовые профили", footer: "Профиль сразу выставляет ползунки выше; потом их можно подправить вручную.") {
+                    spectrumPresets
+                }
                 HStack {
                     Button("Сбросить настройки") { actions.setSpectrumTuning(.defaults) }
                     Spacer()
@@ -1947,6 +1950,16 @@ struct NotchSettingsWindowView: View {
         }
     }
 
+    private var cardStyleHint: String {
+        switch displayOptions.cardStyle {
+        case "frosted": return "Светлое матовое стекло — обои размыты сильнее, как на iPhone в светлой теме."
+        case "dark": return "Почти непрозрачная тёмная карточка — текст читается на любых обоях."
+        case "cover": return "Карточка окрашена цветами играющей обложки и меняется вместе с песней."
+        case "none": return "Без фона — только обложка, текст и кнопки с мягкой тенью прямо на обоях."
+        default: return "Liquid Glass: обои видны сквозь стекло; прозрачность настраивается ниже."
+        }
+    }
+
     private var lockSection: some View {
         VStack(alignment: .leading, spacing: 20) {
             group(nil, footer: "Экспериментальное отображение поверх экрана блокировки.") {
@@ -1954,6 +1967,24 @@ struct NotchSettingsWindowView: View {
             }
             group("Медиаплеер", footer: "Как на экране блокировки iPhone: обложка, название, прогресс и кнопки внизу по центру, над полем пароля. Появляется, только когда играет или стоит на паузе музыка. Кнопки управляют музыкой без разблокировки; если macOS не пропустит нажатия, карточка останется для просмотра.") {
                 toggleRow("Медиаплеер на экране блокировки", isOn: $lockScreenMedia)
+                rowDivider
+                // 4.8.0: the card can be something other than glass.
+                VStack(alignment: .leading, spacing: 8) {
+                    Text("Вид карточки").font(.system(size: 13))
+                    SmoothSegmented(selection: Binding(get: { displayOptions.cardStyle },
+                                                       set: {
+                                                           displayOptions.setCardStyle($0)
+                                                           actions.previewLockMedia()
+                                                       }),
+                                    options: SystemDisplayOptions.cardStyles.map { ($0.id, $0.title) },
+                                    accent: accent(.lock))
+                    Text(cardStyleHint)
+                        .font(.system(size: 11)).foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+                .padding(.horizontal, 16)
+                .padding(.vertical, 10)
+                .id("search:Вид карточки")
                 rowDivider
                 row("Прозрачность",
                     subtitle: displayOptions.reduceTransparency
@@ -2423,6 +2454,45 @@ struct NotchSettingsWindowView: View {
         .frame(minHeight: 44)
         .background(searchMark(title).padding(3))
         .id("search:" + title)
+    }
+
+    // 4.8.0: ready-made spectrogram profiles as tiles under the sliders.
+    private var spectrumPresets: some View {
+        let current = snapshot.spectrumTuning.matchingPreset?.id
+        return LazyVGrid(columns: [GridItem(.adaptive(minimum: 132), spacing: 10)], spacing: 10) {
+            ForEach(SpectrumTuning.presets, id: \.id) { preset in
+                spectrumPresetButton(preset, on: current == preset.id)
+            }
+        }
+        .padding(12)
+        .opacity(snapshot.audioCaptureEnabled ? 1 : 0.5)
+    }
+
+    private func spectrumPresetButton(_ preset: SpectrumTuning.Preset, on: Bool) -> some View {
+        Button {
+            withAnimation(.spring(response: 0.35, dampingFraction: 0.85)) {
+                actions.setSpectrumTuning(preset.tuning)
+            }
+        } label: {
+            HStack(spacing: 8) {
+                Image(systemName: preset.symbol)
+                    .font(.system(size: 13, weight: .semibold))
+                    .frame(width: 18)
+                Text(preset.title)
+                    .font(.system(size: 12, weight: on ? .semibold : .medium))
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.8)
+                Spacer(minLength: 0)
+            }
+            .foregroundStyle(on ? Color.white : Color.primary)
+            .padding(.horizontal, 10)
+            .frame(height: 34)
+            .background(RoundedRectangle(cornerRadius: 10, style: .continuous)
+                .fill(on ? accent(.media) : Color.primary.opacity(0.07)))
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .disabled(!snapshot.audioCaptureEnabled)
     }
 
     private func spectrumRow(_ title: String, key: WritableKeyPath<SpectrumTuning, Double>,

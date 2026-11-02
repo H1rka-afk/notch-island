@@ -54,6 +54,15 @@ struct SpectrumTuningTests {
                 precondition(x.isFinite && (0...1).contains(x))
             }
         }
+        // 4.8.0: presets are valid, distinct and recognised.
+        precondition(SpectrumTuning.presets.count >= 5)
+        for preset in SpectrumTuning.presets {
+            precondition(preset.tuning.validated() == preset.tuning, preset.id)
+            precondition(preset.tuning.matchingPreset?.id == preset.id, preset.id)
+        }
+        precondition(Set(SpectrumTuning.presets.map(\.id)).count == SpectrumTuning.presets.count)
+        precondition(SpectrumTuning.defaults.matchingPreset?.id == "iphone")
+        precondition(SpectrumTuning(sensitivity: 1.23, attack: 1, release: 1, bassBoost: 1, noiseGate: 1).matchingPreset == nil)
         print("Spectrum tuning: 19 DSP/persistence checks passed")
     }
 }

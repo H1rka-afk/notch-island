@@ -3,8 +3,11 @@ import SwiftUI
 // Unified motion policy for the main island. Durations are paired with the
 // transition coordinator in IslandState to prevent detached content/shape.
 enum IslandMotion {
-    static let morph = Animation.spring(response: 0.43, dampingFraction: 0.88)
-    static let content = Animation.easeInOut(duration: 0.25)
+    // 4.8.0 — tuned to feel like iPhone's Dynamic Island: the shape moves
+    // on a lively spring with a small overshoot, contents cross-fade
+    // through a blur and a little scale.
+    static let morph = Animation.spring(response: 0.46, dampingFraction: 0.74)
+    static let content = Animation.easeInOut(duration: 0.28)
     static let canvasSettle: TimeInterval = 0.53
     static let eventHoldCharging: TimeInterval = 2.05
     static let eventHoldAirPods: TimeInterval = 5.0
@@ -18,10 +21,10 @@ enum IslandMotion {
     // updates, matching the timer "drop": the black shape grows with a soft
     // spring, contents fade in from a light blur AFTER it, and on exit the
     // contents leave first, then the shape retracts without overshoot.
-    static let banner = Animation.spring(response: 0.5, dampingFraction: 0.72)
-    static let bannerRetract = Animation.spring(response: 0.42, dampingFraction: 0.92)
-    static let bannerContentIn = Animation.easeOut(duration: 0.26)
-    static let bannerContentOut = Animation.easeIn(duration: 0.14)
+    static let banner = Animation.spring(response: 0.5, dampingFraction: 0.68)
+    static let bannerRetract = Animation.spring(response: 0.44, dampingFraction: 0.8)
+    static let bannerContentIn = Animation.spring(response: 0.34, dampingFraction: 0.86)
+    static let bannerContentOut = Animation.easeIn(duration: 0.15)
     static let bannerContentDelay: TimeInterval = 0.13
     static let bannerExitLead: TimeInterval = 0.12
 }

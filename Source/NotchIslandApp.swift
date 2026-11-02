@@ -302,6 +302,8 @@ final class IslandState: ObservableObject {
         didSet { if isExpanded && !oldValue { expandDropPulse &+= 1 } }
     }
     @Published private(set) var expandDropPulse = 0
+    // 4.8.0: bumps on every shape change (appear, banner in/out).
+    @Published private(set) var islandMorphPulse = 0
     // Full-screen video or music should have an unobstructed top edge. Events
     // and the Clock satellite still work, and the track keeps polling.
     @Published private(set) var mediaSuppressedInFullscreen = false {
@@ -415,6 +417,7 @@ final class IslandState: ObservableObject {
             withAnimation(IslandMotion.morph) {
                 self.compactRevealed = true
             }
+            self.islandMorphPulse &+= 1
         }
     }
     // The actual lock/unlock overlay has its own window and never opens the media card.
@@ -1268,12 +1271,14 @@ final class IslandState: ObservableObject {
     // Other compact states still use the true measured notch height.
     var mediaCompactHeight: CGFloat { notchHeight + 0.8 }
     var compactDisplayHeight: CGFloat { track != nil ? mediaCompactHeight : notchHeight }
-    var expandedWidth: CGFloat { max(410, notchWidth + 188) }
+    // 4.8.0: about 10 % smaller; the contents are drawn at 92 % (IslandView)
+    // and the open shape has 13 pt concave «drop» curves on each side.
+    var expandedWidth: CGFloat { max(376, notchWidth + 166) }
     var expandedHeight: CGFloat {
-        if track == nil { return max(156, notchHeight + 122) }
+        if track == nil { return max(146, notchHeight + 112) }
         // 4.0.0: the new player is taller (bigger cover, volume row).
-        if ExpandedPlayerStyle.isNew { return max(268, notchHeight + 232) }
-        return max(210, notchHeight + 174)
+        if ExpandedPlayerStyle.isNew { return max(248, notchHeight + 212) }
+        return max(196, notchHeight + 160)
     }
     // Charging is deliberately compact. Keep the unplugged label roomy,
     // because "От батареи" is significantly longer than "Зарядка".
@@ -1592,6 +1597,7 @@ final class IslandState: ObservableObject {
             withAnimation(IslandMotion.banner) {
                 self.eventRevealed = true
             }
+            self.islandMorphPulse &+= 1
         }
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.035 + IslandMotion.bannerContentDelay) { [weak self] in
             guard let self, self.eventToken == token, self.event == nextEvent,
@@ -1626,6 +1632,7 @@ final class IslandState: ObservableObject {
                 self.eventRevealed = false
                 if returning { self.compactRevealed = true }
             }
+            if returning { self.islandMorphPulse &+= 1 }
         }
         DispatchQueue.main.asyncAfter(deadline: .now() + dwell + IslandMotion.bannerExitLead + IslandMotion.eventSettle) { [weak self] in
             guard let self, self.eventToken == token, self.event == nextEvent,
