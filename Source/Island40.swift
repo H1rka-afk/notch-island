@@ -197,6 +197,7 @@ struct IdleWingsView: View {
 
 // The current output (AirPods, speakers…); click → choose another.
 struct OutputDeviceButton: View {
+    var size: CGFloat = 16
     @StateObject private var route = LockOutputRoute()
     @StateObject private var list = OutputDeviceList()
 
@@ -213,7 +214,7 @@ struct OutputDeviceButton: View {
             if list.devices.isEmpty { Text("Нет устройств вывода") }
         } label: {
             Image(systemName: route.symbol)
-                .font(.system(size: 16, weight: .medium))
+                .font(.system(size: size, weight: .medium))
                 .foregroundStyle(.white.opacity(0.85))
         }
         .menuStyle(.borderlessButton)

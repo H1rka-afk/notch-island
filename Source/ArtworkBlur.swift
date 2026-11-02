@@ -9,18 +9,21 @@ enum ArtworkBlur {
     static var isEnabled: Bool { (UserDefaults.standard.object(forKey: enabledKey) as? Bool) ?? true }
 
     // Keeps the source alive, so an identical address can never be reused.
-    private static var cache: (source: NSImage, image: NSImage)?
+    private static var cache: (source: NSImage, sigma: Double, image: NSImage)?
     private static let context = CIContext(options: [.useSoftwareRenderer: false])
 
-    static func blurred(_ source: NSImage?) -> NSImage? {
+    // 4.8.3: the blur strength is chosen in Settings (0 … 1).
+    static func blurred(_ source: NSImage?, amount: Double? = nil) -> NSImage? {
         guard let source else { return nil }
-        if let cache, cache.source === source { return cache.image }
-        guard let made = make(source) else { return nil }
-        cache = (source, made)
+        let a = min(1, max(0, amount ?? WaveLook.blur))
+        let sigma = (0.4 + 7.6 * a).rounded(toPlaces: 1)
+        if let cache, cache.source === source, cache.sigma == sigma { return cache.image }
+        guard let made = make(source, sigma: sigma) else { return nil }
+        cache = (source, sigma, made)
         return made
     }
 
-    private static func make(_ source: NSImage) -> NSImage? {
+    private static func make(_ source: NSImage, sigma: Double) -> NSImage? {
         // Downscale first: blurring a 48-px picture is nearly free.
         let side = 48
         guard let rep = NSBitmapImageRep(bitmapDataPlanes: nil, pixelsWide: side, pixelsHigh: side,
@@ -33,7 +36,7 @@ enum ArtworkBlur {
         guard let small = CIImage(bitmapImageRep: rep) else { return nil }
 
         var image = small.clampedToExtent()
-            .applyingGaussianBlur(sigma: 3.5)
+            .applyingGaussianBlur(sigma: sigma)
             .cropped(to: small.extent)
             .applyingFilter("CIColorControls", parameters: [kCIInputSaturationKey: 1.7,
                                                             kCIInputContrastKey: 1.05])
@@ -56,5 +59,42 @@ enum ArtworkBlur {
                        format: .RGBA8, colorSpace: CGColorSpaceCreateDeviceRGB())
         let r = Double(pixel[0]) / 255, g = Double(pixel[1]) / 255, b = Double(pixel[2]) / 255
         return 0.2126 * r + 0.7152 * g + 0.0722 * b
+    }
+}
+
+private extension Double {
+    func rounded(toPlaces places: Int) -> Double {
+        let k = pow(10.0, Double(places))
+        return (self * k).rounded() / k
+    }
+}
+
+// 4.8.3 — how the waveform looks: the blurred cover inside the bars (as on
+// iPhone), one colour taken from the cover, or the user's own colour; how
+// blurred the cover is and how big the bars are.
+enum WaveLook {
+    static let styleKey = "waveStyleV483"
+    static let colorKey = "waveColorV483"
+    static let blurKey = "waveBlurV483"
+    static let sizeKey = "waveSizeV483"
+
+    static let styles: [(id: String, title: String)] = [
+        ("artwork", "Обложка"), ("tint", "Цвет обложки"), ("custom", "Свой цвет")
+    ]
+
+    // The old «Обложка в полосах» switch decides the starting style.
+    static var legacyStyle: String { ArtworkBlur.isEnabled ? "artwork" : "tint" }
+    static var style: String { UserDefaults.standard.string(forKey: styleKey) ?? legacyStyle }
+    static var blur: Double { (UserDefaults.standard.object(forKey: blurKey) as? Double) ?? 0.4 }
+    static let defaultColor = PaletteRGB(r: 1.0, g: 0.36, b: 0.62)
+
+    static func decodeColor(_ raw: String) -> PaletteRGB {
+        let parts = raw.split(separator: ",").compactMap { Double($0) }
+        guard parts.count == 3, parts.allSatisfy({ (0...1).contains($0) }) else { return defaultColor }
+        return PaletteRGB(r: parts[0], g: parts[1], b: parts[2])
+    }
+
+    static func encodeColor(_ c: PaletteRGB) -> String {
+        String(format: "%.4f,%.4f,%.4f", min(1, max(0, c.r)), min(1, max(0, c.g)), min(1, max(0, c.b)))
     }
 }

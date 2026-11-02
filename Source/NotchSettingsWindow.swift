@@ -191,6 +191,10 @@ struct NotchSettingsWindowView: View {
     @AppStorage("settingsAnimatedBackgroundV3130") private var settingsAnimatedBackground = true
     @AppStorage("energySaverModeV3164") private var energySaverMode = "battery"
     @AppStorage("waveArtworkV3180") private var waveArtwork = true
+    @AppStorage(WaveLook.styleKey) private var waveStyle = WaveLook.legacyStyle
+    @AppStorage(WaveLook.colorKey) private var waveColor = ""
+    @AppStorage(WaveLook.blurKey) private var waveBlur = 0.4
+    @AppStorage(WaveLook.sizeKey) private var waveSize = 1.0
     @AppStorage("githubUpdatesV400") private var githubUpdates = true
     // 4.0.0
     @AppStorage(ExpandedPlayerStyle.key) private var playerStyle = "new"
@@ -1869,7 +1873,7 @@ struct NotchSettingsWindowView: View {
                 group("Спектрограмма", footer: "Как на iPhone: шесть полос — частоты от баса слева до высоких справа. Полоса резко подпрыгивает на ударе и плавно опускается, полоса без звука остаётся точкой, на паузе все опускаются в точки. Без живого звука играет похожий ритм. Звук не записывается и не сохраняется.") {
                     toggleRow("Живая спектрограмма", isOn: audioBinding)
                     rowDivider
-                    toggleRow("Обложка в полосах", subtitle: "Полосы окрашены размытой обложкой песни, как на iPhone. Выключено — один цвет из обложки", isOn: $waveArtwork)
+                    waveLookControls
                     rowDivider
                     row("Состояние") {
                         Text(island.audioStatus).font(.system(size: 12)).foregroundStyle(.secondary)
@@ -2454,6 +2458,39 @@ struct NotchSettingsWindowView: View {
         .frame(minHeight: 44)
         .background(searchMark(title).padding(3))
         .id("search:" + title)
+    }
+
+    // 4.8.3: how the bars look and how big they are.
+    @ViewBuilder
+    private var waveLookControls: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text("Вид полос").font(.system(size: 13))
+            SmoothSegmented(selection: $waveStyle,
+                            options: WaveLook.styles.map { ($0.id, $0.title) },
+                            accent: accent(.media))
+            Text(waveStyle == "artwork" ? "Внутри полос — размытая обложка песни, как на iPhone."
+                 : waveStyle == "tint" ? "Один цвет, взятый из обложки; меняется вместе с песней."
+                 : "Твой цвет — всегда одинаковый, какая бы песня ни играла.")
+                .font(.system(size: 11)).foregroundStyle(.secondary)
+        }
+        .padding(.horizontal, 16)
+        .padding(.vertical, 10)
+        .id("search:Вид полос")
+        if waveStyle == "artwork" {
+            rowDivider
+            sliderRow("Размытие обложки", value: "\(Int((waveBlur * 100).rounded()))%",
+                      binding: $waveBlur, range: 0...1)
+        }
+        if waveStyle == "custom" {
+            rowDivider
+            InlineColorPalette(color: Binding(get: { WaveLook.decodeColor(waveColor) },
+                                              set: { waveColor = WaveLook.encodeColor($0) }))
+                .padding(.horizontal, 16)
+                .padding(.vertical, 10)
+        }
+        rowDivider
+        sliderRow("Размер спектрограммы", value: "\(Int((waveSize * 100).rounded()))%",
+                  binding: $waveSize, range: 0.7...1.3, step: 0.05)
     }
 
     // 4.8.0: ready-made spectrogram profiles as tiles under the sliders.

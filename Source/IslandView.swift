@@ -410,8 +410,9 @@ struct IslandView: View {
                 .buttonStyle(DynamicIslandButtonStyle())
                 Spacer(minLength: 9)
                 // 4.8.2: «where the sound goes», as in the new player.
-                OutputDeviceButton()
-                    .frame(width: 30, height: 43)
+                // 4.8.3: larger in the classic player.
+                OutputDeviceButton(size: 22)
+                    .frame(width: 40, height: 43)
             }
             .frame(maxWidth: .infinity)
 
@@ -996,11 +997,20 @@ private struct AudioReactiveBars: View {
 
     // No @State: the command-line build has no SwiftUI macro plugin.
     @StateObject private var driver = WaveformDriver()
+    // 4.8.3: look and size chosen in Settings.
+    @AppStorage(WaveLook.styleKey) private var style = WaveLook.legacyStyle
+    @AppStorage(WaveLook.colorKey) private var customColor = ""
+    @AppStorage(WaveLook.blurKey) private var blurAmount = 0.4
+    @AppStorage(WaveLook.sizeKey) private var sizeScale = 1.0
 
     private var animating: Bool { playing || driver.settling }
 
     private var blurredCover: NSImage? {
-        ArtworkBlur.isEnabled ? ArtworkBlur.blurred(artwork) : nil
+        style == "artwork" ? ArtworkBlur.blurred(artwork, amount: blurAmount) : nil
+    }
+
+    private var barColor: Color {
+        style == "custom" ? WaveLook.decodeColor(customColor).color : tint.opacity(0.9)
     }
 
     var body: some View {
@@ -1016,6 +1026,8 @@ private struct AudioReactiveBars: View {
             // 3.16.5: one Canvas (one layer) instead of six capsule views —
             // each frame now costs a single redraw instead of six layouts.
             let count = IslandWaveformPhysics.barCount
+            let k = CGFloat(min(1.3, max(0.7, sizeScale)))
+            let barWidth = self.barWidth * k, barSpacing = self.barSpacing * k, maxHeight = self.maxHeight * k
             let width = CGFloat(count) * barWidth + CGFloat(count - 1) * barSpacing
             let bars = Canvas { context, size in
                 for index in 0..<count {
@@ -1037,7 +1049,7 @@ private struct AudioReactiveBars: View {
                         .clipped()
                         .mask(bars)
                 } else {
-                    bars.colorMultiply(tint.opacity(0.9))
+                    bars.colorMultiply(barColor)
                 }
             }
         }
@@ -1602,6 +1614,7 @@ struct LockScreenMediaCard: View {
     @ObservedObject private var display = SystemDisplayOptions.shared
     @ObservedObject private var ui = LockCardUIState.shared
     @StateObject private var outputRoute = LockOutputRoute()
+    @StateObject private var outputs = OutputDeviceList()
     @ObservedObject private var activity = LockCoverActivity.media
     private var scale: CGFloat { CGFloat(display.cardScale) }
 
@@ -1644,7 +1657,10 @@ struct LockScreenMediaCard: View {
             compactLayout(song)
         }
         .frame(width: size.width, height: size.height)
-        .onAppear { outputRoute.refresh() }
+        .overlay {
+            if ui.outputsOpen { outputPicker(size: size) }
+        }
+        .onAppear { outputRoute.refresh(); ui.outputsOpen = false }
         .onChange(of: song.identity) { _, _ in outputRoute.refresh() }
         // Content is scaled as a picture; the glass (AppKit blur) is built
         // directly at the scaled size, since AppKit views ignore scaleEffect.
@@ -1655,6 +1671,68 @@ struct LockScreenMediaCard: View {
         .environment(\.colorScheme, .dark)
         .accessibilityElement(children: .contain)
         .accessibilityLabel("Медиаплеер на экране блокировки")
+    }
+
+    // 4.8.3: devices listed inside the card (a system menu cannot appear
+    // over the lock screen). A tap on a device switches the output.
+    private func outputPicker(size: CGSize) -> some View {
+        let shape = RoundedRectangle(cornerRadius: 36, style: .continuous)
+        return ZStack {
+            shape.fill(Color.black.opacity(0.82))
+                .onTapGesture { closeOutputs() }
+            VStack(alignment: .leading, spacing: 4) {
+                HStack {
+                    Text("Выход звука").font(.system(size: 13, weight: .semibold)).foregroundStyle(.white.opacity(0.6))
+                    Spacer()
+                    Button { closeOutputs() } label: {
+                        Image(systemName: "xmark.circle.fill").font(.system(size: 18))
+                            .foregroundStyle(.white.opacity(0.5))
+                    }
+                }
+                ScrollView(showsIndicators: false) {
+                    VStack(spacing: 2) {
+                        ForEach(outputs.devices) { device in
+                            outputRow(device)
+                        }
+                        if outputs.devices.isEmpty {
+                            Text("Нет устройств вывода").font(.system(size: 14)).foregroundStyle(.white.opacity(0.6))
+                        }
+                    }
+                }
+            }
+            .padding(.horizontal, 26)
+            .padding(.vertical, 18)
+        }
+        .frame(width: size.width, height: size.height)
+        .clipShape(shape)
+        .buttonStyle(DynamicIslandButtonStyle())
+        .transition(.opacity.combined(with: .scale(scale: 0.96)))
+    }
+
+    private func outputRow(_ device: AudioOutputDevice) -> some View {
+        let current = device.name == outputRoute.name
+        return Button {
+            SystemVolume.setDefaultOutput(device.id)
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) { outputRoute.refresh() }
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.45) { closeOutputs() }
+        } label: {
+            HStack(spacing: 12) {
+                Image(systemName: device.symbol).font(.system(size: 17, weight: .medium)).frame(width: 26)
+                Text(device.name).font(.system(size: 15, weight: current ? .semibold : .regular)).lineLimit(1)
+                Spacer(minLength: 0)
+                if current { Image(systemName: "checkmark").font(.system(size: 14, weight: .bold)) }
+            }
+            .foregroundStyle(.white)
+            .padding(.horizontal, 10)
+            .frame(height: 34)
+            .background(RoundedRectangle(cornerRadius: 10, style: .continuous)
+                .fill(Color.white.opacity(current ? 0.14 : 0.0)))
+            .contentShape(Rectangle())
+        }
+    }
+
+    private func closeOutputs() {
+        withAnimation(.spring(response: 0.35, dampingFraction: 0.9)) { ui.outputsOpen = false }
     }
 
     private func toggleExpanded() {
@@ -1742,12 +1820,19 @@ struct LockScreenMediaCard: View {
                     .frame(width: 52, height: 40)
             }
             Spacer(minLength: 0)
-            Image(systemName: outputRoute.symbol)
-                .font(.system(size: 20, weight: .medium))
-                .foregroundStyle(.white.opacity(0.62))
-                .frame(width: 40)
-                .help(outputRoute.name)
-                .accessibilityLabel("Звук: \(outputRoute.name)")
+            // 4.8.3: choose where the sound goes, right on the lock screen.
+            Button {
+                outputs.refresh()
+                withAnimation(.spring(response: 0.38, dampingFraction: 0.86)) { ui.outputsOpen.toggle() }
+            } label: {
+                Image(systemName: outputRoute.symbol)
+                    .font(.system(size: 20, weight: .medium))
+                    .foregroundStyle(.white.opacity(ui.outputsOpen ? 1 : 0.62))
+                    .frame(width: 40, height: 40)
+                    .contentShape(Rectangle())
+            }
+            .help("Звук: \(outputRoute.name)")
+            .accessibilityLabel("Звук: \(outputRoute.name). Выбрать устройство")
         }
         .buttonStyle(DynamicIslandButtonStyle())
         .foregroundStyle(.white)
@@ -1835,6 +1920,8 @@ struct LockScreenMediaCard: View {
 final class LockCardUIState: ObservableObject {
     static let shared = LockCardUIState()
     @Published var expanded = false
+    // 4.8.3: the list of sound outputs open inside the card.
+    @Published var outputsOpen = false
 }
 
 // 3.6.8: hand-made Liquid Glass. System glass does not draw inside the
