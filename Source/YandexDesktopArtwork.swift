@@ -44,7 +44,7 @@ enum YandexDesktopArtwork {
             let promptKey = kAXTrustedCheckOptionPrompt.takeUnretainedValue() as String
             let trusted = AXIsProcessTrustedWithOptions([promptKey: false] as CFDictionary)
             guard trusted else {
-                ArtworkDiagnostics.write("Yandex desktop AX: permission missing for current Notch Island process; use Settings > Island > Artwork sources to re-authorize")
+                ArtworkDiagnostics.write("Yandex desktop AX: permission missing for current Ovira process; use Settings > Island > Artwork sources to re-authorize")
                 completion(nil)
                 return
             }

@@ -6,7 +6,7 @@ import Foundation
 // • «Как на iPhone» — what the Dynamic Island on iPhone does: Now Playing,
 //   charging, AirPods, Focus, the Clock timer, Face ID-style lock, camera and
 //   microphone indicator; the player steps aside when its app is in front.
-// • «Максимум» — everything Notch Island can do: shelf, screenshots,
+// • «Максимум» — everything Ovira can do: shelf, screenshots,
 //   clipboard, volume, VPN, disks, gestures, cover glow…
 // • «Свой» — the user's own combination, remembered when a preset is chosen
 //   and restored when «Свой» is picked again.
@@ -139,7 +139,7 @@ enum UserProfileStore {
         String(raw.trimmingCharacters(in: .whitespacesAndNewlines).prefix(maxSummary))
     }
 
-    // Only switches Notch Island knows; anything else in a file is ignored.
+    // Only switches Ovira knows; anything else in a file is ignored.
     static func cleanValues(_ values: [String: Bool]) -> [String: Bool] {
         let known = Set(IslandProfiles.allKeys)
         return values.filter { known.contains($0.key) }

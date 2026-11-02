@@ -84,7 +84,7 @@ final class StandByController {
         if on && StandBySettings.keepAwake && !hasAssertion {
             hasAssertion = IOPMAssertionCreateWithName(kIOPMAssertionTypePreventUserIdleDisplaySleep as CFString,
                                                        IOPMAssertionLevel(kIOPMAssertionLevelOn),
-                                                       "Notch Island StandBy" as CFString, &assertion) == kIOReturnSuccess
+                                                       "Ovira StandBy" as CFString, &assertion) == kIOReturnSuccess
         } else if !on && hasAssertion {
             IOPMAssertionRelease(assertion)
             hasAssertion = false

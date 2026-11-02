@@ -3,7 +3,7 @@ import ApplicationServices
 import Foundation
 import Security
 
-// 3.2.0 — read-only checks of everything Notch Island depends on, plus one
+// 3.2.0 — read-only checks of everything Ovira depends on, plus one
 // combined diagnostic report. Nothing here changes system settings; the
 // "Fix" buttons only open the matching pane of System Settings.
 struct PermissionReport: Equatable {
@@ -98,7 +98,7 @@ enum DiagnosticsReport {
         case .unknown: signing = "не определена"
         }
         var lines: [String] = []
-        lines.append("Notch Island — диагностика")
+        lines.append("Ovira — диагностика")
         lines.append("Дата: \(ISO8601DateFormatter().string(from: Date()))")
         lines.append("Версия: \(version) (\(build)), macOS \(os.majorVersion).\(os.minorVersion).\(os.patchVersion), \(arch)")
         lines.append("Подпись: \(signing)")

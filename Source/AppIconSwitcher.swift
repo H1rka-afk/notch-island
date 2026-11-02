@@ -1,7 +1,7 @@
 import AppKit
 
 // 3.9.0 — the app icon follows the theme: the dark minimal icon in dark
-// mode, the light one in light mode. «Оформление» in Notch Island's
+// mode, the light one in light mode. «Оформление» in Ovira's
 // Settings decides: «Системная» follows macOS, «Тёмная»/«Светлая» force it.
 //
 // macOS lets a running app change its icon in the Dock, the app switcher,

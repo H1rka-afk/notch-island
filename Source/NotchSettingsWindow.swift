@@ -398,7 +398,7 @@ struct NotchSettingsWindowView: View {
             case .general: return "Оформление, обновления и запуск"
             case .profiles: return "Готовые наборы функций одним нажатием"
             case .stats: return "Твой день за Маком: работа, музыка, перерывы"
-            case .permissions: return "Что Notch Island может делать в macOS"
+            case .permissions: return "Что Ovira может делать в macOS"
             case .island: return "Вид, размер и поведение островка"
             case .media: return "Плеер, спектрограмма, звук, обложки и жесты"
             case .lock: return "Плеер, обложка, виджеты и StandBy"
@@ -490,7 +490,7 @@ struct NotchSettingsWindowView: View {
                     .frame(width: 30, height: 30)
                     .shadow(color: .black.opacity(0.25), radius: 4, y: 2)
                 VStack(alignment: .leading, spacing: 0) {
-                    Text("Notch Island").font(.system(size: 15, weight: .heavy, design: .rounded))
+                    Text("Ovira").font(.system(size: 15, weight: .heavy, design: .rounded))
                     Text("Версия \(Self.appVersion)").font(.system(size: 10.5)).foregroundStyle(.secondary)
                 }
                 .transition(.opacity)
@@ -631,7 +631,7 @@ struct NotchSettingsWindowView: View {
                 Text(snapshot.updateInstalling ? "Устанавливаю обновление…" : "Доступна версия \(version)")
                     .font(.system(size: 17, weight: .heavy, design: .rounded))
                 Text(snapshot.updateInstalling
-                     ? "Около минуты. Notch Island закроется и откроется сам."
+                     ? "Около минуты. Ovira закроется и откроется сам."
                      : "Архив уже в «Загрузках». Установка около минуты, приложение откроется само; настройки и разрешения сохранятся.")
                     .font(.system(size: 11.5, weight: .medium))
                     .opacity(0.88)
@@ -1025,7 +1025,7 @@ struct NotchSettingsWindowView: View {
                     .frame(width: 36, height: 36)
                     .shadow(color: .black.opacity(0.25), radius: 4, y: 2)
                 VStack(alignment: .leading, spacing: 1) {
-                    Text("Notch Island").font(.system(size: 14, weight: .bold, design: .rounded))
+                    Text("Ovira").font(.system(size: 14, weight: .bold, design: .rounded))
                     Text("Версия \(Self.appVersion)").font(.system(size: 11)).foregroundStyle(.secondary)
                 }
             }
@@ -1346,7 +1346,7 @@ struct NotchSettingsWindowView: View {
                 profileCard(.extended, active: active,
                             title: "Максимум", icon: "sparkles",
                             color: Color(red: 0.66, green: 0.36, blue: 0.95),
-                            summary: "Всё, что умеет Notch Island: полка, снимки и записи экрана, буфер обмена, системные баннеры, крылья, жесты и свечение.",
+                            summary: "Всё, что умеет Ovira: полка, снимки и записи экрана, буфер обмена, системные баннеры, крылья, жесты и свечение.",
                             features: ["Всё из iPhone", "Крылья", "Исправление раскладки", "Полка", "AirDrop с полки", "Снимки экрана", "«Скопировано»",
                                        "Громкость", "Устройство вывода", "VPN и интернет", "Диски",
                                        "Нагрев", "Жесты", "Свечение", "⌃⌥N", "Календарь*"])
@@ -1601,7 +1601,7 @@ struct NotchSettingsWindowView: View {
             UserProfileStore.save(list)
             withAnimation(.spring(response: 0.35, dampingFraction: 0.85)) { snapshot.userProfiles = list }
             var message = added.isEmpty ? "" : (added.count == 1 ? "Добавлен профиль «\(added[0])»" : "Добавлено профилей: \(added.count)")
-            if failed > 0 { message += (message.isEmpty ? "" : ". ") + "Не профиль Notch Island: \(failed)" }
+            if failed > 0 { message += (message.isEmpty ? "" : ". ") + "Не профиль Ovira: \(failed)" }
             snapshot.profileMessage = message
         }
     }
@@ -1673,12 +1673,12 @@ struct NotchSettingsWindowView: View {
                         .frame(width: 270)
                 }
                 rowDivider
-                row("Знакомство с Notch Island", subtitle: "Короткий тур: что умеет островок, разрешения, профиль") {
+                row("Знакомство с Ovira", subtitle: "Короткий тур: что умеет островок, разрешения, профиль") {
                     Button("Показать") { actions.showOnboarding() }
                 }
             }
             group("Обновление",
-                  footer: "Новые версии Notch Island сам находит на GitHub (H1rka-afk/notch-island-releases), скачивает готовую сборку в фоне и показывает «Обновить». Установка — несколько секунд, разрешения сохраняются. Архив, положенный в «Загрузки», тоже подхватывается, как раньше.") {
+                  footer: "Новые версии Ovira сам находит на GitHub (H1rka-afk/notch-island-releases), скачивает готовую сборку в фоне и показывает «Обновить». Установка — несколько секунд, разрешения сохраняются. Архив, положенный в «Загрузки», тоже подхватывается, как раньше.") {
                 toggleRow("Обновления с GitHub", subtitle: "Проверять раз в 3 часа и скачивать новую версию заранее", isOn: $githubUpdates)
                 rowDivider
                 HStack(alignment: .center, spacing: 12) {
@@ -1734,14 +1734,14 @@ struct NotchSettingsWindowView: View {
                 toggleRow("Горячая клавиша ⌃⌥N", subtitle: "Открывает и закрывает островок", isOn: labBinding("hotkey"))
             }
             group("Уборка", footer: snapshot.cleanupMessage.isEmpty
-                  ? "Старые архивы и папки Notch Island из «Загрузок» и тестовые файлы из ~/Library/Logs переносятся в Корзину."
+                  ? "Старые архивы и папки Ovira из «Загрузок» и тестовые файлы из ~/Library/Logs переносятся в Корзину."
                   : snapshot.cleanupMessage) {
                 row("Старые версии и тестовые файлы") {
                     Button("Убрать в Корзину") { actions.runCleanup() }
                 }
             }
             group("Приложение") {
-                row("Завершить работу Notch Island", subtitle: "Сразу, без ожидания анимаций") {
+                row("Завершить работу Ovira", subtitle: "Сразу, без ожидания анимаций") {
                     Button("Выйти") { actions.forceQuit() }
                         .buttonStyle(.borderedProminent)
                         .tint(.red)
@@ -1781,7 +1781,7 @@ struct NotchSettingsWindowView: View {
             HStack {
                 Button("Проверить снова") { actions.recheckPermissions() }
                 Spacer()
-                Button("Перезапустить Notch Island") { actions.relaunchApp() }
+                Button("Перезапустить Ovira") { actions.relaunchApp() }
             }
         }
     }
@@ -2094,7 +2094,7 @@ struct NotchSettingsWindowView: View {
                                       weather.refreshIfNeeded(force: true) {}
                                   }))
                         if weather.autoLocate && weather.locationDenied {
-                            row("Геопозиция выключена для Notch Island",
+                            row("Геопозиция выключена для Ovira",
                                 subtitle: "Разреши в Конфиденциальности или впиши город ниже") {
                                 Button("Открыть…") {
                                     if let url = URL(string: WeatherService.locationPane) { NSWorkspace.shared.open(url) }
@@ -2204,7 +2204,7 @@ struct NotchSettingsWindowView: View {
                 .padding(.horizontal, 14)
                 .padding(.vertical, 10)
             }
-            group("Доступ к фокусированию", footer: "macOS хранит состояние фокусирования в защищённой папке. Включи Notch Island в «Полном доступе к диску» и перезапусти приложение. Файлы только читаются.") {
+            group("Доступ к фокусированию", footer: "macOS хранит состояние фокусирования в защищённой папке. Включи Ovira в «Полном доступе к диску» и перезапусти приложение. Файлы только читаются.") {
                 row("Полный доступ к диску") {
                     Button("Открыть…") { actions.openFullDiskAccess() }
                 }
@@ -2950,7 +2950,7 @@ struct SettingsAuroraBackground: View {
     }
 }
 
-// 4.5.2 — a segmented control drawn by Notch Island itself. The system one
+// 4.5.2 — a segmented control drawn by Ovira itself. The system one
 // in macOS 26 swells with a glass «pop» on every click (the twitching in
 // the recording); this one only slides its pill to the chosen option.
 struct SmoothSegmented<Value: Hashable>: View {

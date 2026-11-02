@@ -11,7 +11,10 @@ enum ReleaseNotes {
         var inSection = false
         for raw in text.components(separatedBy: .newlines) {
             let line = raw.trimmingCharacters(in: .whitespaces)
-            if line.hasPrefix("Notch Island ") && !line.hasPrefix("Notch Island —") {
+            // 4.7.0: the app is now called Ovira; old notes keep the old name.
+            let header = (line.hasPrefix("Notch Island ") && !line.hasPrefix("Notch Island —"))
+                || (line.hasPrefix("Ovira ") && !line.hasPrefix("Ovira —"))
+            if header {
                 if inSection { break }
                 inSection = true
                 continue

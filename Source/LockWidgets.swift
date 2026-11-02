@@ -4,7 +4,7 @@ import SystemConfiguration
 
 // 3.7.1 — widgets under the clock on the lock screen, like on iPhone.
 // Up to four glass tiles in a row; the user chooses which and in what order.
-// Data comes only from what Notch Island already reads: battery, AirPods,
+// Data comes only from what Ovira already reads: battery, AirPods,
 // Calendar/Reminders (when access was granted), the Clock timer, Focus.
 
 enum LockWidgetKind: String, CaseIterable, Identifiable {

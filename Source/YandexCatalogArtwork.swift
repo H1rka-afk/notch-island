@@ -4,7 +4,7 @@ import Foundation
 //
 // The native Yandex Music app announces its cover to macOS Now Playing
 // (artworkAvailable, MIME type, size) but never delivers the image bytes, so
-// neither Control Center nor Notch Island can show it. iTunes/Deezer rarely
+// neither Control Center nor Ovira can show it. iTunes/Deezer rarely
 // carry Russian releases. The catalog search used by Yandex Music's own
 // clients answers anonymously; only the title and artist are sent, never
 // account data. A cover is accepted ONLY when the title AND one of the

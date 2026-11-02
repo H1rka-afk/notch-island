@@ -143,7 +143,7 @@ struct OnboardingView: View {
         VStack(spacing: 26) {
             IslandStage(island: island, demo: nil, accent: color)
                 .frame(width: 560)
-            title("Привет! Это Notch Island",
+            title("Привет! Это Ovira",
                   "Чёлка MacBook превращается в живой островок, как Dynamic Island на iPhone: музыка, зарядка, AirPods, файлы и экран блокировки.")
         }
     }
@@ -187,7 +187,7 @@ struct OnboardingView: View {
 
     private var permissions: some View {
         VStack(spacing: 22) {
-            title("Разрешения", "Notch Island работает только на этом Mac и ничего никуда не отправляет. Разрешения нужны, чтобы видеть то, что показывает островок.")
+            title("Разрешения", "Ovira работает только на этом Mac и ничего никуда не отправляет. Разрешения нужны, чтобы видеть то, что показывает островок.")
             VStack(spacing: 0) {
                 permission("hand.raised.fill", "Универсальный доступ",
                            "Таймер «Часов», жесты, обложки Яндекс Музыки", snapshot.permAccessibility) { actions.fixAccessibility() }

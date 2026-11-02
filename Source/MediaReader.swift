@@ -892,7 +892,7 @@ final class MediaReader {
 
     // 3.8.0: the same reading as nowPlayingJXA, in a loop (4× a second, in
     // one process). Prints a line on change; artwork once per song; quits
-    // when Notch Island is gone (parent becomes launchd) or stdout closes.
+    // when Ovira is gone (parent becomes launchd) or stdout closes.
     private static let nowPlayingStreamJXA = #"""
     ObjC.import('Foundation');
     ObjC.bindFunction('getppid', ['int', []]);

@@ -3,13 +3,13 @@ import Darwin
 import Foundation
 
 // One-click update from the user's Downloads folder.
-// 1. Watches ~/Downloads (names only) for a Notch Island release newer than
+// 1. Watches ~/Downloads (names only) for a Ovira release newer than
 //    the running version.
 // 2. On request: unpacks it into a private temporary folder, verifies the
 //    bundled Info.plist (same bundle id AND the expected version), clears the
 //    download quarantine on that private copy only, and runs the SAME
 //    installer in the background. The installer rebuilds, replaces
-//    /Applications/Notch Island.app and reopens it. Progress goes to
+//    /Applications/Ovira.app and reopens it. Progress goes to
 //    ~/Library/Logs/NotchIsland-Update.log.
 // Nothing is downloaded from the network; only files the user already has.
 final class AppUpdater {
@@ -257,7 +257,7 @@ final class AppUpdater {
         let plistURL = root.appendingPathComponent("Source/Info.plist")
         guard let plist = NSDictionary(contentsOf: plistURL),
               plist["CFBundleIdentifier"] as? String == UpdatePolicy.bundleIdentifier else {
-            return "архив не похож на Notch Island (нет Source/Info.plist с нужным идентификатором)"
+            return "архив не похож на Ovira (нет Source/Info.plist с нужным идентификатором)"
         }
         let packaged = plist["CFBundleShortVersionString"] as? String ?? ""
         guard packaged == candidate.version else {
@@ -285,7 +285,7 @@ final class AppUpdater {
         return nil
     }
 
-    // Quits and reopens Notch Island (e.g. after granting a permission that
+    // Quits and reopens Ovira (e.g. after granting a permission that
     // macOS applies only to a fresh process). The helper lives in its own
     // process group so it survives this app's exit.
     static func relaunch() {

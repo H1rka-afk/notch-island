@@ -437,7 +437,7 @@ final class ClipboardWatch {
     private(set) var history: [String] = []
     private var timer: Timer?
     private var lastChange = NSPasteboard.general.changeCount
-    // Set when Notch Island itself writes to the clipboard.
+    // Set when Ovira itself writes to the clipboard.
     var ignoreNextChange = false
 
     func start() {
@@ -451,7 +451,7 @@ final class ClipboardWatch {
 
     func stop() { timer?.invalidate(); timer = nil }
 
-    // 4.3.0: Notch Island itself uses the clipboard for a moment (layout fix).
+    // 4.3.0: Ovira itself uses the clipboard for a moment (layout fix).
     private var pausedUntil = Date.distantPast
     func pause(for seconds: TimeInterval) { pausedUntil = Date().addingTimeInterval(seconds) }
 
@@ -504,7 +504,7 @@ final class ScreenshotWatch {
     private var known = Set<String>()
     // name → (temporary URL, time it vanished)
     private var pending: [String: (url: URL, goneSince: Date?)] = [:]
-    // 3.3.3: also pick up a screenshot taken while Notch Island was
+    // 3.3.3: also pick up a screenshot taken while Ovira was
     // restarting (e.g. during an update) — one minute of look-back.
     private let started = Date().addingTimeInterval(-60)
     private let queue = DispatchQueue(label: "app.notchisland.screenshots", qos: .utility)
@@ -726,7 +726,7 @@ final class IslandHotKey {
 // MARK: - Cleanup of old releases and test files
 
 enum ReleaseCleanup {
-    // Old Notch Island archives/folders in Downloads (older than or equal to
+    // Old Ovira archives/folders in Downloads (older than or equal to
     // the running version) and the diagnostic test files in ~/Library/Logs.
     // Everything goes to the Trash, so it can be restored.
     static func candidates() -> [URL] {

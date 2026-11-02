@@ -81,7 +81,7 @@ final class SystemAudioAnalyzer {
 
         // Global stereo output, without muting what the user hears.
         let description = CATapDescription(stereoGlobalTapButExcludeProcesses: [])
-        description.name = "Notch Island Visualizer"
+        description.name = "Ovira Visualizer"
         description.isPrivate = true
         description.muteBehavior = .unmuted
         description.isMono = false
@@ -114,7 +114,7 @@ final class SystemAudioAnalyzer {
         }
 
         let aggregateDescription: [String: Any] = [
-            kAudioAggregateDeviceNameKey: "Notch Island Audio Analysis",
+            kAudioAggregateDeviceNameKey: "Ovira Audio Analysis",
             kAudioAggregateDeviceUIDKey: UUID().uuidString,
             kAudioAggregateDeviceIsPrivateKey: true,
             kAudioAggregateDeviceIsStackedKey: false,

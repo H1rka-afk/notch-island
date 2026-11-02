@@ -5,7 +5,7 @@ import ScreenCaptureKit
 // 3.9.4 — the wallpaper that is set on the Mac right now, for the widget
 // editor. `desktopImageURL` alone is not enough on macOS 14+: for Aerials
 // (the moving wallpapers) it returns an unrelated still. The order:
-// 1. the exact picture of the desktop wallpaper window, when Notch Island
+// 1. the exact picture of the desktop wallpaper window, when Ovira
 //    already may record the screen (no new permission is ever requested);
 // 2. the wallpaper chosen in System Settings, read from the wallpaper store:
 //    a picture file, or a frame of the Aerial video;

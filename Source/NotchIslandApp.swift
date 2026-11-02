@@ -1828,6 +1828,7 @@ final class IslandAppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     }
 
     func applicationDidFinishLaunching(_ notification: Notification) {
+        migrateLoginItemAfterRename()
         // This is a regular Dock app, not a background-only menu-bar agent.
         // The two-command status menu and nonactivating island panels remain.
         NSApp.setActivationPolicy(.regular)
@@ -2088,12 +2089,12 @@ final class IslandAppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         // All functionality stays in the native settings window; keep the
         // menu bar deliberately minimal, with exactly two visible commands.
         let item = NSStatusBar.system.statusItem(withLength: NSStatusItem.squareLength)
-        item.button?.image = NSImage(systemSymbolName: "circle.dotted.circle.fill", accessibilityDescription: "Notch Island")
-        item.button?.toolTip = "Notch Island — настройки"
+        item.button?.image = NSImage(systemSymbolName: "circle.dotted.circle.fill", accessibilityDescription: "Ovira")
+        item.button?.toolTip = "Ovira — настройки"
 
         let menu = NSMenu()
         menu.delegate = self
-        let settingsItem = NSMenuItem(title: "Настройки Notch Island…", action: #selector(openSettings), keyEquivalent: ",")
+        let settingsItem = NSMenuItem(title: "Настройки Ovira…", action: #selector(openSettings), keyEquivalent: ",")
         settingsItem.target = self
         menu.addItem(settingsItem)
 
@@ -3008,6 +3009,19 @@ final class IslandAppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         }
     }
 
+    // 4.7.0: the app moved from «Notch Island.app» to «Ovira.app». A login
+    // item registered for the old bundle is re-registered once for the new
+    // one, so «Запускать при входе» keeps working.
+    private func migrateLoginItemAfterRename() {
+        let key = "loginItemMigratedOviraV470"
+        guard !UserDefaults.standard.bool(forKey: key) else { return }
+        UserDefaults.standard.set(true, forKey: key)
+        let service = SMAppService.mainApp
+        guard service.status == .enabled else { return }
+        try? service.unregister()
+        try? service.register()
+    }
+
     private func refreshLaunchAtLogin() {
         let serviceStatus = SMAppService.mainApp.status
         launchAtLoginItem?.state = serviceStatus == .enabled ? .on : .off
@@ -3035,7 +3049,7 @@ final class IslandAppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         } catch {
             let alert = NSAlert()
             alert.messageText = "Не удалось изменить автозапуск"
-            alert.informativeText = "macOS: \(error.localizedDescription). Убедись, что Notch Island установлен в папке «Программы»."
+            alert.informativeText = "macOS: \(error.localizedDescription). Убедись, что Ovira установлен в папке «Программы»."
             alert.addButton(withTitle: "Открыть настройки")
             alert.addButton(withTitle: "Закрыть")
             if alert.runModal() == .alertFirstButtonReturn {
@@ -3828,7 +3842,7 @@ final class IslandAppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         // be verified. We keep the star visible and explain how to activate it.
         let alert = NSAlert()
         alert.messageText = "Избранное Яндекс Музыки"
-        alert.informativeText = "Звёздочка видна, но статус лайка пока не удалось проверить. OAuth не нужен: для отдельного приложения разрешите Notch Island Универсальный доступ, для браузера — управление вкладкой Яндекс Музыки через Apple Events. Если macOS не показывает состояние сердечка, приложение не нажмёт его вслепую."
+        alert.informativeText = "Звёздочка видна, но статус лайка пока не удалось проверить. OAuth не нужен: для отдельного приложения разрешите Ovira Универсальный доступ, для браузера — управление вкладкой Яндекс Музыки через Apple Events. Если macOS не показывает состояние сердечка, приложение не нажмёт его вслепую."
         alert.addButton(withTitle: "Разрешить управление")
         alert.addButton(withTitle: "Закрыть")
         if alert.runModal() == .alertFirstButtonReturn {
@@ -3842,7 +3856,7 @@ final class IslandAppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         NSApp.activate(ignoringOtherApps: true)
         let alert = NSAlert()
         alert.messageText = "Яндекс Музыка — избранное без OAuth"
-        alert.informativeText = "В отдельном приложении Notch Island использует только Универсальный доступ macOS. В браузере управление идёт через открытую вкладку music.yandex.ru и Apple Events.\n\nПроверка: " + favorites.yandexLocalStatus(track: state.track) + "\n\nРазрешите управление, затем закройте и снова откройте Notch Island. Пароль и OAuth-токен вводить не нужно."
+        alert.informativeText = "В отдельном приложении Ovira использует только Универсальный доступ macOS. В браузере управление идёт через открытую вкладку music.yandex.ru и Apple Events.\n\nПроверка: " + favorites.yandexLocalStatus(track: state.track) + "\n\nРазрешите управление, затем закройте и снова откройте Ovira. Пароль и OAuth-токен вводить не нужно."
         alert.addButton(withTitle: "Запросить доступ")
         alert.addButton(withTitle: "Закрыть")
         if alert.runModal() == .alertFirstButtonReturn {
@@ -3856,8 +3870,8 @@ final class IslandAppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         let alert = NSAlert()
         alert.messageText = "Избранное Яндекс Музыки"
         alert.informativeText = "OAuth-токен НЕ нужен для прямого управления кнопкой лайка.\n\n" +
-            "Приложение Яндекс Музыка: разрешите Notch Island в Системные настройки → Конфиденциальность и безопасность → Универсальный доступ, затем перезапустите Notch Island.\n\n" +
-            "Яндекс Музыка в браузере: включите Allow JavaScript from Apple Events (разрешить JavaScript из Apple Events) и разрешите Notch Island управление браузером.\n\n" +
+            "Приложение Яндекс Музыка: разрешите Ovira в Системные настройки → Конфиденциальность и безопасность → Универсальный доступ, затем перезапустите Ovira.\n\n" +
+            "Яндекс Музыка в браузере: включите Allow JavaScript from Apple Events (разрешить JavaScript из Apple Events) и разрешите Ovira управление браузером.\n\n" +
             "Для предотвращения случайного удаления песни из избранного требуется доступ к текущему состоянию сердечка. Если приложение не публикует его, звезда останется приглушённой. Опциональная интеграция с аккаунтом доступна отдельно."
         alert.alertStyle = .informational
         alert.addButton(withTitle: "Понятно")
@@ -4049,10 +4063,10 @@ final class IslandAppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
                 let trusted = AXIsProcessTrustedWithOptions(options)
                 ArtworkDiagnostics.write("Yandex desktop AX: permission check from settings trusted=\(trusted); runningBundle=\(Bundle.main.bundleIdentifier ?? "unknown")")
                 let alert = NSAlert()
-                alert.messageText = trusted ? "Универсальный доступ разрешён" : "Notch Island не получил доступ к Яндекс Музыке"
+                alert.messageText = trusted ? "Универсальный доступ разрешён" : "Ovira не получил доступ к Яндекс Музыке"
                 alert.informativeText = trusted
-                    ? "Разрешение подтверждено для этой запущенной копии Notch Island. Включи трек в настольной Яндекс Музыке и повтори поиск обложки. Если приложение не отдаёт адрес изображения, это будет отражено в журнале."
-                    : "Открой Системные настройки → Конфиденциальность и безопасность → Универсальный доступ. Удали старый Notch Island из списка и заново добавь /Applications/Notch Island.app. Включи разрешение, затем полностью выйди из Notch Island и открой снова. После установки версии с временной подписью macOS может не признавать прежний доступ."
+                    ? "Разрешение подтверждено для этой запущенной копии Ovira. Включи трек в настольной Яндекс Музыке и повтори поиск обложки. Если приложение не отдаёт адрес изображения, это будет отражено в журнале."
+                    : "Открой Системные настройки → Конфиденциальность и безопасность → Универсальный доступ. Удали старый Ovira из списка и заново добавь /Applications/Ovira.app. Включи разрешение, затем полностью выйди из Ovira и открой снова. После установки версии с временной подписью macOS может не признавать прежний доступ."
                 alert.addButton(withTitle: "Открыть Универсальный доступ")
                 alert.addButton(withTitle: "Позже")
                 if alert.runModal() == .alertFirstButtonReturn,
@@ -4136,7 +4150,7 @@ final class IslandAppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
                 styleMask: [.titled, .closable, .miniaturizable, .fullSizeContentView],
                 backing: .buffered, defer: false
             )
-            window.title = "Настройки Notch Island"
+            window.title = "Настройки Ovira"
             window.titleVisibility = .hidden
             window.titlebarAppearsTransparent = true
             window.isMovableByWindowBackground = true

@@ -24,6 +24,8 @@ struct ReleaseNotesTests {
         precondition(ReleaseNotes.parse("просто текст без заголовка").isEmpty)
         let many = "Notch Island 9.9.9\n" + (1...20).map { "- п\($0)" }.joined(separator: "\n")
         precondition(ReleaseNotes.parse(many).count == 10)
+        // 4.7.0: sections titled «Ovira …» are read too.
+        precondition(ReleaseNotes.parse("Ovira 4.8.0 — новое\n- раз\n- два\nOvira 4.7.0\n- старое") == ["раз", "два"])
         print("ReleaseNotesTests: OK")
     }
 }

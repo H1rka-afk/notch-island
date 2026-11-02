@@ -1,7 +1,7 @@
 import Foundation
 import Darwin
 
-// 3.10.2 — finds what makes Notch Island slow, on the user's own Mac.
+// 3.10.2 — finds what makes Ovira slow, on the user's own Mac.
 // • A watchdog on a background thread pings the main thread every 50 ms.
 //   When the main thread answers late (> 80 ms = visible hitch), the stall
 //   and the operation that was running are written to the log.

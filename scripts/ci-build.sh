@@ -1,5 +1,5 @@
 #!/bin/bash
-# Builds a universal (Apple silicon + Intel) Notch Island.app and the release
+# Builds a universal (Apple silicon + Intel) Ovira.app and the release
 # archive Notch-Island-v<version>.zip. Used by GitHub Actions; the same file
 # list and frameworks as «Установить Notch Island.command».
 set -euo pipefail
@@ -9,7 +9,7 @@ SRC="$ROOT/Source"
 INSTALLER="$ROOT/Установить Notch Island.command"
 VERSION="$(/usr/libexec/PlistBuddy -c 'Print CFBundleShortVersionString' "$SRC/Info.plist")"
 OUT="$ROOT/build"
-APP="$OUT/Notch Island.app"
+APP="$OUT/Ovira.app"
 rm -rf "$OUT"
 mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources"
 cp "$SRC/Info.plist" "$APP/Contents/Info.plist"
@@ -47,7 +47,7 @@ mkdir -p "$PKG/Prebuilt"
 cp -R "$SRC" "$ROOT/Tests" "$PKG/"
 cp "$INSTALLER" "$ROOT"/*.txt "$PKG/"
 for extra in "$ROOT"/*.command; do cp "$extra" "$PKG/"; done
-ditto "$APP" "$PKG/Prebuilt/Notch Island.app"
+ditto "$APP" "$PKG/Prebuilt/Ovira.app"
 (cd "$OUT" && ditto -c -k --keepParent "Notch-Island-Installer-v$VERSION" "Notch-Island-v$VERSION.zip")
 ls -lh "$OUT/Notch-Island-v$VERSION.zip"
 if [[ -n "${GITHUB_OUTPUT:-}" ]]; then echo "version=$VERSION" >> "$GITHUB_OUTPUT"; fi

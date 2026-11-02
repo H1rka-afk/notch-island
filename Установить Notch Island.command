@@ -1,12 +1,15 @@
 #!/bin/bash
-# Notch Island installer (macOS 14+). Does not upload anything or change security settings.
+# Ovira installer (macOS 14+). Does not upload anything or change security settings.
 set -Eeuo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 SRC="$ROOT/Source"
 TMP="$(mktemp -d "${TMPDIR:-/tmp/}notch-island.XXXXXXXX")"
-APP="$TMP/Notch Island.app"
-DEST="/Applications/Notch Island.app"
+APP="$TMP/Ovira.app"
+DEST="/Applications/Ovira.app"
+# 4.7.0: Notch Island is now called Ovira. The same app (same identifier,
+# so permissions and settings stay); the old copy is removed after install.
+LEGACY="/Applications/Notch Island.app"
 LOG="$ROOT/notch-island-install.log"
 
 cleanup() { rm -rf "$TMP"; }
@@ -22,13 +25,13 @@ APPLESCRIPT
 
 fail() {
   printf '\nОшибка: %s\n' "$1" >&2
-  notify "Notch Island: ошибка" "$1"
+  notify "Ovira: ошибка" "$1"
   printf '\nОтчёт сборки: %s\n' "$LOG" >&2
   exit 1
 }
 
 cd "$ROOT"
-printf 'Notch Island 4.6.2\n'
+printf 'Ovira 4.7.0\n'
 printf '========================================================\n'
 
 [[ "$(uname -s)" == "Darwin" ]] || fail "Этот установщик необходимо запустить на Mac."
@@ -42,7 +45,8 @@ fi
 # 3.21.0: releases from GitHub carry a ready-made app (built and tested on
 # GitHub's Macs). Then nothing is compiled here: it is only signed with this
 # Mac's persistent signature and installed — a matter of seconds.
-PREBUILT="$ROOT/Prebuilt/Notch Island.app"
+PREBUILT="$ROOT/Prebuilt/Ovira.app"
+[[ -d "$PREBUILT" ]] || PREBUILT="$ROOT/Prebuilt/Notch Island.app"
 USE_PREBUILT=0
 if [[ -x "$PREBUILT/Contents/MacOS/NotchIsland" ]] &&
    [[ "$(/usr/libexec/PlistBuddy -c 'Print CFBundleShortVersionString' "$PREBUILT/Contents/Info.plist" 2>/dev/null)" == \
@@ -54,7 +58,7 @@ if [[ "$USE_PREBUILT" != "1" ]] && { ! /usr/bin/xcrun --find swiftc >/dev/null 2
   printf 'Нужны бесплатные инструменты Apple Command Line Tools.\n'
   printf 'Запускаю их системную установку. По её завершении снова открой этот файл.\n'
   /usr/bin/xcode-select --install 2>/dev/null || true
-  notify "Notch Island" "Для первой установки нужны бесплатные инструменты командной строки Apple (не полный Xcode). После их установки запусти этот установщик ещё раз."
+  notify "Ovira" "Для первой установки нужны бесплатные инструменты командной строки Apple (не полный Xcode). После их установки запусти этот установщик ещё раз."
   exit 0
 fi
 
@@ -191,13 +195,13 @@ fi
 if [[ "$SIGN_MODE" == "adhoc" ]]; then
   printf '\nИспользую временную подпись.\n'
   printf 'ВНИМАНИЕ: после обновления macOS может забыть разрешение «Универсальный доступ».\n'
-  printf 'После установки выключи и вновь включи разрешение для Notch Island.\n'
+  printf 'После установки выключи и вновь включи разрешение для Ovira.\n'
   printf 'Signing: ad-hoc (Accessibility grant may need to be re-authorized)\n' >>"$LOG"
   /usr/bin/codesign --force --sign - "$APP" >>"$LOG" 2>&1 || fail "Ошибка временной подписи приложения."
 fi
 /usr/bin/codesign --verify --strict "$APP" >>"$LOG" 2>&1 || fail "Проверка подписи собранного приложения не пройдена."
 
-printf 'Останавливаю ранее запущенный Notch Island (если есть)…\n'
+printf 'Останавливаю ранее запущенный Ovira (если есть)…\n'
 # 3.6.3: the real reason the app "did not restart": the old copy was never
 # stopped (pgrep/killall did not find it from here), so `open` merely woke
 # the still-running OLD app. Find it by its executable path with ps, and by
@@ -234,7 +238,7 @@ printf 'Устанавливаю приложение в /Applications…\n'
 # bundle aside and copy the new one as brand-new files.
 OLD_APP=""
 if [[ -d "$DEST" ]]; then
-  OLD_APP="$(/usr/bin/dirname "$DEST")/.Notch Island.old.$$.app"
+  OLD_APP="$(/usr/bin/dirname "$DEST")/.Ovira.old.$$.app"
   if /bin/mv "$DEST" "$OLD_APP" 2>>"$LOG"; then
     printf 'old bundle moved aside: %s\n' "$OLD_APP" >>"$LOG"
   else
@@ -265,13 +269,22 @@ if [[ -n "$OLD_APP" ]]; then
   fi
 fi
 REGISTER="/System/Library/Frameworks/CoreServices.framework/Frameworks/LaunchServices.framework/Support/lsregister"
+# 4.7.0: remove the copy installed under the old name.
+if [[ -d "$LEGACY" && -x "$DEST/Contents/MacOS/NotchIsland" ]]; then
+  if [[ -x "$REGISTER" ]]; then "$REGISTER" -u "$LEGACY" >/dev/null 2>&1 || true; fi
+  if /bin/rm -rf "$LEGACY" >>"$LOG" 2>&1; then
+    printf 'Старая копия «Notch Island» удалена — теперь приложение называется Ovira.\n'
+  else
+    printf 'Старую копию «Notch Island» не удалось удалить — её можно перенести в Корзину вручную.\n'
+  fi
+fi
 # 3.8.22: new icon — nudge Finder/Dock to drop the cached old one.
 /usr/bin/touch "$DEST" >/dev/null 2>&1 || true
 if [[ -x "$REGISTER" ]]; then "$REGISTER" -f "$DEST" >/dev/null 2>&1 || true; fi
 
 printf '\nУстановлено: %s\n' "$DEST"
 printf 'Приложение можно открывать через Launchpad, Spotlight или папку Программы.\n'
-printf 'Значок Notch Island доступен в Dock: нажми его, чтобы открыть настройки. Иконка в строке меню тоже остаётся.\n'
+printf 'Значок Ovira доступен в Dock: нажми его, чтобы открыть настройки. Иконка в строке меню тоже остаётся.\n'
 
 # Open without requiring Xcode for subsequent launches. A one-click update
 # runs this script after the old app has quit, so CONFIRM the new version is
@@ -303,15 +316,15 @@ else
   /bin/launchctl remove "$RELAUNCH_LABEL" >/dev/null 2>&1 || true
 fi
 if ! island_running; then
-  printf 'Не удалось запустить автоматически. Открой Notch Island из «Программ».\n'
+  printf 'Не удалось запустить автоматически. Открой Ovira из «Программ».\n'
   printf '  диагностика: последние системные сообщения о запуске\n'
   /usr/bin/log show --last 40s --style compact \
-    --predicate 'eventMessage CONTAINS[c] "NotchIsland" OR eventMessage CONTAINS[c] "Notch Island"' 2>/dev/null \
+    --predicate 'eventMessage CONTAINS[c] "NotchIsland" OR eventMessage CONTAINS[c] "Ovira" OR eventMessage CONTAINS[c] "Notch Island"' 2>/dev/null \
     | /usr/bin/grep -iE "kill|deny|denied|invalid|crash|fail|error|launch" | /usr/bin/tail -n 15 | /usr/bin/sed 's/^/    /'
 fi
 if [[ "$SIGN_MODE" == "adhoc" ]]; then
-  notify "Notch Island 3.2.0 установлен" "Приложение установлено. Новая сборка получает новую подпись: в «Полном доступе к диску» и «Универсальном доступе» выключи и снова включи Notch Island, затем перезапусти приложение. Для чтения обложек Яндекс Музыки и таймеров проверь «Универсальный доступ»: macOS может сохранить разрешение от предыдущей сборки, но не признать его для новой. Выключи и вновь включи Notch Island, затем полностью перезапусти приложение. Если не поможет — запусти отдельный файл «Восстановить доступ к таймеру.command» из архива."
+  notify "Ovira 3.2.0 установлен" "Приложение установлено. Новая сборка получает новую подпись: в «Полном доступе к диску» и «Универсальном доступе» выключи и снова включи Ovira, затем перезапусти приложение. Для чтения обложек Яндекс Музыки и таймеров проверь «Универсальный доступ»: macOS может сохранить разрешение от предыдущей сборки, но не признать его для новой. Выключи и вновь включи Ovira, затем полностью перезапусти приложение. Если не поможет — запусти отдельный файл «Восстановить доступ к таймеру.command» из архива."
 elif [[ "${NOTCH_ISLAND_QUIET:-0}" != "1" ]]; then
   # 3.21.0: no dialog when the app updates itself — it just reopens.
-  notify "Notch Island 4.6.2 установлен" "Готово! Notch Island подписан постоянной подписью этого Mac. Последний раз включи его в «Универсальном доступе» и «Полном доступе к диску» (настройки откроются на странице «Разрешения») — дальше разрешения будут сохраняться при обновлениях."
+  notify "Ovira 4.7.0 установлен" "Готово! Ovira подписан постоянной подписью этого Mac. Последний раз включи его в «Универсальном доступе» и «Полном доступе к диску» (настройки откроются на странице «Разрешения») — дальше разрешения будут сохраняться при обновлениях."
 fi

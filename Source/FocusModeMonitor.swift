@@ -3,7 +3,7 @@ import Foundation
 
 // Watches the macOS Focus database (read-only) and reports ON/OFF/mode
 // switches. Files are read on a utility queue; callbacks arrive on main.
-// The very first reading is a silent baseline: launching Notch Island while
+// The very first reading is a silent baseline: launching Ovira while
 // "Do Not Disturb" is already on never produces a banner.
 final class FocusModeMonitor {
     enum Access: Equatable {
@@ -83,7 +83,7 @@ final class FocusModeMonitor {
         case .unknown:
             return "Проверка состояния фокусирования…"
         case .denied:
-            return "Нет доступа к состоянию фокусирования. Добавь Notch Island в «Полный доступ к диску» и перезапусти приложение."
+            return "Нет доступа к состоянию фокусирования. Добавь Ovira в «Полный доступ к диску» и перезапусти приложение."
         case .noDatabase:
             return "Режимы фокусирования на этом Mac ещё не использовались."
         case .granted:
