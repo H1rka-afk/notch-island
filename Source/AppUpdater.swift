@@ -50,7 +50,13 @@ final class AppUpdater {
             .appendingPathComponent("Library/Caches/NotchIsland/Updates", isDirectory: true)
     }
 
-    static let releasesAPI = URL(string: "https://api.github.com/repos/H1rka-afk/notch-island/releases/latest")!
+    // 4.6.2: ready builds live in the public «notch-island-releases»
+    // repository (the source code repository becomes private). The old
+    // address stays as a fallback; the newer of the two wins.
+    static let releasesAPIs = [
+        URL(string: "https://api.github.com/repos/H1rka-afk/notch-island-releases/releases/latest")!,
+        URL(string: "https://api.github.com/repos/H1rka-afk/notch-island/releases/latest")!
+    ]
     static let githubKey = "githubUpdatesV400"
     static var githubEnabled: Bool { (UserDefaults.standard.object(forKey: githubKey) as? Bool) ?? true }
     private var lastGitHubCheck = Date.distantPast
@@ -107,13 +113,25 @@ final class AppUpdater {
         if case .installing = state { return }
         if !force && Date().timeIntervalSince(lastGitHubCheck) < 10 * 60 { return }
         lastGitHubCheck = Date()
-        var request = URLRequest(url: Self.releasesAPI, timeoutInterval: 20)
-        request.setValue("application/vnd.github+json", forHTTPHeaderField: "Accept")
-        request.setValue("NotchIsland/\(Self.currentVersion)", forHTTPHeaderField: "User-Agent")
-        URLSession.shared.dataTask(with: request) { [weak self] data, response, _ in
+        let group = DispatchGroup()
+        let lock = NSLock()
+        var found: [UpdatePolicy.GitHubRelease] = []
+        for url in Self.releasesAPIs {
+            var request = URLRequest(url: url, timeoutInterval: 20)
+            request.setValue("application/vnd.github+json", forHTTPHeaderField: "Accept")
+            request.setValue("NotchIsland/\(Self.currentVersion)", forHTTPHeaderField: "User-Agent")
+            group.enter()
+            URLSession.shared.dataTask(with: request) { data, response, _ in
+                defer { group.leave() }
+                guard let data, (response as? HTTPURLResponse)?.statusCode == 200,
+                      let release = UpdatePolicy.githubRelease(from: data) else { return }
+                lock.lock(); found.append(release); lock.unlock()
+            }.resume()
+        }
+        group.notify(queue: .global(qos: .utility)) { [weak self] in
             guard let self else { return }
-            guard let data, (response as? HTTPURLResponse)?.statusCode == 200,
-                  let release = UpdatePolicy.githubRelease(from: data) else {
+            let newest = found.max { UpdatePolicy.isNewer($1.version, than: $0.version) }
+            guard let release = newest else {
                 Self.log("github: no release information")
                 return
             }
@@ -124,7 +142,7 @@ final class AppUpdater {
                 return
             }
             DispatchQueue.main.async { self.download(release, to: target) }
-        }.resume()
+        }
     }
 
     private func download(_ release: UpdatePolicy.GitHubRelease, to target: URL) {

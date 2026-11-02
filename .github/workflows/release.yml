@@ -25,12 +25,27 @@ jobs:
         id: version
         run: echo "version=$(/usr/libexec/PlistBuddy -c 'Print CFBundleShortVersionString' Source/Info.plist)" >> "$GITHUB_OUTPUT"
 
+      # 4.6.2: with the RELEASES_TOKEN secret, builds are published to the
+      # public H1rka-afk/notch-island-releases (no source code there), so
+      # this repository can be private. Without it — here, as before.
+      - name: Where to publish
+        id: target
+        env:
+          RELEASES_TOKEN: ${{ secrets.RELEASES_TOKEN }}
+        run: |
+          if [ -n "$RELEASES_TOKEN" ]; then
+            echo "repo=H1rka-afk/notch-island-releases" >> "$GITHUB_OUTPUT"
+            echo "external=1" >> "$GITHUB_OUTPUT"
+          else
+            echo "repo=${{ github.repository }}" >> "$GITHUB_OUTPUT"
+          fi
+
       - name: Already released?
         id: exists
         env:
-          GH_TOKEN: ${{ github.token }}
+          GH_TOKEN: ${{ secrets.RELEASES_TOKEN || github.token }}
         run: |
-          if gh release view "v${{ steps.version.outputs.version }}" >/dev/null 2>&1; then
+          if gh release view "v${{ steps.version.outputs.version }}" -R "${{ steps.target.outputs.repo }}" >/dev/null 2>&1; then
             echo "skip=1" >> "$GITHUB_OUTPUT"
             echo "v${{ steps.version.outputs.version }} is already released"
           fi
@@ -55,8 +70,8 @@ jobs:
       - name: Publish release
         if: steps.exists.outputs.skip != '1'
         env:
-          GH_TOKEN: ${{ github.token }}
+          GH_TOKEN: ${{ secrets.RELEASES_TOKEN || github.token }}
         run: |
           V="${{ steps.version.outputs.version }}"
-          gh release create "v$V" "build/Notch-Island-v$V.zip" \
+          gh release create "v$V" "build/Notch-Island-v$V.zip" -R "${{ steps.target.outputs.repo }}" \
             --title "Notch Island $V" --notes-file CHANGES.txt --latest
