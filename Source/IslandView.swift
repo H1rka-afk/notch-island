@@ -409,7 +409,9 @@ struct IslandView: View {
                 }
                 .buttonStyle(DynamicIslandButtonStyle())
                 Spacer(minLength: 9)
-                Color.clear.frame(width: 30, height: 43)
+                // 4.8.2: «where the sound goes», as in the new player.
+                OutputDeviceButton()
+                    .frame(width: 30, height: 43)
             }
             .frame(maxWidth: .infinity)
 
