@@ -106,8 +106,12 @@ struct IslandView: View {
         // 4.8.0: like a drop hanging from the screen edge — when open, the
         // top corners flow into the bezel with soft concave curves instead
         // of meeting it at a sharp angle.
+        // 4.8.1: closed islands and banners have the curves too (7 pt,
+        // drawn just outside the body; the window reserves that room).
+        let flare: CGFloat = expanded ? 13 : state.edgeFlare
+        let shapeWidth = expanded ? width : width + flare * 2
         let shape = IslandSilhouette(bottomRadius: expanded ? 26 : unlockCorner,
-                                     flare: expanded ? 13 : 0,
+                                     flare: flare,
                                      roof: roof)
 
         ZStack(alignment: .top) {
@@ -135,7 +139,7 @@ struct IslandView: View {
             }
 
             shape.fill(Color.black)
-                .frame(width: width, height: height)
+                .frame(width: shapeWidth, height: height)
                 .overlay {
                     if state.event == nil && state.track != nil && !expanded &&
                         state.coverGlowOpacity > 0.001 && state.coverGlowCanvasInUse {
@@ -213,7 +217,7 @@ struct IslandView: View {
                     .scaleEffect(state.eventContentVisible ? 1 : 0.8)
                     .allowsHitTesting(state.eventRevealed && state.eventContentVisible)
                     .mask(alignment: .top) {
-                        shape.frame(width: width, height: height)
+                        shape.frame(width: shapeWidth, height: height)
                     }
             }
 
@@ -289,6 +293,8 @@ struct IslandView: View {
         // but keep the visible island's RIGHT edge attached to the physical
         // notch. SwiftUI animates the black shape leftward *inside* that
         // canvas; the underlying NSPanel never jumps between two centres.
+        // 4.8.1: room for the right-hand curve inside the fixed canvas.
+        .padding(.trailing, state.usesFixedMediaSatelliteCanvas ? state.edgeFlare : 0)
         .frame(width: state.panelSize.width, height: state.panelSize.height,
                alignment: state.usesFixedMediaSatelliteCanvas ? .topTrailing : .top)
     }
@@ -306,8 +312,8 @@ struct IslandView: View {
                 ZStack {
                     AudioReactiveBars(playing: state.track?.isPlaying == true,
                                       live: state.audioLive,
-                                      maxHeight: 22, barWidth: 2.55,
-                                      barSpacing: 2.0, tint: state.musicArtworkTint,
+                                      maxHeight: 16, barWidth: 2.2,
+                                      barSpacing: 1.7, tint: state.musicArtworkTint,
                                       artwork: state.musicArtwork)
                         .offset(x: -3)
                         .opacity(state.volumeLevel == nil ? 1 : 0)
@@ -352,8 +358,8 @@ struct IslandView: View {
                 ZStack {
                     AudioReactiveBars(playing: state.track?.isPlaying == true,
                                       live: state.audioLive,
-                                      maxHeight: 46, barWidth: 3.45,
-                                      barSpacing: 2.8, tint: state.musicArtworkTint,
+                                      maxHeight: 32, barWidth: 2.9,
+                                      barSpacing: 2.3, tint: state.musicArtworkTint,
                                       artwork: state.musicArtwork)
                         .opacity(state.volumeLevel == nil ? 1 : 0)
                         .accessibilityLabel("Спектрограмма системного звука")
@@ -446,8 +452,8 @@ struct IslandView: View {
                 ZStack {
                     AudioReactiveBars(playing: state.track?.isPlaying == true,
                                       live: state.audioLive,
-                                      maxHeight: 40, barWidth: 3.6,
-                                      barSpacing: 2.8, tint: state.musicArtworkTint,
+                                      maxHeight: 28, barWidth: 3.0,
+                                      barSpacing: 2.3, tint: state.musicArtworkTint,
                                       artwork: state.musicArtwork)
                         .opacity(state.volumeLevel == nil ? 1 : 0)
                     if let level = state.volumeLevel {

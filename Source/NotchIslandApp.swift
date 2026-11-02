@@ -1322,6 +1322,8 @@ final class IslandState: ObservableObject {
     // A clear border in the hosting window is required for an OUTSIDE glow.
     // This does not change the shape width or the physical notch position.
     var chargingGlowWindowMargin: CGFloat { 7 }
+    // 4.8.1: the concave curves where a closed island meets the screen edge.
+    var edgeFlare: CGFloat { 7 }
     // Render a black roof ABOVE the screen edge. The visible lower edge
     // stays fixed, preventing a thin menu-bar seam at the top of charging.
     var chargingTopBleed: CGFloat { 5 }
@@ -1334,7 +1336,7 @@ final class IslandState: ObservableObject {
         if unlockTransitionActive {
             // Reserve the complete final canvas BEFORE presenting the panel.
             // The silhouette contracts only within this single window.
-            return CGSize(width: max(notchWidth + 76, compactWidth),
+            return CGSize(width: max(notchWidth + 76, compactWidth) + edgeFlare * 2,
                           height: max(notchHeight, compactDisplayHeight) + islandTopBleed)
         }
         if event != nil || eventHandoffCanvasActive || coverGlowCanvasInUse {
@@ -1344,7 +1346,7 @@ final class IslandState: ObservableObject {
             let glow = chargingGlowWindowMargin
             let maxEventWidth = max(chargingWidth, notchWidth + lowBatteryWing * 2,
                                     notchWidth + unpluggedWing * 2, airPodsWidth, focusWidth, updateWidth, noticeWidth)
-            return CGSize(width: max(maxEventWidth + glow * 2, compactWidth),
+            return CGSize(width: max(maxEventWidth + max(glow, edgeFlare) * 2, compactWidth + edgeFlare * 2),
                           height: max(notchHeight + chargingBridgeDepth + islandTopBleed + glow,
                                       compactDisplayHeight + islandTopBleed))
         }
@@ -1353,7 +1355,7 @@ final class IslandState: ObservableObject {
                           height: expandedHeight + islandTopBleed)
         }
         if track != nil || timerPresented {
-            return CGSize(width: compactWidth,
+            return CGSize(width: compactWidth + edgeFlare * 2,
                           height: compactDisplayHeight + islandTopBleed)
         }
         return .zero
@@ -3176,6 +3178,7 @@ final class IslandAppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
                 baseLeft = CGFloat(TimerRoutingPolicy.fixedMediaCanvasLeft(
                     notchCenter: Double(centre), notchWidth: Double(state.notchWidth),
                     mediaWing: Double(state.compactWing), canvasWidth: Double(size.width)))
+                    + state.edgeFlare
             } else if state.unlockTransitionActive || state.event != nil || state.eventHandoffCanvasActive ||
                         state.coverGlowCanvasInUse {
                 baseLeft = centre - size.width / 2
@@ -3188,7 +3191,7 @@ final class IslandAppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
                     rightWing: Double(state.rightWing),
                     expandedWidth: Double(size.width)))
             } else if state.event == nil && !state.canvasExpanded {
-                baseLeft = centre - state.notchWidth / 2 - state.leftWing
+                baseLeft = centre - state.notchWidth / 2 - state.leftWing - state.edgeFlare
             } else {
                 baseLeft = centre - size.width / 2
             }
