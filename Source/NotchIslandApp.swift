@@ -1782,6 +1782,7 @@ final class IslandAppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private var timerPinnedX: CGFloat?
     private var lockOverlay: LockScreenOverlay?
     private var desktopWallpaper: DesktopWallpaperController?
+    private var systemLockWallpaper: SystemLockWallpaper?
     private var lockWidgetsTimer: Timer?
     private var isScreenLocked = false
     // Screen-unlocked notifications may arrive later than the actual WindowServer
@@ -1905,6 +1906,8 @@ final class IslandAppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         lockOverlay = LockScreenOverlay(state: state)
         // 4.9.0: live desktop wallpaper (off until chosen in Settings).
         desktopWallpaper = DesktopWallpaperController(state: state)
+        // 4.10.0: artwork in the real macOS lock screen (password, users).
+        systemLockWallpaper = SystemLockWallpaper(state: state)
         lockOverlayStandByHook()
         lockOverlay?.prepare(on: displayScreen())
         lockStatusItem?.title = lockOverlay?.usesPrivateLockSpace == true

@@ -201,6 +201,7 @@ struct NotchSettingsWindowView: View {
     @AppStorage(LiveWallpaperSettings.modeKey) private var liveMode = "off"
     @AppStorage(LiveWallpaperSettings.desktopKey) private var liveDesktop = true
     @AppStorage(LiveWallpaperSettings.lockKey) private var liveLock = true
+    @AppStorage(SystemLockWallpaperSettings.enabledKey) private var systemLockWallpaper = true
     @AppStorage(LiveWallpaperSettings.qualityKey) private var liveQuality = 0.75
     @AppStorage(LiveWallpaperSettings.fpsKey) private var liveFPS = 30
     @AppStorage(LiveWallpaperSettings.batteryKey) private var livePauseOnBattery = true
@@ -2052,7 +2053,7 @@ struct NotchSettingsWindowView: View {
                     SavedWallpapersGrid(selection: $liveVideo, accent: accent(.wallpaper))
                 }
             }
-            group("Где показывать", footer: "Экран блокировки — под полем пароля, обложкой и карточкой плеера. На рабочем столе обои лежат под значками и окнами; клики проходят сквозь них.") {
+            group("Где показывать", footer: "Экран блокировки: если включена «Обложка в настоящем экране входа», там стоит кадр из видео, а поле пароля остаётся настоящим. На рабочем столе обои лежат под значками и окнами; клики проходят сквозь них.") {
                 toggleRow("Рабочий стол", subtitle: "На всех мониторах и рабочих столах", isOn: $liveDesktop)
                 rowDivider
                 toggleRow("Экран блокировки", isOn: $liveLock)
@@ -2104,6 +2105,11 @@ struct NotchSettingsWindowView: View {
         VStack(alignment: .leading, spacing: 20) {
             group(nil, footer: "Экспериментальное отображение поверх экрана блокировки.") {
                 toggleRow("Замочек на экране блокировки", isOn: lockBinding)
+            }
+            group("Обои экрана блокировки", footer: "Пока Mac заблокирован, Ovira ставит обложку играющей музыки (или кадр из живых обоев) системными обоями — поверх macOS сама рисует часы, поле пароля, Touch ID и выбор пользователя, всё настоящее. После входа твои обои возвращаются как были. Живое видео в этом режиме стоит кадром: окно с видео закрыло бы поле пароля.") {
+                toggleRow("Обложка в настоящем экране входа",
+                          subtitle: "Поле пароля и выбор пользователя остаются рабочими",
+                          isOn: $systemLockWallpaper)
             }
             group("Медиаплеер", footer: "Как на экране блокировки iPhone: обложка, название, прогресс и кнопки внизу по центру, над полем пароля. Появляется, только когда играет или стоит на паузе музыка. Кнопки управляют музыкой без разблокировки; если macOS не пропустит нажатия, карточка останется для просмотра.") {
                 toggleRow("Медиаплеер на экране блокировки", isOn: $lockScreenMedia)

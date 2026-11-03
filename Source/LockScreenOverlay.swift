@@ -633,7 +633,10 @@ final class LockScreenOverlay {
     // MARK: Live wallpaper (4.9.0)
 
     private func showLiveWallpaper() {
+        // 4.10.0: with the real macOS login the wallpaper is the system one
+        // (see SystemLockWallpaper) — no window over the login.
         guard LiveWallpaperSettings.onLock, LiveWallpaperSettings.mode != "off",
+              !SystemLockWallpaperSettings.enabled,
               let screen = lastScreen ?? NSScreen.main else {
             hideLiveWallpaper()
             return
