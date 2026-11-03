@@ -295,6 +295,9 @@ final class LockScreenOverlay {
     private var widgetsWindow: LockIslandPanel?
     // 3.7.2: artwork instead of the wallpaper.
     private var coverWindow: LockIslandPanel?
+    // 4.9.0: the live wallpaper under everything on the lock screen.
+    private var liveWindow: LockIslandPanel?
+    private let liveActivity = LiveWallpaperActivity()
     private var coverPreviewWindow: LockIslandPanel?
     private var coverObserver: AnyCancellable?
     // 3.8.3: tapping the artwork on the wallpaper brings the wallpaper back.
@@ -625,7 +628,54 @@ final class LockScreenOverlay {
         LockIslandLog.record("widgets: shown (\(model.items.count))")
     }
 
+    // MARK: Live wallpaper (4.9.0)
+
+    private func showLiveWallpaper() {
+        guard LiveWallpaperSettings.onLock, LiveWallpaperSettings.mode != "off",
+              let screen = lastScreen ?? NSScreen.main else {
+            hideLiveWallpaper()
+            return
+        }
+        let panel: LockIslandPanel
+        if let existing = liveWindow {
+            panel = existing
+        } else {
+            panel = LockIslandPanel(contentRect: screen.frame, styleMask: [.borderless, .nonactivatingPanel],
+                                    backing: .buffered, defer: false)
+            panel.isOpaque = false
+            panel.backgroundColor = .clear
+            panel.hasShadow = false
+            panel.hidesOnDeactivate = false
+            panel.ignoresMouseEvents = true      // never in the way of the login
+            panel.isMovable = false
+            panel.isReleasedWhenClosed = false
+            panel.canBecomeVisibleWithoutLogin = true
+            // Under the artwork wallpaper, the card and the widgets.
+            panel.level = NSWindow.Level(rawValue: Int(Int32.max - 4))
+            panel.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary, .stationary, .ignoresCycle]
+            panel.contentView = NSHostingView(rootView: LiveWallpaperView(state: state, activity: liveActivity))
+            panel.alphaValue = 0
+            liveWindow = panel
+        }
+        panel.setFrame(screen.frame, display: false)
+        liveActivity.running = true
+        panel.orderFrontRegardless()
+        _ = coverBridge.attach(panel)
+        // Everything else stays above the live wallpaper.
+        coverWindow?.orderFrontRegardless()
+        mediaWindow?.orderFrontRegardless()
+        widgetsWindow?.orderFrontRegardless()
+        fade(panel, to: 1, duration: 0.6)
+        LockIslandLog.record("live wallpaper: on (\(LiveWallpaperSettings.mode))")
+    }
+
+    private func hideLiveWallpaper() {
+        liveActivity.running = false
+        liveWindow?.alphaValue = 0
+    }
+
     private func hideWidgets(animated: Bool) {
+        hideLiveWallpaper()
         LockCoverActivity.widgets.hide(after: animated ? 0.3 : 0)
         guard let panel = widgetsWindow, panel.alphaValue > 0 else { return }
         widgetsToken = UUID()
@@ -805,7 +855,7 @@ final class LockScreenOverlay {
 
     func showLocked(forcePreview: Bool = false) {
         // The lock-screen player is independent of the padlock switch.
-        if !forcePreview { showMedia(); showWidgets() }
+        if !forcePreview { showLiveWallpaper(); showMedia(); showWidgets() }
         guard enabled || forcePreview, let window else { return }
         // Duplicate session lock notifications may require a new SkyLight
         // attachment, but must not restart the entrance animation.
