@@ -843,25 +843,36 @@ struct NotchSettingsWindowView: View {
         let shape = RoundedRectangle(cornerRadius: 24, style: .continuous)
         let color = accent(.stats)
         let today = dayStats.today
-        return HStack(spacing: 18) {
-            VStack(alignment: .leading, spacing: 4) {
-                Image(systemName: "chart.bar.fill").font(.system(size: 17, weight: .bold))
-                Spacer(minLength: 0)
-                Text("СЕГОДНЯ").font(.system(size: 10, weight: .heavy)).kerning(0.8).opacity(0.7)
-                Text("Статистика").font(.system(size: 17, weight: .heavy, design: .rounded))
-            }
-            .frame(width: 110, alignment: .leading)
-            if dayStats.enabled {
-                statsMetric("За Маком", DayStatsMath.duration(today.activeSeconds), "desktopcomputer")
-                statsMetric("Музыка", DayStatsMath.duration(today.musicSeconds), "music.note")
-                statsMetric("Треки", "\(today.tracks)", "music.note.list")
-                statsMetric("Отдых глазам", "\(today.eyeBreaks)", "eye")
-            } else {
-                Text("Статистика выключена — включи её в разделе").font(.system(size: 13, weight: .medium)).opacity(0.85)
-            }
+        let header = VStack(alignment: .leading, spacing: 4) {
+            Image(systemName: "chart.bar.fill").font(.system(size: 17, weight: .bold))
             Spacer(minLength: 0)
-            weekBars(height: 54, compact: true)
-                .frame(width: 150)
+            Text("СЕГОДНЯ").font(.system(size: 10, weight: .heavy)).kerning(0.8).opacity(0.7)
+            Text("Статистика").font(.system(size: 17, weight: .heavy, design: .rounded))
+        }
+        .frame(width: 110, alignment: .leading)
+        // 4.9.1: the tile shares its row with others — show as much as
+        // fits instead of pushing the whole grid wider than the window.
+        return ViewThatFits(in: .horizontal) {
+            HStack(spacing: 18) {
+                header
+                statsMetrics(4, today)
+                Spacer(minLength: 0)
+                weekBars(height: 54, compact: true).frame(width: 150)
+            }
+            HStack(spacing: 18) {
+                header
+                statsMetrics(4, today)
+                Spacer(minLength: 0)
+            }
+            HStack(spacing: 18) {
+                header
+                statsMetrics(2, today)
+                Spacer(minLength: 0)
+            }
+            HStack(spacing: 14) {
+                header
+                Spacer(minLength: 0)
+            }
         }
         .foregroundStyle(.white)
         .padding(16)
@@ -883,6 +894,20 @@ struct NotchSettingsWindowView: View {
             else if snapshot.hoveredSection == Section.stats.rawValue { snapshot.hoveredSection = nil }
         }
         .help("Открыть «Статистику»")
+    }
+
+    @ViewBuilder
+    private func statsMetrics(_ count: Int, _ today: DayStats) -> some View {
+        if dayStats.enabled {
+            statsMetric("За Маком", DayStatsMath.duration(today.activeSeconds), "desktopcomputer")
+            statsMetric("Музыка", DayStatsMath.duration(today.musicSeconds), "music.note")
+            if count > 2 {
+                statsMetric("Треки", "\(today.tracks)", "music.note.list")
+                statsMetric("Отдых глазам", "\(today.eyeBreaks)", "eye")
+            }
+        } else {
+            Text("Статистика выключена").font(.system(size: 13, weight: .medium)).opacity(0.85)
+        }
     }
 
     private func statsMetric(_ title: String, _ value: String, _ icon: String) -> some View {
