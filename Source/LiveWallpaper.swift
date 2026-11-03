@@ -277,7 +277,11 @@ struct LoopingVideoView: NSViewRepresentable {
     var onReady: (Bool) -> Void = { _ in }
 
     func makeNSView(context: Context) -> LoopingVideoNSView {
-        let view = LoopingVideoNSView(copyFrames: copyFrames)
+        // 4.10.2: frames are always copied into a plain layer that keeps the
+        // last picture — a video layer goes empty for a moment when the
+        // video starts over, and the real wallpaper flashed through.
+        _ = copyFrames
+        let view = LoopingVideoNSView(copyFrames: true)
         view.onReady = onReady
         view.fps = fps
         view.load(path)
@@ -307,6 +311,7 @@ final class LoopingVideoNSView: NSView {
     private var looper: AVPlayerLooper?
     private var outputs: [ObjectIdentifier: AVPlayerItemVideoOutput] = [:]
     private var frameTimer: Timer?
+    private var shownBuffers: [CVPixelBuffer] = []
     private var loadedPath = ""
     private var reportedReady = false
     private static let ciContext = CIContext(options: [.useSoftwareRenderer: false])
@@ -391,7 +396,8 @@ final class LoopingVideoNSView: NSView {
 
     private func output(for item: AVPlayerItem) -> AVPlayerItemVideoOutput {
         if let existing = outputs[ObjectIdentifier(item)] { return existing }
-        let attributes = [kCVPixelBufferPixelFormatTypeKey as String: kCVPixelFormatType_32BGRA]
+        let attributes: [String: Any] = [kCVPixelBufferPixelFormatTypeKey as String: kCVPixelFormatType_32BGRA,
+                                         kCVPixelBufferIOSurfacePropertiesKey as String: [String: Any]()]
         let output = AVPlayerItemVideoOutput(pixelBufferAttributes: attributes)
         item.add(output)
         outputs[ObjectIdentifier(item)] = output
@@ -440,11 +446,17 @@ final class LoopingVideoNSView: NSView {
             logIfStuck(item)
             return
         }
-        let image = CIImage(cvPixelBuffer: buffer)
-        guard let cg = Self.ciContext.createCGImage(image, from: image.extent) else { return }
         CATransaction.begin()
         CATransaction.setDisableActions(true)
-        frameLayer.contents = cg
+        if let surface = CVPixelBufferGetIOSurface(buffer)?.takeUnretainedValue() {
+            // No copy: the layer shows the decoded frame itself. The buffer
+            // is kept so the decoder does not reuse it while it is on screen.
+            frameLayer.contents = surface
+            shownBuffers = [buffer] + shownBuffers.prefix(1)
+        } else {
+            let image = CIImage(cvPixelBuffer: buffer)
+            if let cg = Self.ciContext.createCGImage(image, from: image.extent) { frameLayer.contents = cg }
+        }
         CATransaction.commit()
         hasVideoFrame = true
         report(true)

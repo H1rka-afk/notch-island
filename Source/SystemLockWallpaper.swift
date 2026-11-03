@@ -24,6 +24,8 @@ final class SystemLockWallpaper {
     private let state: IslandState
     private var observers: [NSObjectProtocol] = []
     private var artworkObserver: AnyCancellable?
+    private var requestObserver: AnyCancellable?
+    private var requested = false
     private var pending: DispatchWorkItem?
     private var locked = false
     private var applied = false
@@ -57,6 +59,12 @@ final class SystemLockWallpaper {
                                                                 object: nil, queue: .main) { [weak self] _ in
             self?.restoreIfNeeded(reason: "quit")
         })
+        // 4.10.2: only after a tap on the artwork in the lock-screen player
+        // (and back on the next tap).
+        requestObserver = LockCardUIState.shared.$expanded
+            .removeDuplicates()
+            .receive(on: DispatchQueue.main)
+            .sink { [weak self] on in self?.setRequested(on) }
         artworkObserver = state.$musicArtwork
             .map { $0.map(ObjectIdentifier.init) }
             .removeDuplicates()
@@ -73,13 +81,25 @@ final class SystemLockWallpaper {
     private func didLock() {
         guard !locked else { return }
         locked = true
-        scheduleUpdate(delay: 0)
+        if requested { scheduleUpdate(delay: 0) }
     }
 
     private func didUnlock() {
         locked = false
         pending?.cancel()
         restoreIfNeeded(reason: "unlock")
+    }
+
+    private func setRequested(_ on: Bool) {
+        requested = on
+        if on {
+            scheduleUpdate(delay: 0)
+        } else {
+            pending?.cancel()
+            if applied || UserDefaults.standard.data(forKey: Self.backupKey) != nil {
+                restoreIfNeeded(reason: "tap")
+            }
+        }
     }
 
     private func scheduleUpdate(delay: TimeInterval) {
@@ -97,19 +117,12 @@ final class SystemLockWallpaper {
     }
 
     private func currentSource() -> Source? {
-        if let art = state.musicArtwork, state.track != nil { return .artwork(art) }
-        if LiveWallpaperSettings.onLock, LiveWallpaperSettings.mode == "video" {
-            let path = LiveWallpaperSettings.videoPath
-            if !path.isEmpty, FileManager.default.fileExists(atPath: path) { return .video(path) }
-        }
-        if LiveWallpaperSettings.onLock, LiveWallpaperSettings.mode == "cover", let art = state.musicArtwork {
-            return .artwork(art)
-        }
+        if let art = state.musicArtwork { return .artwork(art) }
         return nil
     }
 
     private func update() {
-        guard locked, SystemLockWallpaperSettings.enabled else { return }
+        guard locked, requested, SystemLockWallpaperSettings.enabled else { return }
         guard let source = currentSource() else {
             // Music stopped while locked: back to the user's own wallpaper.
             if applied { restoreIfNeeded(reason: "nothing to show") }

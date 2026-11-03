@@ -453,7 +453,11 @@ final class LockScreenOverlay {
             return
         }
         guard let screen = lastScreen ?? NSScreen.main else { return }
-        if lockedCardVisible, let panel = coverWindow {
+        // 4.10.2: with the real macOS login SystemLockWallpaper puts the
+        // artwork into the system wallpaper — no window over the login.
+        if lockedCardVisible, SystemLockWallpaperSettings.enabled {
+            return
+        } else if lockedCardVisible, let panel = coverWindow {
             panel.setFrame(screen.frame, display: false)
             panel.orderFrontRegardless()
             coverBridge.updateLevel(Self.coverLayer)

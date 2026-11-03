@@ -1758,6 +1758,11 @@ struct LockScreenMediaCard: View {
         withAnimation(.spring(response: 0.35, dampingFraction: 0.9)) { ui.outputsOpen = false }
     }
 
+    // 4.10.2: with the real macOS login the artwork goes into the system
+    // wallpaper and stays in the card too — a second tap brings the
+    // wallpaper back.
+    private var artworkOnWallpaper: Bool { ui.expanded && !SystemLockWallpaperSettings.enabled }
+
     private func toggleExpanded() {
         withAnimation(.spring(response: 0.5, dampingFraction: 0.84)) { ui.expanded.toggle() }
     }
@@ -1869,26 +1874,26 @@ struct LockScreenMediaCard: View {
             // 3.8.6: one layout for both states, so the change animates —
             // the thumbnail shrinks away and the title glides to the centre
             // (centred over the progress line), and back again.
-            HStack(alignment: .center, spacing: ui.expanded ? 0 : 14) {
+            HStack(alignment: .center, spacing: artworkOnWallpaper ? 0 : 14) {
                 artwork(size: 60, radius: 12)
-                    .scaleEffect(ui.expanded ? 0.5 : 1)
-                    .opacity(ui.expanded ? 0 : 1)
-                    .frame(width: ui.expanded ? 0 : 60, height: 60)
-                    .allowsHitTesting(!ui.expanded)
+                    .scaleEffect(artworkOnWallpaper ? 0.5 : 1)
+                    .opacity(artworkOnWallpaper ? 0 : 1)
+                    .frame(width: artworkOnWallpaper ? 0 : 60, height: 60)
+                    .allowsHitTesting(!artworkOnWallpaper)
                 // Mirrors the spectrum on the right, so the title is centred
                 // on the whole card.
-                Color.clear.frame(width: ui.expanded ? 38 : 0, height: 1)
-                VStack(alignment: ui.expanded ? .center : .leading, spacing: 2) {
+                Color.clear.frame(width: artworkOnWallpaper ? 38 : 0, height: 1)
+                VStack(alignment: artworkOnWallpaper ? .center : .leading, spacing: 2) {
                     Text(song.title)
-                        .font(.system(size: ui.expanded ? 18 : 17, weight: .bold))
+                        .font(.system(size: artworkOnWallpaper ? 18 : 17, weight: .bold))
                         .foregroundStyle(.white)
                     Text(song.artist)
                         .font(.system(size: 16, weight: .medium))
                         .foregroundStyle(.white.opacity(0.62))
                 }
                 .lineLimit(1)
-                .multilineTextAlignment(ui.expanded ? .center : .leading)
-                .frame(maxWidth: .infinity, alignment: ui.expanded ? .center : .leading)
+                .multilineTextAlignment(artworkOnWallpaper ? .center : .leading)
+                .frame(maxWidth: .infinity, alignment: artworkOnWallpaper ? .center : .leading)
                 bars(song)
             }
             .frame(height: 60)
