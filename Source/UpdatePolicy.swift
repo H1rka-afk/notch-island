@@ -80,6 +80,20 @@ enum UpdatePolicy {
         let assetURL: URL
     }
 
+    // 4.10.1: when the GitHub API refuses (60 requests an hour per network),
+    // the release page redirect still names the newest tag:
+    // …/releases/latest → …/releases/tag/v4.10.0.
+    static func githubRelease(fromTagURL url: URL, repo: String) -> GitHubRelease? {
+        let parts = url.pathComponents
+        guard let index = parts.firstIndex(of: "tag"), index + 1 < parts.count else { return nil }
+        let tag = parts[index + 1]
+        let version = tag.hasPrefix("v") ? String(tag.dropFirst()) : tag
+        guard !components(version).isEmpty else { return nil }
+        let name = "Notch-Island-v\(version).zip"
+        guard let asset = URL(string: "https://github.com/\(repo)/releases/download/\(tag)/\(name)") else { return nil }
+        return GitHubRelease(version: version, assetName: name, assetURL: asset)
+    }
+
     static func githubRelease(from data: Data) -> GitHubRelease? {
         guard let root = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
               let tag = root["tag_name"] as? String,

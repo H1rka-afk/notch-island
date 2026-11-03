@@ -122,10 +122,26 @@ final class AppUpdater {
             request.setValue("NotchIsland/\(Self.currentVersion)", forHTTPHeaderField: "User-Agent")
             group.enter()
             URLSession.shared.dataTask(with: request) { data, response, _ in
-                defer { group.leave() }
-                guard let data, (response as? HTTPURLResponse)?.statusCode == 200,
-                      let release = UpdatePolicy.githubRelease(from: data) else { return }
-                lock.lock(); found.append(release); lock.unlock()
+                let status = (response as? HTTPURLResponse)?.statusCode ?? 0
+                if let data, status == 200, let release = UpdatePolicy.githubRelease(from: data) {
+                    lock.lock(); found.append(release); lock.unlock()
+                    group.leave()
+                    return
+                }
+                Self.log("github: api \(status) for \(url.pathComponents.dropFirst(2).prefix(2).joined(separator: "/")) — trying the release page")
+                // 4.10.1: the API allows 60 requests an hour; the release
+                // page has no such limit.
+                let repo = url.pathComponents.dropFirst(2).prefix(2).joined(separator: "/")
+                guard let page = URL(string: "https://github.com/\(repo)/releases/latest") else { group.leave(); return }
+                var pageRequest = URLRequest(url: page, timeoutInterval: 20)
+                pageRequest.httpMethod = "HEAD"
+                pageRequest.setValue("NotchIsland/\(Self.currentVersion)", forHTTPHeaderField: "User-Agent")
+                URLSession.shared.dataTask(with: pageRequest) { _, pageResponse, _ in
+                    defer { group.leave() }
+                    guard let final = pageResponse?.url,
+                          let release = UpdatePolicy.githubRelease(fromTagURL: final, repo: repo) else { return }
+                    lock.lock(); found.append(release); lock.unlock()
+                }.resume()
             }.resume()
         }
         group.notify(queue: .global(qos: .utility)) { [weak self] in

@@ -70,6 +70,12 @@ struct UpdatePolicyTests {
         """.data(using: .utf8)!
         precondition(UpdatePolicy.githubRelease(from: draft) == nil)
         precondition(UpdatePolicy.githubRelease(from: Data("{}".utf8)) == nil)
+        let page = UpdatePolicy.githubRelease(fromTagURL: URL(string: "https://github.com/H1rka-afk/r/releases/tag/v4.10.0")!,
+                                              repo: "H1rka-afk/r")!
+        precondition(page.version == "4.10.0" && page.assetName == "Notch-Island-v4.10.0.zip")
+        precondition(page.assetURL.absoluteString == "https://github.com/H1rka-afk/r/releases/download/v4.10.0/Notch-Island-v4.10.0.zip")
+        precondition(UpdatePolicy.isNewer("4.10.0", than: "4.9.4"))
+        precondition(UpdatePolicy.githubRelease(fromTagURL: URL(string: "https://github.com/H1rka-afk/r/releases")!, repo: "x") == nil)
         print("UpdatePolicyTests: OK")
     }
 }
