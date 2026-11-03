@@ -360,12 +360,12 @@ final class LoopingVideoNSView: NSView {
         self.looper = looper
         player = queue
         if copyFrames {
-            let attributes = [kCVPixelBufferPixelFormatTypeKey as String: kCVPixelFormatType_32BGRA]
-            for looped in looper.loopingPlayerItems {
-                let output = AVPlayerItemVideoOutput(pixelBufferAttributes: attributes)
-                looped.add(output)
-                outputs[ObjectIdentifier(looped)] = output
-            }
+            // 4.9.4: the looper makes its copies of the item only after the
+            // file is read, so outputs are attached lazily (see output(for:)).
+            for looped in looper.loopingPlayerItems { _ = output(for: looped) }
+            loadStarted = CACurrentMediaTime()
+            loggedProblem = false
+            loadPoster(path)
         } else {
             playerLayer.player = queue
         }
@@ -389,18 +389,74 @@ final class LoopingVideoNSView: NSView {
         frameTimer = timer
     }
 
+    private func output(for item: AVPlayerItem) -> AVPlayerItemVideoOutput {
+        if let existing = outputs[ObjectIdentifier(item)] { return existing }
+        let attributes = [kCVPixelBufferPixelFormatTypeKey as String: kCVPixelFormatType_32BGRA]
+        let output = AVPlayerItemVideoOutput(pixelBufferAttributes: attributes)
+        item.add(output)
+        outputs[ObjectIdentifier(item)] = output
+        return output
+    }
+
+    // 4.9.4: a still of the chosen video is shown at once, so the lock
+    // screen always has the user's wallpaper — even before (or without)
+    // the first decoded frame.
+    private var hasVideoFrame = false
+
+    private func loadPoster(_ path: String) {
+        hasVideoFrame = false
+        DispatchQueue.global(qos: .userInitiated).async { [weak self] in
+            let generator = AVAssetImageGenerator(asset: AVURLAsset(url: URL(fileURLWithPath: path)))
+            generator.appliesPreferredTrackTransform = true
+            generator.maximumSize = CGSize(width: 3840, height: 2400)
+            let cg = try? generator.copyCGImage(at: .zero, actualTime: nil)
+            DispatchQueue.main.async {
+                guard let self, self.loadedPath == path else { return }
+                guard let cg else {
+                    LockIslandLog.record("live wallpaper: no still frame for the video")
+                    return
+                }
+                if !self.hasVideoFrame {
+                    CATransaction.begin()
+                    CATransaction.setDisableActions(true)
+                    self.frameLayer.contents = cg
+                    CATransaction.commit()
+                }
+                self.report(true)
+            }
+        }
+    }
+
+    private var loadStarted: CFTimeInterval = 0
+    private var loggedProblem = false
+
     private func copyFrame() {
-        guard let item = player?.currentItem, let output = outputs[ObjectIdentifier(item)] else { return }
+        if let player, player.rate == 0, player.currentItem != nil { player.play() }
+        guard let item = player?.currentItem else { logIfStuck(nil); return }
+        let output = output(for: item)
         let time = output.itemTime(forHostTime: CACurrentMediaTime())
         guard output.hasNewPixelBuffer(forItemTime: time),
-              let buffer = output.copyPixelBuffer(forItemTime: time, itemTimeForDisplay: nil) else { return }
+              let buffer = output.copyPixelBuffer(forItemTime: time, itemTimeForDisplay: nil) else {
+            logIfStuck(item)
+            return
+        }
         let image = CIImage(cvPixelBuffer: buffer)
         guard let cg = Self.ciContext.createCGImage(image, from: image.extent) else { return }
         CATransaction.begin()
         CATransaction.setDisableActions(true)
         frameLayer.contents = cg
         CATransaction.commit()
+        hasVideoFrame = true
         report(true)
+    }
+
+    private func logIfStuck(_ item: AVPlayerItem?) {
+        guard !hasVideoFrame, !loggedProblem, CACurrentMediaTime() - loadStarted > 4 else { return }
+        loggedProblem = true
+        let status = item.map { "\($0.status.rawValue)" } ?? "no item"
+        let error = item?.error.map { "\($0)" } ?? "-"
+        LockIslandLog.record("live wallpaper: no frames yet (item=\(status), rate=\(player?.rate ?? -1), "
+                             + "loops=\(looper?.loopingPlayerItems.count ?? -1), looper=\(looper?.status.rawValue ?? -1), error=\(error))")
     }
 
     func stop() {
