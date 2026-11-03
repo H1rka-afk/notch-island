@@ -1758,10 +1758,9 @@ struct LockScreenMediaCard: View {
         withAnimation(.spring(response: 0.35, dampingFraction: 0.9)) { ui.outputsOpen = false }
     }
 
-    // 4.10.2: with the real macOS login the artwork goes into the system
-    // wallpaper and stays in the card too — a second tap brings the
-    // wallpaper back.
-    private var artworkOnWallpaper: Bool { ui.expanded && !SystemLockWallpaperSettings.enabled }
+    // 4.10.3: the same in both modes — the artwork leaves the card for the
+    // wallpaper (real macOS login or the older window over it).
+    private var artworkOnWallpaper: Bool { ui.expanded }
 
     private func toggleExpanded() {
         withAnimation(.spring(response: 0.5, dampingFraction: 0.84)) { ui.expanded.toggle() }

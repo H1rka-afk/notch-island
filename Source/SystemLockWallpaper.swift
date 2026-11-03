@@ -310,8 +310,14 @@ final class SystemLockWallpaper {
         return try? generator.copyCGImage(at: .zero, actualTime: nil)
     }
 
-    // Like an iPhone with music: the artwork, blurred, fills the screen and
-    // the sharp artwork sits between the clock and the login.
+    // 4.10.3: the same look as the older artwork wallpaper (LockCoverWallpaper):
+    // the cover blurred over the whole screen, the cover itself large in the
+    // middle (size from Settings), soft shading at the top and the bottom.
+    // The clock, the user picture and the password field are macOS's own.
+    static var coverShare: CGFloat {
+        CGFloat(min(1, max(0.3, (UserDefaults.standard.object(forKey: "lockCoverScaleV384") as? Double) ?? 0.55)))
+    }
+
     static func renderArtwork(_ art: CGImage, size: CGSize) -> CGImage? {
         let width = Int(size.width.rounded()), height = Int(size.height.rounded())
         guard width > 0, height > 0,
@@ -322,35 +328,31 @@ final class SystemLockWallpaper {
         context.setFillColor(NSColor.black.cgColor)
         context.fill(bounds)
 
-        // Background: blurred, a bit more saturated, slightly darkened.
         let input = CIImage(cgImage: art)
-        let fill = max(bounds.width / input.extent.width, bounds.height / input.extent.height) * 1.15
+        let fill = max(bounds.width / input.extent.width, bounds.height / input.extent.height) * 1.2
         let scaled = input.transformed(by: CGAffineTransform(scaleX: fill, y: fill))
         let centered = scaled.transformed(by: CGAffineTransform(
             translationX: (bounds.width - scaled.extent.width) / 2 - scaled.extent.minX,
             y: (bounds.height - scaled.extent.height) / 2 - scaled.extent.minY))
         let blurred = centered.clampedToExtent()
-            .applyingFilter("CIGaussianBlur", parameters: [kCIInputRadiusKey: bounds.height / 18])
-            .applyingFilter("CIColorControls", parameters: [kCIInputSaturationKey: 1.35,
-                                                            kCIInputBrightnessKey: -0.08])
+            .applyingFilter("CIGaussianBlur", parameters: [kCIInputRadiusKey: bounds.height / 14])
+            .applyingFilter("CIColorControls", parameters: [kCIInputSaturationKey: 1.4])
             .cropped(to: bounds)
         if let background = ciContext.createCGImage(blurred, from: bounds) {
             context.draw(background, in: bounds)
         }
-        context.setFillColor(NSColor.black.withAlphaComponent(0.18).cgColor)
+        context.setFillColor(NSColor.black.withAlphaComponent(0.28).cgColor)
         context.fill(bounds)
 
-        // The sharp artwork, centred a little above the middle.
-        let side = bounds.height * 0.30
-        let center = CGPoint(x: bounds.midX, y: bounds.height * 0.50)
-        let aspect = CGFloat(art.width) / CGFloat(max(1, art.height))
-        let w = aspect >= 1 ? side : side * aspect
-        let h = aspect >= 1 ? side / aspect : side
-        let rect = CGRect(x: center.x - w / 2, y: center.y - h / 2, width: w, height: h)
-        let path = CGPath(roundedRect: rect, cornerWidth: min(w, h) * 0.06, cornerHeight: min(w, h) * 0.06, transform: nil)
+        let side = bounds.height * coverShare
+        let center = CGPoint(x: bounds.midX, y: bounds.height * 0.5)
+        let rect = CGRect(x: center.x - side / 2, y: center.y - side / 2, width: side, height: side)
+        let radius = side * 0.045
+        let path = CGPath(roundedRect: rect, cornerWidth: radius, cornerHeight: radius, transform: nil)
+        let unit = bounds.height / 1000
         context.saveGState()
-        context.setShadow(offset: CGSize(width: 0, height: -side * 0.03), blur: side * 0.12,
-                          color: NSColor.black.withAlphaComponent(0.45).cgColor)
+        context.setShadow(offset: CGSize(width: 0, height: -18 * unit), blur: 80 * unit,
+                          color: NSColor.black.withAlphaComponent(0.5).cgColor)
         context.addPath(path)
         context.setFillColor(NSColor.black.cgColor)
         context.fillPath()
@@ -359,8 +361,23 @@ final class SystemLockWallpaper {
         context.addPath(path)
         context.clip()
         context.interpolationQuality = .high
-        context.draw(art, in: rect)
+        // scaledToFill inside the square
+        let aspect = CGFloat(art.width) / CGFloat(max(1, art.height))
+        var drawRect = rect
+        if aspect > 1 { drawRect.size.width = side * aspect; drawRect.origin.x = center.x - drawRect.width / 2 }
+        if aspect < 1 { drawRect.size.height = side / aspect; drawRect.origin.y = center.y - drawRect.height / 2 }
+        context.draw(art, in: drawRect)
         context.restoreGState()
+
+        // Shading so the system clock and login stay readable.
+        let space = CGColorSpace(name: CGColorSpace.sRGB)!
+        let colors = [NSColor.black.withAlphaComponent(0.38).cgColor, NSColor.clear.cgColor,
+                      NSColor.clear.cgColor, NSColor.black.withAlphaComponent(0.45).cgColor] as CFArray
+        let locations: [CGFloat] = [0, 0.32, 0.62, 1]
+        if let gradient = CGGradient(colorsSpace: space, colors: colors, locations: locations) {
+            // From the top of the screen (y = height) down to the bottom.
+            context.drawLinearGradient(gradient, start: CGPoint(x: 0, y: bounds.height), end: .zero, options: [])
+        }
         return context.makeImage()
     }
 }

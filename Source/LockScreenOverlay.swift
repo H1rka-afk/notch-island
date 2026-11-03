@@ -363,6 +363,15 @@ final class LockScreenOverlay {
         return NSRect(x: f.midX - side / 2, y: bottom, width: side, height: max(40, top - bottom))
     }
 
+    // 4.10.3: the big artwork of the system wallpaper (SystemLockWallpaper
+    // draws it at the same place and size).
+    static func artworkOnlyFrame(on screen: NSScreen) -> NSRect {
+        let f = screen.frame
+        let side = f.height * SystemLockWallpaper.coverShare
+        let centerY = f.maxY - f.height * LockCoverWallpaper.coverCenter
+        return NSRect(x: f.midX - side / 2, y: centerY - side / 2, width: side, height: side)
+    }
+
     private func makeCoverTapPanel() -> LockIslandPanel {
         let panel = LockIslandPanel(contentRect: .zero,
                                     styleMask: [.borderless, .nonactivatingPanel],
@@ -456,6 +465,12 @@ final class LockScreenOverlay {
         // 4.10.2: with the real macOS login SystemLockWallpaper puts the
         // artwork into the system wallpaper — no window over the login.
         if lockedCardVisible, SystemLockWallpaperSettings.enabled {
+            // Tap on the big artwork brings the wallpaper back, as before —
+            // the target covers only the artwork, never the login under it.
+            if let tap = coverTapWindow, let screen = lastScreen ?? NSScreen.main {
+                showCoverTap(tap, on: screen, attach: true)
+                tap.setFrame(Self.artworkOnlyFrame(on: screen), display: false)
+            }
             return
         } else if lockedCardVisible, let panel = coverWindow {
             panel.setFrame(screen.frame, display: false)
