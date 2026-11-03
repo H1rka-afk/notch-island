@@ -298,6 +298,8 @@ final class LockScreenOverlay {
     // 4.9.0: the live wallpaper under everything on the lock screen.
     private var liveWindow: LockIslandPanel?
     private let liveActivity = LiveWallpaperActivity()
+    private var liveShown = false
+    private var liveReadyObserver: AnyCancellable?
     private var coverPreviewWindow: LockIslandPanel?
     private var coverObserver: AnyCancellable?
     // 3.8.3: tapping the artwork on the wallpaper brings the wallpaper back.
@@ -653,9 +655,15 @@ final class LockScreenOverlay {
             // Under the artwork wallpaper, the card and the widgets.
             panel.level = NSWindow.Level(rawValue: Int(Int32.max - 4))
             panel.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary, .stationary, .ignoresCycle]
-            panel.contentView = NSHostingView(rootView: LiveWallpaperView(state: state, activity: liveActivity))
+            panel.contentView = NSHostingView(rootView: LiveWallpaperView(state: state, activity: liveActivity,
+                                                                          lockScreen: true))
             panel.alphaValue = 0
             liveWindow = panel
+            // 4.9.3: visible only while there is a real picture.
+            liveReadyObserver = liveActivity.$contentReady
+                .removeDuplicates()
+                .receive(on: DispatchQueue.main)
+                .sink { [weak self] ready in self?.liveReadyChanged(ready) }
         }
         panel.setFrame(screen.frame, display: false)
         liveActivity.running = true
@@ -665,11 +673,19 @@ final class LockScreenOverlay {
         coverWindow?.orderFrontRegardless()
         mediaWindow?.orderFrontRegardless()
         widgetsWindow?.orderFrontRegardless()
-        fade(panel, to: 1, duration: 0.6)
-        LockIslandLog.record("live wallpaper: on (\(LiveWallpaperSettings.mode))")
+        liveShown = true
+        if liveActivity.contentReady { fade(panel, to: 1, duration: 0.6) }
+        LockIslandLog.record("live wallpaper: on (\(LiveWallpaperSettings.mode)) ready=\(liveActivity.contentReady)")
+    }
+
+    private func liveReadyChanged(_ ready: Bool) {
+        guard liveShown, let panel = liveWindow else { return }
+        LockIslandLog.record("live wallpaper: ready=\(ready)")
+        fade(panel, to: ready ? 1 : 0, duration: ready ? 0.6 : 0.2)
     }
 
     private func hideLiveWallpaper() {
+        liveShown = false
         liveActivity.running = false
         liveWindow?.alphaValue = 0
     }

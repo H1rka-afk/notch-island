@@ -1,5 +1,6 @@
 import AppKit
 import AVFoundation
+import CoreImage
 import Combine
 import SwiftUI
 
@@ -47,11 +48,19 @@ enum LiveWallpaperSettings {
 // Whether one wallpaper window should be drawing right now.
 final class LiveWallpaperActivity: ObservableObject {
     @Published var running = false
+    // 4.9.3: true once there is a real picture (for a video: its first
+    // frame is ready). The lock-screen copy stays invisible until then, so
+    // a video that cannot play there never leaves a black screen.
+    @Published var contentReady = false
 }
 
 struct LiveWallpaperView: View {
     @ObservedObject var state: IslandState
     @ObservedObject var activity: LiveWallpaperActivity
+    // 4.9.3: on the lock screen the window covers the system clock and the
+    // login — draw our own clock, picture, name and hint where they are
+    // (the real login keeps working underneath, as with the cover).
+    var lockScreen = false
     @ObservedObject private var palette = CoverPalette.shared
     @AppStorage(LiveWallpaperSettings.modeKey) private var mode = "off"
     @AppStorage(LiveWallpaperSettings.qualityKey) private var quality = 0.75
@@ -77,14 +86,32 @@ struct LiveWallpaperView: View {
                 if videoPath.isEmpty {
                     Color.clear
                 } else {
-                    LoopingVideoView(path: videoPath, running: activity.running)
+                    LoopingVideoView(path: videoPath, running: activity.running,
+                                     copyFrames: lockScreen, fps: fpsValue) { ready in
+                        if activity.contentReady != ready { activity.contentReady = ready }
+                    }
                 }
             default:
                 Color.clear
             }
         }
         .animation(.easeInOut(duration: 0.8), value: state.musicArtwork.map(ObjectIdentifier.init))
+        .overlay {
+            if lockScreen { LockScreenChrome() }
+        }
         .ignoresSafeArea()
+        .onAppear { updateReady() }
+        .onChange(of: mode) { _, _ in updateReady() }
+        .onChange(of: state.musicArtwork.map(ObjectIdentifier.init)) { _, _ in updateReady() }
+    }
+
+    private func updateReady() {
+        switch mode {
+        case "cover": activity.contentReady = state.musicArtwork != nil
+        case "aurora": activity.contentReady = true
+        case "video": break        // reported by the player itself
+        default: activity.contentReady = false
+        }
     }
 
     private var auroraColors: [Color] {
@@ -243,15 +270,23 @@ struct LiveMeshLayers: View {
 struct LoopingVideoView: NSViewRepresentable {
     let path: String
     let running: Bool
+    // 4.9.3: on the lock screen frames are copied into an ordinary layer —
+    // a video layer is not always composited in the protected lock space.
+    var copyFrames = false
+    var fps: Double = 30
+    var onReady: (Bool) -> Void = { _ in }
 
     func makeNSView(context: Context) -> LoopingVideoNSView {
-        let view = LoopingVideoNSView()
+        let view = LoopingVideoNSView(copyFrames: copyFrames)
+        view.onReady = onReady
+        view.fps = fps
         view.load(path)
         view.setRunning(running)
         return view
     }
 
     func updateNSView(_ view: LoopingVideoNSView, context: Context) {
+        view.fps = fps
         view.load(path)
         view.setRunning(running)
     }
@@ -262,17 +297,37 @@ struct LoopingVideoView: NSViewRepresentable {
 }
 
 final class LoopingVideoNSView: NSView {
+    var onReady: (Bool) -> Void = { _ in }
+    var fps: Double = 30
+    private let copyFrames: Bool
+    private var readyObservation: NSKeyValueObservation?
     private let playerLayer = AVPlayerLayer()
+    private let frameLayer = CALayer()
     private var player: AVQueuePlayer?
     private var looper: AVPlayerLooper?
+    private var outputs: [ObjectIdentifier: AVPlayerItemVideoOutput] = [:]
+    private var frameTimer: Timer?
     private var loadedPath = ""
+    private var reportedReady = false
+    private static let ciContext = CIContext(options: [.useSoftwareRenderer: false])
 
-    override init(frame: NSRect) {
-        super.init(frame: frame)
+    init(copyFrames: Bool) {
+        self.copyFrames = copyFrames
+        super.init(frame: .zero)
         wantsLayer = true
-        layer?.backgroundColor = NSColor.black.cgColor
-        playerLayer.videoGravity = .resizeAspectFill
-        layer?.addSublayer(playerLayer)
+        layer?.backgroundColor = NSColor.clear.cgColor
+        if copyFrames {
+            frameLayer.contentsGravity = .resizeAspectFill
+            frameLayer.masksToBounds = true
+            layer?.addSublayer(frameLayer)
+        } else {
+            playerLayer.videoGravity = .resizeAspectFill
+            layer?.addSublayer(playerLayer)
+            readyObservation = playerLayer.observe(\.isReadyForDisplay, options: [.initial, .new]) { [weak self] layer, _ in
+                let ready = layer.isReadyForDisplay
+                DispatchQueue.main.async { self?.report(ready) }
+            }
+        }
     }
 
     required init?(coder: NSCoder) { nil }
@@ -282,34 +337,82 @@ final class LoopingVideoNSView: NSView {
         CATransaction.begin()
         CATransaction.setDisableActions(true)
         playerLayer.frame = bounds
+        frameLayer.frame = bounds
         CATransaction.commit()
+    }
+
+    private func report(_ ready: Bool) {
+        guard ready != reportedReady else { return }
+        reportedReady = ready
+        onReady(ready)
     }
 
     func load(_ path: String) {
         guard path != loadedPath else { return }
-        loadedPath = path
         stop()
+        loadedPath = path
         guard !path.isEmpty, FileManager.default.fileExists(atPath: path) else { return }
         let item = AVPlayerItem(url: URL(fileURLWithPath: path))
         let queue = AVQueuePlayer()
         queue.isMuted = true
         queue.preventsDisplaySleepDuringVideoPlayback = false
-        looper = AVPlayerLooper(player: queue, templateItem: item)
+        let looper = AVPlayerLooper(player: queue, templateItem: item)
+        self.looper = looper
         player = queue
-        playerLayer.player = queue
+        if copyFrames {
+            let attributes = [kCVPixelBufferPixelFormatTypeKey as String: kCVPixelFormatType_32BGRA]
+            for looped in looper.loopingPlayerItems {
+                let output = AVPlayerItemVideoOutput(pixelBufferAttributes: attributes)
+                looped.add(output)
+                outputs[ObjectIdentifier(looped)] = output
+            }
+        } else {
+            playerLayer.player = queue
+        }
     }
 
     func setRunning(_ running: Bool) {
         guard let player else { return }
-        if running { if player.rate == 0 { player.play() } } else if player.rate != 0 { player.pause() }
+        if running {
+            if player.rate == 0 { player.play() }
+            if copyFrames && frameTimer == nil { startFrames() }
+        } else {
+            if player.rate != 0 { player.pause() }
+            frameTimer?.invalidate()
+            frameTimer = nil
+        }
+    }
+
+    private func startFrames() {
+        let timer = Timer(timeInterval: 1.0 / max(10, min(60, fps)), repeats: true) { [weak self] _ in self?.copyFrame() }
+        RunLoop.main.add(timer, forMode: .common)
+        frameTimer = timer
+    }
+
+    private func copyFrame() {
+        guard let item = player?.currentItem, let output = outputs[ObjectIdentifier(item)] else { return }
+        let time = output.itemTime(forHostTime: CACurrentMediaTime())
+        guard output.hasNewPixelBuffer(forItemTime: time),
+              let buffer = output.copyPixelBuffer(forItemTime: time, itemTimeForDisplay: nil) else { return }
+        let image = CIImage(cvPixelBuffer: buffer)
+        guard let cg = Self.ciContext.createCGImage(image, from: image.extent) else { return }
+        CATransaction.begin()
+        CATransaction.setDisableActions(true)
+        frameLayer.contents = cg
+        CATransaction.commit()
+        report(true)
     }
 
     func stop() {
+        frameTimer?.invalidate()
+        frameTimer = nil
         player?.pause()
         looper?.disableLooping()
         looper = nil
         player = nil
+        outputs = [:]
         playerLayer.player = nil
+        loadedPath = ""
     }
 }
 
@@ -588,5 +691,68 @@ struct SavedWallpapersGrid: View {
         .contentShape(Rectangle())
         .onTapGesture { selection = path; library.remember(path) }
         .help((path as NSString).lastPathComponent)
+    }
+}
+
+// 4.9.3 — the lock screen's clock, the user's picture and name and the
+// «Touch ID или пароль» hint, drawn over the live wallpaper at the places
+// macOS uses (same as the artwork wallpaper). Pure picture, no input.
+struct LockScreenChrome: View {
+    @ObservedObject private var identity = LockUserIdentity.shared
+    @AppStorage("lockCoverClockV372") private var showsClock = true
+
+    var body: some View {
+        GeometryReader { geometry in
+            let size = geometry.size
+            ZStack {
+                // Gentle shading so the clock and the login stay readable.
+                LinearGradient(stops: [
+                    .init(color: .black.opacity(0.32), location: 0),
+                    .init(color: .clear, location: 0.3),
+                    .init(color: .clear, location: 0.66),
+                    .init(color: .black.opacity(0.4), location: 1)
+                ], startPoint: .top, endPoint: .bottom)
+                if showsClock {
+                    TimelineView(.everyMinute) { context in
+                        ZStack {
+                            Text(LockCoverWallpaper.date(context.date))
+                                .font(.system(size: size.height * 0.025, weight: .semibold))
+                                .position(x: size.width / 2, y: size.height * 0.1056)
+                            Text(LockCoverWallpaper.time(context.date))
+                                .font(.system(size: size.height * 0.119, weight: .medium, design: .rounded))
+                                .monospacedDigit()
+                                .position(x: size.width / 2, y: size.height * 0.187)
+                        }
+                        .foregroundStyle(.white.opacity(0.92))
+                        .shadow(color: .black.opacity(0.25), radius: 10, y: 3)
+                    }
+                }
+                Group {
+                    if let picture = identity.picture {
+                        Image(nsImage: picture).resizable().scaledToFill()
+                    } else {
+                        Image(systemName: "person.crop.circle.fill").resizable()
+                            .foregroundStyle(.white.opacity(0.8))
+                    }
+                }
+                .frame(width: size.height * 0.054, height: size.height * 0.054)
+                .clipShape(Circle())
+                .shadow(color: .black.opacity(0.35), radius: 6, y: 2)
+                .position(x: size.width / 2, y: size.height * 0.8495)
+                Text(identity.name)
+                    .font(.system(size: max(12, size.height * 0.0150), weight: .semibold))
+                    .foregroundStyle(.white)
+                    .position(x: size.width / 2, y: size.height * 0.9033)
+                Text("Touch ID или пароль")
+                    .font(.system(size: max(11, size.height * 0.0128), weight: .semibold))
+                    .foregroundStyle(.white.opacity(0.85))
+                    .position(x: size.width / 2, y: size.height * 0.9355)
+            }
+            .frame(width: size.width, height: size.height)
+            .shadow(color: .black.opacity(0.4), radius: 4, y: 1)
+        }
+        .allowsHitTesting(false)
+        .environment(\.colorScheme, .dark)
+        .onAppear { identity.refresh() }
     }
 }
