@@ -175,12 +175,12 @@ struct ShelfView: View {
 
     var body: some View {
         ZStack(alignment: .topTrailing) {
-            UnevenRoundedRectangle(topLeadingRadius: 0,
-                                   bottomLeadingRadius: shelf.showsExpanded ? 16 : 9,
-                                   bottomTrailingRadius: shelf.showsExpanded ? 16 : 9,
-                                   topTrailingRadius: 0, style: .continuous)
+            // 4.8.5: drop curves where the shelf meets the screen edge.
+            IslandSilhouette(bottomRadius: shelf.showsExpanded ? 16 : 9,
+                             flare: shelf.showsExpanded ? 13 : 7, roof: roof)
                 .fill(Color.black)
-                .frame(width: size.width, height: size.height + roof)
+                .frame(width: size.width + (shelf.showsExpanded ? 26 : 14), height: size.height + roof)
+                .offset(x: shelf.showsExpanded ? 13 : 7)
                 .overlay(alignment: .top) {
                     if shelf.dropTargeted {
                         UnevenRoundedRectangle(topLeadingRadius: 0, bottomLeadingRadius: 16,
@@ -212,7 +212,8 @@ struct ShelfView: View {
         .offset(x: shelf.presented ? 0 : 16)
         .opacity(shelf.presented ? 1 : 0)
         .blur(radius: shelf.presented ? 0 : 3)
-        .frame(width: shelf.expandedSize.width, height: shelf.expandedSize.height + roof, alignment: .topTrailing)
+        .padding(.trailing, 13)
+        .frame(width: shelf.expandedSize.width + 26, height: shelf.expandedSize.height + roof, alignment: .topTrailing)
         .animation(.spring(response: 0.42, dampingFraction: 0.82), value: shelf.showsExpanded)
     }
 

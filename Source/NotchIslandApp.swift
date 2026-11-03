@@ -2785,7 +2785,7 @@ final class IslandAppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             && !state.cinemaMode && !isScreenLocked && !state.isSessionLocked
         if want, let screen {
             let centre = state.notchCenterX ?? screen.frame.midX
-            let width = state.notchWidth + IdleWings.wing * 2
+            let width = state.notchWidth + IdleWings.wing * 2 + state.edgeFlare * 2
             let frame = CGRect(x: centre - width / 2, y: screen.frame.maxY - state.notchHeight,
                                width: width, height: state.notchHeight + state.islandTopBleed)
             if panel.frame != frame { panel.setFrame(frame, display: true) }
@@ -2880,8 +2880,9 @@ final class IslandAppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         // a gap from the island's current left edge (open player, banners),
         // and glides back when the island becomes compact again.
         let show = enabled && shelf.isVisible
-        let canvas = CGSize(width: shelf.expandedSize.width, height: shelf.expandedSize.height + state.islandTopBleed)
-        let right = islandLeftEdge(centre: centre) - shelfGap
+        // 4.8.5: 13 pt each side for the drop curves.
+        let canvas = CGSize(width: shelf.expandedSize.width + 26, height: shelf.expandedSize.height + state.islandTopBleed)
+        let right = islandLeftEdge(centre: centre) - shelfGap + 13
         let frame = CGRect(x: right - canvas.width, y: screen.frame.maxY - canvas.height + state.islandTopBleed,
                            width: canvas.width, height: canvas.height)
         if show {
@@ -3297,7 +3298,7 @@ final class IslandAppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         // the SAME visible timer bottom is kept throughout hover morphs.
         let frame = CGRect(x: x,
                            y: screen.frame.maxY - size.height + state.timerTopBleed,
-                           width: size.width + inset, height: size.height)
+                           width: size.width + inset + 13, height: size.height)
         if let content = satellite.contentView {
             let bounds = NSRect(origin: .zero, size: frame.size)
             if content.frame != bounds { content.frame = bounds }

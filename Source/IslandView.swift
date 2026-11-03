@@ -118,8 +118,9 @@ struct IslandView: View {
             // The only background is shared by media, charging, AirPods and
             // expanded player. Its upper edge is always above the screen.
             if isCharging {
-                ChargingThreeSidedGlow(tint: ChargingPalette.color(for: state.powerTintPercentage))
-                    .frame(width: width, height: height)
+                ChargingThreeSidedGlow(tint: ChargingPalette.color(for: state.powerTintPercentage),
+                                       flare: flare, roof: roof)
+                    .frame(width: shapeWidth, height: height)
                     // No glow against the screen's TOP edge. Side glow
                     // eases in below the bezel; the bottom rim stays bright.
                     .mask(ChargingUpperGlowFade(roof: roof, height: height, reachTopEdge: true))
@@ -131,8 +132,8 @@ struct IslandView: View {
             // top edge of the screen (no fade just below the bezel).
             if state.event == nil && state.track != nil && !expanded &&
                 state.coverGlowOpacity > 0.001 && state.coverGlowCanvasInUse {
-                ChargingThreeSidedGlow(tint: state.musicArtworkTint)
-                    .frame(width: width, height: height)
+                ChargingThreeSidedGlow(tint: state.musicArtworkTint, flare: flare, roof: roof)
+                    .frame(width: shapeWidth, height: height)
                     .offset(y: -0.1)
                     .mask(ChargingUpperGlowFade(roof: roof, height: height, reachTopEdge: true, toScreenEdge: true))
                     .opacity(state.coverGlowOpacity)
@@ -143,7 +144,7 @@ struct IslandView: View {
                 .overlay {
                     if state.event == nil && state.track != nil && !expanded &&
                         state.coverGlowOpacity > 0.001 && state.coverGlowCanvasInUse {
-                        ChargingThreeSidedContour()
+                        ChargingThreeSidedContour(flare: flare, roof: roof)
                             .stroke(state.musicArtworkTint.opacity(0.8),
                                     style: StrokeStyle(lineWidth: 0.85, lineCap: .round))
                             .offset(y: -0.1)
@@ -151,7 +152,7 @@ struct IslandView: View {
                             .opacity(state.coverGlowOpacity)
                     }
                     if isCharging {
-                        ChargingThreeSidedContour()
+                        ChargingThreeSidedContour(flare: flare, roof: roof)
                             .stroke(ChargingPalette.color(for: state.powerTintPercentage).opacity(0.82),
                                     style: StrokeStyle(lineWidth: 0.85, lineCap: .round))
                             .mask(ChargingUpperGlowFade(roof: roof, height: height, reachTopEdge: true))
@@ -684,24 +685,43 @@ struct IslandView: View {
 // Separate glow and crisp strokes use the same open path; nothing is drawn
 // along the MacBook's upper bezel.
 private struct ChargingThreeSidedContour: Shape {
+    // 4.8.5: follows the island's drop curves at the screen edge, so the
+    // neon never stands outside the black shape.
+    var flare: CGFloat = 0
+    var roof: CGFloat = 0
+
     func path(in rect: CGRect) -> Path {
         // Near the real outer edge, not several points inside the island.
         let inset: CGFloat = 0.75
-        let radius: CGFloat = min(13, max(0, rect.height / 2 - inset))
-        let left = rect.minX + inset
-        let right = rect.maxX - inset
+        let f = max(0, flare)
+        let left = rect.minX + f + inset
+        let right = rect.maxX - f - inset
         let bottom = rect.maxY - inset
+        let radius: CGFloat = min(13, max(0, (bottom - roof - f) / 2))
         var path = Path()
-        // Extend the side strokes right up to (and slightly beyond) the top
-        // of the display. No stroke is drawn across the top bezel.
-        path.move(to: CGPoint(x: left, y: -3))
+        if f > 0 {
+            // From the screen edge, along the concave curve, then down.
+            path.move(to: CGPoint(x: rect.minX, y: -3))
+            path.addLine(to: CGPoint(x: rect.minX, y: roof))
+            path.addQuadCurve(to: CGPoint(x: left, y: roof + f), control: CGPoint(x: left, y: roof))
+        } else {
+            // Extend the side strokes right up to (and slightly beyond) the top
+            // of the display. No stroke is drawn across the top bezel.
+            path.move(to: CGPoint(x: left, y: -3))
+        }
         path.addLine(to: CGPoint(x: left, y: bottom - radius))
         path.addQuadCurve(to: CGPoint(x: left + radius, y: bottom),
                           control: CGPoint(x: left, y: bottom))
         path.addLine(to: CGPoint(x: right - radius, y: bottom))
         path.addQuadCurve(to: CGPoint(x: right, y: bottom - radius),
                           control: CGPoint(x: right, y: bottom))
-        path.addLine(to: CGPoint(x: right, y: -3))
+        if f > 0 {
+            path.addLine(to: CGPoint(x: right, y: roof + f))
+            path.addQuadCurve(to: CGPoint(x: rect.maxX, y: roof), control: CGPoint(x: right, y: roof))
+            path.addLine(to: CGPoint(x: rect.maxX, y: -3))
+        } else {
+            path.addLine(to: CGPoint(x: right, y: -3))
+        }
         return path
     }
 }
@@ -813,9 +833,11 @@ private struct ChargingUpperGlowFade: View {
 
 private struct ChargingThreeSidedGlow: View {
     let tint: Color
+    var flare: CGFloat = 0
+    var roof: CGFloat = 0
 
     var body: some View {
-        ChargingThreeSidedContour()
+        ChargingThreeSidedContour(flare: flare, roof: roof)
             .stroke(tint.opacity(0.75), style: StrokeStyle(lineWidth: 4.3, lineCap: .round))
             .blur(radius: 3.4)
         .allowsHitTesting(false)
@@ -1496,15 +1518,15 @@ struct TimerSatelliteView: View {
             }
             // Like the main island: a straight top edge touching the screen
             // bezel, with rounding ONLY at the bottom two corners.
-            UnevenRoundedRectangle(topLeadingRadius: 0,
-                                   bottomLeadingRadius: min(corner, shapeHeight / 2),
-                                   bottomTrailingRadius: min(corner, shapeHeight / 2),
-                                   topTrailingRadius: 0, style: .continuous)
+            // 4.8.5: the same drop curves at the screen edge as the main island.
+            let satFlare = (state.timerExpanded ? 13 : state.edgeFlare) * min(1, max(0, presence))
+            IslandSilhouette(bottomRadius: min(corner, shapeHeight / 2), flare: satFlare,
+                             roof: state.timerTopBleed)
                 .fill(Color.black)
                 // Black fills the extra 5pt roof above the screen edge.
-                .frame(width: shapeWidth,
+                .frame(width: shapeWidth + satFlare * 2,
                        height: shapeHeight + state.timerTopBleed)
-                .offset(x: shapeX)
+                .offset(x: shapeX - satFlare)
                 .opacity(min(1, Double(presence) * 4))
                 .animation(.spring(response: 0.52, dampingFraction: 0.87),
                            value: state.timerExpanded)
@@ -1537,7 +1559,7 @@ struct TimerSatelliteView: View {
         .frame(width: state.timerPanelSize.width,
                height: state.timerPanelSize.height, alignment: .topLeading)
         .padding(.leading, state.timerLeadInset)
-        .frame(width: state.timerPanelSize.width + state.timerLeadInset,
+        .frame(width: state.timerPanelSize.width + state.timerLeadInset + 13,
                height: state.timerPanelSize.height, alignment: .topLeading)
         .accessibilityLabel(state.timerExpanded ? "Таймер, управление" : "Таймер, открыть")
     }

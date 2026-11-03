@@ -129,10 +129,11 @@ struct IdleWingsView: View {
         .frame(height: state.notchHeight)
         .padding(.top, roof)
         .background(alignment: .top) {
-            UnevenRoundedRectangle(topLeadingRadius: 0, bottomLeadingRadius: 10,
-                                   bottomTrailingRadius: 10, topTrailingRadius: 0, style: .continuous)
+            // 4.8.5: drop curves at the screen edge.
+            IslandSilhouette(bottomRadius: 10, flare: state.edgeFlare, roof: roof)
                 .fill(Color.black)
-                .frame(height: state.notchHeight + roof)
+                .frame(width: state.notchWidth + IdleWings.wing * 2 + state.edgeFlare * 2,
+                       height: state.notchHeight + roof)
         }
         .foregroundStyle(.white)
         .font(.system(size: 11.5, weight: .semibold, design: .rounded))
