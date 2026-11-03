@@ -2046,6 +2046,12 @@ struct NotchSettingsWindowView: View {
                     }
                 }
             }
+            // 4.9.2: videos used before — one click to put one back.
+            if liveMode == "video" {
+                group("Сохранённые обои", footer: "Все видео, которые ты уже ставил, — нажми, чтобы снова включить. «×» убирает из списка, сам файл остаётся на месте.") {
+                    SavedWallpapersGrid(selection: $liveVideo, accent: accent(.wallpaper))
+                }
+            }
             group("Где показывать", footer: "Экран блокировки — под полем пароля, обложкой и карточкой плеера. На рабочем столе обои лежат под значками и окнами; клики проходят сквозь них.") {
                 toggleRow("Рабочий стол", subtitle: "На всех мониторах и рабочих столах", isOn: $liveDesktop)
                 rowDivider
@@ -2078,7 +2084,10 @@ struct NotchSettingsWindowView: View {
         panel.allowsMultipleSelection = false
         panel.canChooseDirectories = false
         panel.message = "Выбери видео для живых обоев"
-        if panel.runModal() == .OK, let url = panel.url { liveVideo = url.path }
+        if panel.runModal() == .OK, let url = panel.url {
+            liveVideo = url.path
+            SavedVideos.shared.remember(url.path)
+        }
     }
 
     private var cardStyleHint: String {

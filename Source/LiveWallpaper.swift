@@ -437,3 +437,156 @@ struct LiveWallpaperPreview: View {
         .onDisappear { activity.running = false }
     }
 }
+
+// MARK: 4.9.2 Saved wallpapers
+
+// Videos used before, newest first, so they can be picked again with one
+// click. Only paths are kept; files that were moved or deleted disappear.
+enum LiveWallpaperLibrary {
+    static let key = "liveWallpaperRecentVideosV492"
+    static let limit = 12
+
+    static var videos: [String] {
+        let stored = UserDefaults.standard.stringArray(forKey: key) ?? []
+        return stored.filter { FileManager.default.fileExists(atPath: $0) }
+    }
+
+    static func remember(_ path: String) {
+        guard !path.isEmpty else { return }
+        var list = UserDefaults.standard.stringArray(forKey: key) ?? []
+        list.removeAll { $0 == path }
+        list.insert(path, at: 0)
+        UserDefaults.standard.set(Array(list.prefix(limit)), forKey: key)
+    }
+
+    static func forget(_ path: String) {
+        var list = UserDefaults.standard.stringArray(forKey: key) ?? []
+        list.removeAll { $0 == path }
+        UserDefaults.standard.set(list, forKey: key)
+    }
+}
+
+// The list as an observable object, so the grid redraws on every change.
+final class SavedVideos: ObservableObject {
+    static let shared = SavedVideos()
+    @Published private(set) var videos: [String]
+
+    private init() {
+        // A video chosen before 4.9.2 joins the list too.
+        let current = LiveWallpaperSettings.videoPath
+        let stored = UserDefaults.standard.stringArray(forKey: LiveWallpaperLibrary.key) ?? []
+        if !current.isEmpty && !stored.contains(current) { LiveWallpaperLibrary.remember(current) }
+        videos = LiveWallpaperLibrary.videos
+    }
+
+    func reload() {
+        let fresh = LiveWallpaperLibrary.videos
+        if fresh != videos { videos = fresh }
+    }
+    func remember(_ path: String) { LiveWallpaperLibrary.remember(path); reload() }
+    func forget(_ path: String) { LiveWallpaperLibrary.forget(path); reload() }
+}
+
+// First-frame pictures of the saved videos, made off the main thread.
+final class VideoThumbnails: ObservableObject {
+    static let shared = VideoThumbnails()
+    @Published private(set) var images: [String: NSImage] = [:]
+    private var pending: Set<String> = []
+    private let queue = DispatchQueue(label: "app.ovira.video-thumbnails", qos: .utility)
+
+    func load(_ paths: [String]) {
+        for path in paths where images[path] == nil && !pending.contains(path) {
+            pending.insert(path)
+            queue.async { [weak self] in
+                let generator = AVAssetImageGenerator(asset: AVURLAsset(url: URL(fileURLWithPath: path)))
+                generator.appliesPreferredTrackTransform = true
+                generator.maximumSize = CGSize(width: 320, height: 200)
+                let time = CMTime(seconds: 0.5, preferredTimescale: 600)
+                let cg = try? generator.copyCGImage(at: time, actualTime: nil)
+                DispatchQueue.main.async {
+                    guard let self else { return }
+                    self.pending.remove(path)
+                    if let cg { self.images[path] = NSImage(cgImage: cg, size: .zero) }
+                }
+            }
+        }
+    }
+}
+
+// The grid of saved videos in Settings: click to use, «×» to forget.
+struct SavedWallpapersGrid: View {
+    @Binding var selection: String
+    let accent: Color
+    @ObservedObject private var thumbnails = VideoThumbnails.shared
+    @ObservedObject private var library = SavedVideos.shared
+
+    var body: some View {
+        let videos = library.videos
+        Group {
+            if videos.isEmpty {
+                Text("Здесь появятся видео, которые ты уже ставил на обои.")
+                    .font(.system(size: 12)).foregroundStyle(.secondary)
+                    .padding(14)
+            } else {
+                LazyVGrid(columns: [GridItem(.adaptive(minimum: 132), spacing: 12)], spacing: 12) {
+                    ForEach(videos, id: \.self) { path in
+                        card(path)
+                    }
+                }
+                .padding(12)
+            }
+        }
+        .onAppear { library.reload(); thumbnails.load(library.videos) }
+        .onChange(of: library.videos) { _, list in thumbnails.load(list) }
+    }
+
+    private func card(_ path: String) -> some View {
+        let selected = path == selection
+        let shape = RoundedRectangle(cornerRadius: 10, style: .continuous)
+        return VStack(alignment: .leading, spacing: 5) {
+            ZStack {
+                shape.fill(Color.black)
+                if let image = thumbnails.images[path] {
+                    Image(nsImage: image).resizable().scaledToFill()
+                } else {
+                    Image(systemName: "film").font(.system(size: 20)).foregroundStyle(.white.opacity(0.5))
+                }
+            }
+            .frame(height: 74)
+            .clipShape(shape)
+            .overlay(shape.strokeBorder(selected ? accent : Color.primary.opacity(0.15), lineWidth: selected ? 2.5 : 1))
+            .overlay(alignment: .topTrailing) {
+                Button {
+                    library.forget(path)
+                    if selection == path { selection = "" }
+                } label: {
+                    Image(systemName: "xmark.circle.fill")
+                        .font(.system(size: 15))
+                        .symbolRenderingMode(.palette)
+                        .foregroundStyle(Color.white, Color.black.opacity(0.55))
+                }
+                .buttonStyle(.plain)
+                .padding(5)
+                .help("Убрать из сохранённых (сам файл не удаляется)")
+            }
+            .overlay(alignment: .bottomLeading) {
+                if selected {
+                    Label("Сейчас", systemImage: "checkmark.circle.fill")
+                        .font(.system(size: 10, weight: .bold))
+                        .padding(.horizontal, 6).padding(.vertical, 3)
+                        .background(Capsule().fill(accent))
+                        .foregroundStyle(.white)
+                        .padding(5)
+                }
+            }
+            Text((path as NSString).lastPathComponent)
+                .font(.system(size: 11))
+                .lineLimit(1)
+                .truncationMode(.middle)
+                .foregroundStyle(.secondary)
+        }
+        .contentShape(Rectangle())
+        .onTapGesture { selection = path; library.remember(path) }
+        .help((path as NSString).lastPathComponent)
+    }
+}
