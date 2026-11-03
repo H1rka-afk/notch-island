@@ -1334,6 +1334,16 @@ final class IslandState: ObservableObject {
     // window coordinates. The roof lives above the physical display edge.
     var islandTopBleed: CGFloat { 5 }
 
+    // The notch-centred canvas shared by banners and compact music.
+    var sharedEventCanvas: CGSize {
+        let glow = chargingGlowWindowMargin
+        let maxEventWidth = max(chargingWidth, notchWidth + lowBatteryWing * 2,
+                                notchWidth + unpluggedWing * 2, airPodsWidth, focusWidth, updateWidth, noticeWidth)
+        return CGSize(width: max(maxEventWidth + max(glow, edgeFlare) * 2, compactWidth + edgeFlare * 2),
+                      height: max(notchHeight + chargingBridgeDepth + islandTopBleed + glow,
+                                  compactDisplayHeight + islandTopBleed))
+    }
+
     var panelSize: CGSize {
         if unlockTransitionActive {
             // Reserve the complete final canvas BEFORE presenting the panel.
@@ -1345,18 +1355,17 @@ final class IslandState: ObservableObject {
             // Hold a single AppKit frame through charging/other events and
             // the immediate return to compact media. Visible widths/heights
             // in IslandView are unchanged.
-            let glow = chargingGlowWindowMargin
-            let maxEventWidth = max(chargingWidth, notchWidth + lowBatteryWing * 2,
-                                    notchWidth + unpluggedWing * 2, airPodsWidth, focusWidth, updateWidth, noticeWidth)
-            return CGSize(width: max(maxEventWidth + max(glow, edgeFlare) * 2, compactWidth + edgeFlare * 2),
-                          height: max(notchHeight + chargingBridgeDepth + islandTopBleed + glow,
-                                      compactDisplayHeight + islandTopBleed))
+            return sharedEventCanvas
         }
         if canvasExpanded || usesFixedMediaSatelliteCanvas {
             return CGSize(width: expandedWidth,
                           height: expandedHeight + islandTopBleed)
         }
-        if track != nil || timerPresented {
+        // 4.8.6: compact music uses the SAME notch-centred canvas as the
+        // banners. Switching windows at the end of a banner made the island
+        // jump right for a frame and slide back (seen in the recording).
+        if track != nil { return sharedEventCanvas }
+        if timerPresented {
             return CGSize(width: compactWidth + edgeFlare * 2,
                           height: compactDisplayHeight + islandTopBleed)
         }
@@ -3193,6 +3202,9 @@ final class IslandAppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
                     leftWing: Double(state.leftWing),
                     rightWing: Double(state.rightWing),
                     expandedWidth: Double(size.width)))
+            } else if state.event == nil && !state.canvasExpanded && state.track != nil {
+                // 4.8.6: music sits in the notch-centred shared canvas.
+                baseLeft = centre - size.width / 2
             } else if state.event == nil && !state.canvasExpanded {
                 baseLeft = centre - state.notchWidth / 2 - state.leftWing - state.edgeFlare
             } else {
