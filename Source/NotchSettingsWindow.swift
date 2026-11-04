@@ -201,7 +201,6 @@ struct NotchSettingsWindowView: View {
     @AppStorage(LiveWallpaperSettings.modeKey) private var liveMode = "off"
     @AppStorage(LiveWallpaperSettings.desktopKey) private var liveDesktop = true
     @AppStorage(LiveWallpaperSettings.lockKey) private var liveLock = true
-    @AppStorage(SystemLockWallpaperSettings.enabledKey) private var systemLockWallpaper = false
     @AppStorage(LiveWallpaperSettings.qualityKey) private var liveQuality = 0.75
     @AppStorage(LiveWallpaperSettings.fpsKey) private var liveFPS = 30
     @AppStorage(LiveWallpaperSettings.batteryKey) private var livePauseOnBattery = true
@@ -2053,7 +2052,7 @@ struct NotchSettingsWindowView: View {
                     SavedWallpapersGrid(selection: $liveVideo, accent: accent(.wallpaper))
                 }
             }
-            group("Где показывать", footer: "Экран блокировки: обои внизу остаются прозрачными, чтобы было видно настоящее поле пароля. На рабочем столе обои лежат под значками и окнами; клики проходят сквозь них.") {
+            group("Где показывать", footer: "Экран блокировки — на весь экран, под обложкой и карточкой плеера; пароль и Touch ID работают как обычно. На рабочем столе обои лежат под значками и окнами; клики проходят сквозь них.") {
                 toggleRow("Рабочий стол", subtitle: "На всех мониторах и рабочих столах", isOn: $liveDesktop)
                 rowDivider
                 toggleRow("Экран блокировки", isOn: $liveLock)
@@ -2105,17 +2104,6 @@ struct NotchSettingsWindowView: View {
         VStack(alignment: .leading, spacing: 20) {
             group(nil, footer: "Экспериментальное отображение поверх экрана блокировки.") {
                 toggleRow("Замочек на экране блокировки", isOn: lockBinding)
-            }
-            group("Обои экрана блокировки", footer: "Пароль и Touch ID работают в обоих вариантах — это всегда вход macOS. Если обои стали серыми, чёрными или не вернулись — «Вернуть мои обои» или «Восстановить обои.command» в папке установщика.") {
-                toggleRow("Настоящее поле пароля (эксперимент)",
-                          subtitle: "Выключено — обои и обложка на весь экран, а картинку и подсказку для пароля рисует Ovira (пароль вводится как обычно). Включено — внизу видно настоящее поле пароля, но там системные обои, не видео",
-                          isOn: $systemLockWallpaper)
-                rowDivider
-                row("Вернуть мои обои", subtitle: "Если обои стали серыми, чёрными или не вернулись после входа") {
-                    Button("Вернуть") {
-                        NotificationCenter.default.post(name: SystemLockWallpaper.restoreRequest, object: nil)
-                    }
-                }
             }
             group("Медиаплеер", footer: "Как на экране блокировки iPhone: обложка, название, прогресс и кнопки внизу по центру, над полем пароля. Появляется, только когда играет или стоит на паузе музыка. Кнопки управляют музыкой без разблокировки; если macOS не пропустит нажатия, карточка останется для просмотра.") {
                 toggleRow("Медиаплеер на экране блокировки", isOn: $lockScreenMedia)

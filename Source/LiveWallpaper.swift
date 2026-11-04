@@ -66,7 +66,6 @@ struct LiveWallpaperView: View {
     @AppStorage(LiveWallpaperSettings.qualityKey) private var quality = 0.75
     @AppStorage(LiveWallpaperSettings.fpsKey) private var fps = 30
     @AppStorage(LiveWallpaperSettings.videoKey) private var videoPath = ""
-    @AppStorage(SystemLockWallpaperSettings.enabledKey) private var systemLogin = false
 
     private var fpsValue: Double { Double(LiveWallpaperSettings.fpsChoices.contains(fps) ? fps : 30) }
 
@@ -98,9 +97,8 @@ struct LiveWallpaperView: View {
         }
         .animation(.easeInOut(duration: 0.8), value: state.musicArtwork.map(ObjectIdentifier.init))
         .overlay {
-            if lockScreen { LockScreenChrome(hints: !systemLogin) }
+            if lockScreen { LockScreenChrome() }
         }
-        .mask { if lockScreen && systemLogin { LoginWindowMask() } else { Color.black } }
         .ignoresSafeArea()
         .onAppear { updateReady() }
         .onChange(of: mode) { _, _ in updateReady() }
@@ -780,7 +778,7 @@ struct LoginWindowMask: View {
 }
 
 struct LockScreenChrome: View {
-    var hints = true
+    static let hintY: CGFloat = 0.90
     @ObservedObject private var identity = LockUserIdentity.shared
     @AppStorage("lockCoverClockV372") private var showsClock = true
 
@@ -810,28 +808,11 @@ struct LockScreenChrome: View {
                         .shadow(color: .black.opacity(0.25), radius: 10, y: 3)
                     }
                 }
-                if hints {
-                Group {
-                    if let picture = identity.picture {
-                        Image(nsImage: picture).resizable().scaledToFill()
-                    } else {
-                        Image(systemName: "person.crop.circle.fill").resizable()
-                            .foregroundStyle(.white.opacity(0.8))
-                    }
-                }
-                .frame(width: size.height * 0.054, height: size.height * 0.054)
-                .clipShape(Circle())
-                .shadow(color: .black.opacity(0.35), radius: 6, y: 2)
-                .position(x: size.width / 2, y: size.height * 0.8495)
-                Text(identity.name)
-                    .font(.system(size: max(12, size.height * 0.0150), weight: .semibold))
-                    .foregroundStyle(.white)
-                    .position(x: size.width / 2, y: size.height * 0.9033)
+                // 4.11.3: only the hint, a little higher — no picture, no name.
                 Text("Touch ID или пароль")
                     .font(.system(size: max(11, size.height * 0.0128), weight: .semibold))
                     .foregroundStyle(.white.opacity(0.85))
-                    .position(x: size.width / 2, y: size.height * 0.9355)
-                }
+                    .position(x: size.width / 2, y: size.height * Self.hintY)
             }
             .frame(width: size.width, height: size.height)
             .shadow(color: .black.opacity(0.4), radius: 4, y: 1)

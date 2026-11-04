@@ -17,10 +17,10 @@ import CoreImage
 // our own — only the desktop picture, through the public NSWorkspace API.
 enum SystemLockWallpaperSettings {
     static let enabledKey = "lockSystemWallpaperV4100"
-    // 4.11.2: off by default — macOS on this Mac does not show a wallpaper
-    // chosen by Ovira on the lock screen, and the full-screen window is the
-    // only way to have everything moving.
-    static var enabled: Bool { (UserDefaults.standard.object(forKey: enabledKey) as? Bool) ?? false }
+    // 4.11.3: the experiment is gone — macOS keeps its own Aerial list and
+    // does not show a wallpaper added by an app on the lock screen. What is
+    // left here only puts the user's wallpaper back after earlier versions.
+    static var enabled: Bool { false }
 }
 
 final class SystemLockWallpaper {
@@ -50,6 +50,7 @@ final class SystemLockWallpaper {
 
     init(state: IslandState) {
         self.state = state
+        UserDefaults.standard.removeObject(forKey: SystemLockWallpaperSettings.enabledKey)
         // A crash or a power cut while locked would leave the artwork as the
         // desktop picture — put the user's wallpaper back on the next launch.
         // 4.11.1: the live video stays the system wallpaper all the time, so
@@ -346,7 +347,12 @@ final class SystemLockWallpaper {
             UserDefaults.standard.removeObject(forKey: LockAerial.activeKey)
             LockAerial.removeAll()
             let copy = Self.folder.appendingPathComponent(Self.storeBackupName)
-            if let storeData = try? Data(contentsOf: copy) {
+            // 4.11.3: when the user has already picked another wallpaper in
+            // System Settings (no Aerial in the record any more), that choice
+            // stays — the old copy is not written over it.
+            let current = (try? Data(contentsOf: LockAerial.storeURL)) ?? Data()
+            let stillAerial = current.range(of: Data("com.apple.wallpaper.choice.aerials".utf8)) != nil
+            if stillAerial, let storeData = try? Data(contentsOf: copy) {
                 restoreStore(storeData)
             } else {
                 LockAerial.restartAgent()

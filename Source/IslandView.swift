@@ -2473,12 +2473,7 @@ final class LockOutputRoute: ObservableObject {
 // Purely visual: the window never takes clicks or keyboard input.
 struct LockCoverWallpaper: View {
     @ObservedObject var state: IslandState
-    // 4.10.4: the locked copy leaves the login area transparent when the
-    // real macOS login is used — macOS shows its own picture, name and
-    // password field there, over a still of this same wallpaper.
-    var loginHole = false
-    @AppStorage(SystemLockWallpaperSettings.enabledKey) private var systemLogin = false
-    private var hole: Bool { loginHole && systemLogin }
+    var loginHole = false     // 4.11.3: no longer used (kept for callers)
     @ObservedObject private var widgets = LockWidgetsModel.shared
     @ObservedObject private var display = SystemDisplayOptions.shared
     @AppStorage("lockCoverClockV372") private var showsClock = true
@@ -2582,39 +2577,16 @@ struct LockCoverWallpaper: View {
             // through, Touch ID works) but are not visible — so a hint is
             // drawn where they are.
             .overlay(alignment: .bottom) {
-              if !hole {
-                // 3.8.9: the user's own picture and name where macOS shows
-                // them (the real ones are under this window). Only a picture
-                // and text — the password is typed into macOS as always.
-                ZStack {
-                    Group {
-                        if let picture = identity.picture {
-                            Image(nsImage: picture).resizable().scaledToFill()
-                        } else {
-                            Image(systemName: "person.crop.circle.fill")
-                                .resizable()
-                                .foregroundStyle(.white.opacity(0.8))
-                        }
-                    }
-                    .frame(width: size.height * 0.054, height: size.height * 0.054)
-                    .clipShape(Circle())
-                    .shadow(color: .black.opacity(0.35), radius: 6, y: 2)
-                    .position(x: size.width / 2, y: size.height * 0.8495)
-                    Text(identity.name)
-                        .font(.system(size: max(12, size.height * 0.0150), weight: .semibold))
-                        .foregroundStyle(.white)
-                        .position(x: size.width / 2, y: size.height * 0.9033)
-                    Text("Touch ID или пароль")
-                        // Matched to the real one on the recording (≈250 px wide).
-                        .font(.system(size: max(11, size.height * 0.0128), weight: .semibold))
-                        .foregroundStyle(.white.opacity(0.85))
-                        .position(x: size.width / 2, y: size.height * 0.9355)
-                }
-                .frame(width: size.width, height: size.height)
-                .shadow(color: .black.opacity(0.4), radius: 4, y: 1)
-              }
+                // 4.11.3: only the hint — no picture and no name. The real
+                // macOS login is under this window: type the password or
+                // touch Touch ID as always.
+                Text("Touch ID или пароль")
+                    .font(.system(size: max(11, size.height * 0.0128), weight: .semibold))
+                    .foregroundStyle(.white.opacity(0.85))
+                    .shadow(color: .black.opacity(0.4), radius: 4, y: 1)
+                    .position(x: size.width / 2, y: size.height * LockScreenChrome.hintY)
+                    .frame(width: size.width, height: size.height)
             }
-            .mask { if hole { LoginWindowMask() } else { Color.black } }
         }
         .ignoresSafeArea()
         .allowsHitTesting(false)
