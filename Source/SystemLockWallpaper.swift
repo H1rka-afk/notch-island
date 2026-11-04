@@ -55,6 +55,14 @@ final class SystemLockWallpaper {
                                         queue: .main) { [weak self] _ in self?.didLock() })
         observers.append(dc.addObserver(forName: Notification.Name("com.apple.screenIsUnlocked"), object: nil,
                                         queue: .main) { [weak self] _ in self?.didUnlock() })
+        observers.append(NotificationCenter.default.addObserver(forName: Self.restoreRequest, object: nil,
+                                                                queue: .main) { [weak self] _ in
+            guard let self else { return }
+            let had = self.applied || UserDefaults.standard.bool(forKey: LockAerial.activeKey)
+                || UserDefaults.standard.data(forKey: Self.backupKey) != nil
+            self.restoreIfNeeded(reason: "button")
+            if !had { LockAerial.removeAll(); LockAerial.restartAgent() }
+        })
         observers.append(NotificationCenter.default.addObserver(forName: NSApplication.willTerminateNotification,
                                                                 object: nil, queue: .main) { [weak self] _ in
             self?.restoreIfNeeded(reason: "quit")
@@ -144,6 +152,34 @@ final class SystemLockWallpaper {
         guard key != lastKey || !applied else { return }
         lastKey = key
         let screens = NSScreen.screens
+        // 4.11.0: a moving wallpaper under the real login (Aerial). A video
+        // goes there directly; the artwork first as a still (at once), then
+        // as a looping film once it is made.
+        if LockAerial.supported {
+            if case .video(let path) = source {
+                startAerial(key: key, screens: screens, kind: "video") {
+                    LockAerial.register(video: URL(fileURLWithPath: path), key: "video:\(path)", name: "Ovira")
+                }
+                return
+            }
+            let art: NSImage?
+            let withCover: Bool
+            switch source {
+            case .artwork(let image): art = image; withCover = true
+            case .blurred(let image): art = image; withCover = false
+            case .video: art = nil; withCover = false
+            }
+            if let cg = art?.cgImage(forProposedRect: nil, context: nil, hints: nil), let main = screens.first {
+                let pixels = CGSize(width: main.frame.width * main.backingScaleFactor,
+                                    height: main.frame.height * main.backingScaleFactor)
+                let share = Self.coverShare
+                startAerial(key: key, screens: screens, kind: withCover ? "cover" : "blurred") {
+                    guard let film = LockAerial.coverLoop(art: cg, screen: pixels, withCover: withCover,
+                                                          coverShare: share, key: key) else { return nil }
+                    return LockAerial.register(video: film, key: "film:\(key)", name: "Ovira")
+                }
+            }
+        }
         let sizes = screens.map { s in
             CGSize(width: s.frame.width * s.backingScaleFactor, height: s.frame.height * s.backingScaleFactor)
         }
@@ -165,6 +201,45 @@ final class SystemLockWallpaper {
                     files.append(Self.videoStill(path, size: size).flatMap(Self.save))
                 }
             }
+            DispatchQueue.main.async {
+                guard let self, self.locked, self.lastKey == key else { return }
+                self.apply(files: files, screens: screens)
+            }
+        }
+    }
+
+    static let aerialChanged = Notification.Name("OviraLockAerialChanged")
+    static let restoreRequest = Notification.Name("OviraRestoreWallpaper")
+
+    private func startAerial(key: String, screens: [NSScreen], kind: String, prepare: @escaping () -> String?) {
+        DispatchQueue.global(qos: .userInitiated).async { [weak self] in
+            let id = prepare()
+            DispatchQueue.main.async {
+                guard let self, self.locked, self.lastKey == key else { return }
+                guard let id else {
+                    LockIslandLog.record("aerial: not ready (\(kind)) — the still stays")
+                    if kind == "video" { self.lastKey = ""; self.applyStillVideoFallback(key: key, screens: screens) }
+                    return
+                }
+                self.backup(screens: screens)
+                UserDefaults.standard.set(true, forKey: LockAerial.activeKey)
+                if LockAerial.select(id) {
+                    self.applied = true
+                    LockIslandLog.record("aerial: on (\(kind))")
+                    NotificationCenter.default.post(name: Self.aerialChanged, object: kind)
+                }
+            }
+        }
+    }
+
+    // The Aerial way failed for the video: the still frame, as in 4.10.
+    private func applyStillVideoFallback(key: String, screens: [NSScreen]) {
+        guard case .video(let path)? = currentSource() else { return }
+        lastKey = key
+        let sizes = screens.map { CGSize(width: $0.frame.width * $0.backingScaleFactor,
+                                         height: $0.frame.height * $0.backingScaleFactor) }
+        DispatchQueue.global(qos: .userInitiated).async { [weak self] in
+            let files = sizes.map { Self.videoStill(path, size: $0).flatMap(Self.save) }
             DispatchQueue.main.async {
                 guard let self, self.locked, self.lastKey == key else { return }
                 self.apply(files: files, screens: screens)
@@ -239,6 +314,23 @@ final class SystemLockWallpaper {
     }
 
     private func restoreIfNeeded(reason: String) {
+        // 4.11.0: after an Aerial the whole wallpaper record comes back.
+        if UserDefaults.standard.bool(forKey: LockAerial.activeKey) {
+            UserDefaults.standard.removeObject(forKey: LockAerial.activeKey)
+            LockAerial.removeAll()
+            let copy = Self.folder.appendingPathComponent(Self.storeBackupName)
+            if let storeData = try? Data(contentsOf: copy) {
+                restoreStore(storeData)
+            } else {
+                LockAerial.restartAgent()
+            }
+            UserDefaults.standard.removeObject(forKey: Self.backupKey)
+            applied = false
+            lastKey = ""
+            NotificationCenter.default.post(name: Self.aerialChanged, object: nil)
+            LockIslandLog.record("aerial: off, user's wallpaper back (\(reason))")
+            return
+        }
         guard let data = UserDefaults.standard.data(forKey: Self.backupKey),
               let saved = try? JSONDecoder().decode([Saved].self, from: data) else {
             applied = false

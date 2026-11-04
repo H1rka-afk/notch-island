@@ -300,6 +300,10 @@ final class LockScreenOverlay {
     private let liveActivity = LiveWallpaperActivity()
     private var liveShown = false
     private var liveReadyObserver: AnyCancellable?
+    // 4.11.0: the video plays as the system Aerial under the real login —
+    // the window copy steps aside once that has started.
+    private var liveBySystem = false
+    private var aerialObserver: NSObjectProtocol?
     private var coverPreviewWindow: LockIslandPanel?
     private var coverObserver: AnyCancellable?
     // 3.8.3: tapping the artwork on the wallpaper brings the wallpaper back.
@@ -326,6 +330,10 @@ final class LockScreenOverlay {
 
     init(state: IslandState) {
         self.state = state
+        aerialObserver = NotificationCenter.default.addObserver(forName: SystemLockWallpaper.aerialChanged,
+                                                                object: nil, queue: .main) { [weak self] note in
+            self?.aerialChanged(note.object as? String)
+        }
         coverObserver = LockCardUIState.shared.$expanded
             .removeDuplicates()
             .receive(on: DispatchQueue.main)
@@ -695,12 +703,28 @@ final class LockScreenOverlay {
         mediaWindow?.orderFrontRegardless()
         widgetsWindow?.orderFrontRegardless()
         liveShown = true
-        if liveActivity.contentReady { fade(panel, to: 1, duration: 0.6) }
+        if liveActivity.contentReady && !liveBySystem { fade(panel, to: 1, duration: 0.6) }
         LockIslandLog.record("live wallpaper: on (\(LiveWallpaperSettings.mode)) ready=\(liveActivity.contentReady)")
     }
 
-    private func liveReadyChanged(_ ready: Bool) {
+    private func aerialChanged(_ kind: String?) {
+        let bySystem = kind == "video"
+        liveBySystem = bySystem
         guard liveShown, let panel = liveWindow else { return }
+        if bySystem {
+            // A moment for the wallpaper agent to start the video.
+            DispatchQueue.main.asyncAfter(deadline: .now() + 2.5) { [weak self] in
+                guard let self, self.liveBySystem, self.liveShown else { return }
+                self.fade(panel, to: 0, duration: 0.8)
+                LockIslandLog.record("live wallpaper: window hidden, the system plays the video")
+            }
+        } else if liveActivity.contentReady {
+            fade(panel, to: 1, duration: 0.4)
+        }
+    }
+
+    private func liveReadyChanged(_ ready: Bool) {
+        guard liveShown, !liveBySystem, let panel = liveWindow else { return }
         LockIslandLog.record("live wallpaper: ready=\(ready)")
         fade(panel, to: ready ? 1 : 0, duration: ready ? 0.6 : 0.2)
     }
