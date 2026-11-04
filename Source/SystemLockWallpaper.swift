@@ -49,7 +49,19 @@ final class SystemLockWallpaper {
         self.state = state
         // A crash or a power cut while locked would leave the artwork as the
         // desktop picture — put the user's wallpaper back on the next launch.
-        restoreIfNeeded(reason: "launch")
+        // 4.11.1: the live video stays the system wallpaper all the time, so
+        // when that is what is set, it is kept.
+        if UserDefaults.standard.bool(forKey: LockAerial.activeKey), case .video(let path)? = currentSource() {
+            applied = true
+            lastKey = "video-\(path)"
+            DispatchQueue.main.async { NotificationCenter.default.post(name: Self.aerialChanged, object: "video") }
+        } else {
+            restoreIfNeeded(reason: "launch")
+        }
+        observers.append(NotificationCenter.default.addObserver(forName: UserDefaults.didChangeNotification,
+                                                                object: nil, queue: .main) { [weak self] _ in
+            self?.scheduleUpdate(delay: 1.0)
+        })
         let dc = DistributedNotificationCenter.default()
         observers.append(dc.addObserver(forName: Notification.Name("com.apple.screenIsLocked"), object: nil,
                                         queue: .main) { [weak self] _ in self?.didLock() })
@@ -94,8 +106,8 @@ final class SystemLockWallpaper {
 
     private func didUnlock() {
         locked = false
-        pending?.cancel()
-        restoreIfNeeded(reason: "unlock")
+        // The live video stays; the artwork goes (update decides).
+        scheduleUpdate(delay: 0.3)
     }
 
     private func setRequested(_ on: Bool) {
@@ -105,7 +117,6 @@ final class SystemLockWallpaper {
     }
 
     private func scheduleUpdate(delay: TimeInterval) {
-        guard locked else { return }
         pending?.cancel()
         let work = DispatchWorkItem { [weak self] in self?.update() }
         pending = work
@@ -123,13 +134,18 @@ final class SystemLockWallpaper {
     // windows above leave that part transparent), so it is a still of the
     // same picture those windows show.
     private func currentSource() -> Source? {
-        if requested, let art = state.musicArtwork { return .artwork(art) }
+        if locked, requested, let art = state.musicArtwork { return .artwork(art) }
         guard LiveWallpaperSettings.onLock else { return nil }
         switch LiveWallpaperSettings.mode {
         case "video":
+            // 4.11.1: chosen BEFORE the lock (an Aerial picked while locked
+            // is not played on the lock screen), so it stays all the time;
+            // the desktop copy of the live wallpaper covers it anyway.
             let path = LiveWallpaperSettings.videoPath
+            guard locked || LockAerial.supported else { return nil }
             return !path.isEmpty && FileManager.default.fileExists(atPath: path) ? .video(path) : nil
         case "cover":
+            guard locked else { return nil }
             return state.musicArtwork.map { .blurred($0) }
         default:
             return nil
@@ -137,7 +153,10 @@ final class SystemLockWallpaper {
     }
 
     private func update() {
-        guard locked, SystemLockWallpaperSettings.enabled else { return }
+        guard SystemLockWallpaperSettings.enabled else {
+            if applied || UserDefaults.standard.bool(forKey: LockAerial.activeKey) { restoreIfNeeded(reason: "off") }
+            return
+        }
         guard let source = currentSource() else {
             // Music stopped while locked: back to the user's own wallpaper.
             if applied { restoreIfNeeded(reason: "nothing to show") }
@@ -158,7 +177,8 @@ final class SystemLockWallpaper {
         if LockAerial.supported {
             if case .video(let path) = source {
                 startAerial(key: key, screens: screens, kind: "video") {
-                    LockAerial.register(video: URL(fileURLWithPath: path), key: "video:\(path)", name: "Ovira")
+                    guard let film = LockAerial.aerialVideo(from: URL(fileURLWithPath: path)) else { return nil }
+                    return LockAerial.register(video: film, key: "video:\(film.lastPathComponent)", name: "Ovira")
                 }
                 return
             }
@@ -215,7 +235,7 @@ final class SystemLockWallpaper {
         DispatchQueue.global(qos: .userInitiated).async { [weak self] in
             let id = prepare()
             DispatchQueue.main.async {
-                guard let self, self.locked, self.lastKey == key else { return }
+                guard let self, self.lastKey == key else { return }
                 guard let id else {
                     LockIslandLog.record("aerial: not ready (\(kind)) — the still stays")
                     if kind == "video" { self.lastKey = ""; self.applyStillVideoFallback(key: key, screens: screens) }

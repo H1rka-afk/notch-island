@@ -219,7 +219,62 @@ enum LockAerial {
             return false
         }
         restartAgent()
+        // Did macOS take it? The agent rewrites the record if it cannot.
+        DispatchQueue.global(qos: .utility).asyncAfter(deadline: .now() + 4) {
+            let raw = (try? Data(contentsOf: storeURL)) ?? Data()
+            let kept = raw.range(of: Data(id.utf8)) != nil
+            LockIslandLog.record("aerial: record after restart — ours=\(kept), agent=\(agentRunning())")
+        }
         return true
+    }
+
+    static func agentRunning() -> Bool {
+        let task = Process()
+        task.executableURL = URL(fileURLWithPath: "/usr/bin/pgrep")
+        task.arguments = ["-x", "WallpaperAgent"]
+        task.standardOutput = FileHandle.nullDevice
+        task.standardError = FileHandle.nullDevice
+        guard (try? task.run()) != nil else { return false }
+        task.waitUntilExit()
+        return task.terminationStatus == 0
+    }
+
+    // 4.11.1: Apple's Aerials are HEVC films without sound in a .mov; any
+    // other video is rewritten that way once (a few seconds) and kept.
+    static func aerialVideo(from source: URL) -> URL? {
+        let fm = FileManager.default
+        let size = ((try? fm.attributesOfItem(atPath: source.path)[.size]) as? NSNumber)?.intValue ?? 0
+        let dir = loopsDir.deletingLastPathComponent().appendingPathComponent("videos", isDirectory: true)
+        try? fm.createDirectory(at: dir, withIntermediateDirectories: true)
+        let url = dir.appendingPathComponent("\(assetID(for: "\(source.path)|\(size)")).mov")
+        if fm.fileExists(atPath: url.path) { return url }
+        for old in (try? fm.contentsOfDirectory(at: dir, includingPropertiesForKeys: nil)) ?? [] {
+            try? fm.removeItem(at: old)
+        }
+        let asset = AVURLAsset(url: source)
+        guard let track = asset.tracks(withMediaType: .video).first else {
+            LockIslandLog.record("aerial: the video has no picture track")
+            return nil
+        }
+        let composition = AVMutableComposition()
+        guard let target = composition.addMutableTrack(withMediaType: .video,
+                                                       preferredTrackID: kCMPersistentTrackID_Invalid),
+              (try? target.insertTimeRange(CMTimeRange(start: .zero, duration: track.timeRange.duration),
+                                           of: track, at: .zero)) != nil else { return nil }
+        target.preferredTransform = track.preferredTransform
+        let preset = AVAssetExportSession.exportPresets(compatibleWith: composition)
+            .contains(AVAssetExportPresetHEVCHighestQuality) ? AVAssetExportPresetHEVCHighestQuality : AVAssetExportPresetHighestQuality
+        guard let export = AVAssetExportSession(asset: composition, presetName: preset) else { return nil }
+        export.outputURL = url
+        export.outputFileType = .mov
+        let done = DispatchSemaphore(value: 0)
+        let started = Date()
+        export.exportAsynchronously { done.signal() }
+        done.wait()
+        let ok = export.status == .completed
+        LockIslandLog.record("aerial: video prepared \(ok ? "ok" : "failed: \(export.error?.localizedDescription ?? "?")") in \(String(format: "%.1f", Date().timeIntervalSince(started))) s")
+        if !ok { try? fm.removeItem(at: url) }
+        return ok ? url : nil
     }
 
     // The wallpaper agent re-reads the list and the record when it starts.
