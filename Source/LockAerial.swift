@@ -223,7 +223,7 @@ enum LockAerial {
         DispatchQueue.global(qos: .utility).asyncAfter(deadline: .now() + 4) {
             let raw = (try? Data(contentsOf: storeURL)) ?? Data()
             let kept = raw.range(of: Data(id.utf8)) != nil
-            LockIslandLog.record("aerial: record after restart — ours=\(kept), agent=\(agentRunning())")
+            LockIslandLog.record("aerial: record after restart — ours=\(kept), agent=\(agentRunning()) — \(describeStore())")
         }
         return true
     }
@@ -275,6 +275,46 @@ enum LockAerial {
         LockIslandLog.record("aerial: video prepared \(ok ? "ok" : "failed: \(export.error?.localizedDescription ?? "?")") in \(String(format: "%.1f", Date().timeIntervalSince(started))) s")
         if !ok { try? fm.removeItem(at: url) }
         return ok ? url : nil
+    }
+
+    // 4.11.2: what the wallpaper record points at, for the log: every
+    // place (path) with its provider and asset — no pictures, no paths of
+    // the user's files.
+    static func describeStore() -> String {
+        guard let data = try? Data(contentsOf: storeURL),
+              let root = try? PropertyListSerialization.propertyList(from: data, format: nil) else { return "unreadable" }
+        var lines: [String] = []
+        func walk(_ value: Any, _ path: String) {
+            guard lines.count < 40 else { return }
+            if let dict = value as? [String: Any] {
+                if let provider = dict["Provider"] as? String {
+                    var asset = ""
+                    if let config = dict["Configuration"] as? Data,
+                       let decoded = try? PropertyListSerialization.propertyList(from: config, format: nil) as? [String: Any] {
+                        asset = (decoded["assetID"] as? String) ?? decoded.keys.sorted().joined(separator: ",")
+                    }
+                    let mine = isOurs(asset) ? " (Ovira)" : ""
+                    lines.append("\(path): \(provider.replacingOccurrences(of: "com.apple.wallpaper.choice.", with: "")) \(asset)\(mine)")
+                    return
+                }
+                for key in dict.keys.sorted() where key != "LastSet" && key != "LastUse" {
+                    let short = key.count > 12 ? String(key.prefix(8)) : key
+                    walk(dict[key]!, path.isEmpty ? short : "\(path)/\(short)")
+                }
+            } else if let array = value as? [Any] {
+                for (i, item) in array.enumerated() { walk(item, "\(path)[\(i)]") }
+            }
+        }
+        walk(root, "")
+        return lines.joined(separator: " | ")
+    }
+
+    private static func isOurs(_ asset: String) -> Bool {
+        guard let data = try? Data(contentsOf: entriesURL),
+              let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+              let assets = json["assets"] as? [[String: Any]] else { return false }
+        return assets.contains { ($0["id"] as? String) == asset
+            && (($0["categories"] as? [String]) ?? []).contains(categoryID) }
     }
 
     // The wallpaper agent re-reads the list and the record when it starts.

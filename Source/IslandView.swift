@@ -2477,7 +2477,7 @@ struct LockCoverWallpaper: View {
     // real macOS login is used — macOS shows its own picture, name and
     // password field there, over a still of this same wallpaper.
     var loginHole = false
-    @AppStorage(SystemLockWallpaperSettings.enabledKey) private var systemLogin = true
+    @AppStorage(SystemLockWallpaperSettings.enabledKey) private var systemLogin = false
     private var hole: Bool { loginHole && systemLogin }
     @ObservedObject private var widgets = LockWidgetsModel.shared
     @ObservedObject private var display = SystemDisplayOptions.shared

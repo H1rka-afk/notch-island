@@ -17,7 +17,10 @@ import CoreImage
 // our own — only the desktop picture, through the public NSWorkspace API.
 enum SystemLockWallpaperSettings {
     static let enabledKey = "lockSystemWallpaperV4100"
-    static var enabled: Bool { (UserDefaults.standard.object(forKey: enabledKey) as? Bool) ?? true }
+    // 4.11.2: off by default — macOS on this Mac does not show a wallpaper
+    // chosen by Ovira on the lock screen, and the full-screen window is the
+    // only way to have everything moving.
+    static var enabled: Bool { (UserDefaults.standard.object(forKey: enabledKey) as? Bool) ?? false }
 }
 
 final class SystemLockWallpaper {
@@ -51,7 +54,8 @@ final class SystemLockWallpaper {
         // desktop picture — put the user's wallpaper back on the next launch.
         // 4.11.1: the live video stays the system wallpaper all the time, so
         // when that is what is set, it is kept.
-        if UserDefaults.standard.bool(forKey: LockAerial.activeKey), case .video(let path)? = currentSource() {
+        if SystemLockWallpaperSettings.enabled, UserDefaults.standard.bool(forKey: LockAerial.activeKey),
+           case .video(let path)? = currentSource() {
             applied = true
             lastKey = "video-\(path)"
             DispatchQueue.main.async { NotificationCenter.default.post(name: Self.aerialChanged, object: "video") }
@@ -101,6 +105,9 @@ final class SystemLockWallpaper {
     private func didLock() {
         guard !locked else { return }
         locked = true
+        if SystemLockWallpaperSettings.enabled {
+            LockIslandLog.record("aerial: record at lock — \(LockAerial.describeStore())")
+        }
         scheduleUpdate(delay: 0)
     }
 

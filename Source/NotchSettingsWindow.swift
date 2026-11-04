@@ -201,7 +201,7 @@ struct NotchSettingsWindowView: View {
     @AppStorage(LiveWallpaperSettings.modeKey) private var liveMode = "off"
     @AppStorage(LiveWallpaperSettings.desktopKey) private var liveDesktop = true
     @AppStorage(LiveWallpaperSettings.lockKey) private var liveLock = true
-    @AppStorage(SystemLockWallpaperSettings.enabledKey) private var systemLockWallpaper = true
+    @AppStorage(SystemLockWallpaperSettings.enabledKey) private var systemLockWallpaper = false
     @AppStorage(LiveWallpaperSettings.qualityKey) private var liveQuality = 0.75
     @AppStorage(LiveWallpaperSettings.fpsKey) private var liveFPS = 30
     @AppStorage(LiveWallpaperSettings.batteryKey) private var livePauseOnBattery = true
@@ -2106,9 +2106,9 @@ struct NotchSettingsWindowView: View {
             group(nil, footer: "Экспериментальное отображение поверх экрана блокировки.") {
                 toggleRow("Замочек на экране блокировки", isOn: lockBinding)
             }
-            group("Обои экрана блокировки", footer: "На время блокировки Ovira ставит свои обои системными (как Aerial на macOS 26 и новее): видео живых обоев или ролик с переливающейся обложкой играют на весь экран, а поверх macOS сама рисует часы, поле пароля, Touch ID и выбор пользователя — всё настоящее. После входа твои обои возвращаются как были. Если что-то пошло не так — «Вернуть мои обои» ниже или «Восстановить обои.command» в папке установщика.") {
-                toggleRow("Обложка в настоящем экране входа",
-                          subtitle: "Поле пароля и выбор пользователя видны и работают поверх обложки и живых обоев",
+            group("Обои экрана блокировки", footer: "Пароль и Touch ID работают в обоих вариантах — это всегда вход macOS. Если обои стали серыми, чёрными или не вернулись — «Вернуть мои обои» или «Восстановить обои.command» в папке установщика.") {
+                toggleRow("Настоящее поле пароля (эксперимент)",
+                          subtitle: "Выключено — обои и обложка на весь экран, а картинку и подсказку для пароля рисует Ovira (пароль вводится как обычно). Включено — внизу видно настоящее поле пароля, но там системные обои, не видео",
                           isOn: $systemLockWallpaper)
                 rowDivider
                 row("Вернуть мои обои", subtitle: "Если обои стали серыми, чёрными или не вернулись после входа") {

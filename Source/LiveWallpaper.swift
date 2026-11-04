@@ -66,7 +66,7 @@ struct LiveWallpaperView: View {
     @AppStorage(LiveWallpaperSettings.qualityKey) private var quality = 0.75
     @AppStorage(LiveWallpaperSettings.fpsKey) private var fps = 30
     @AppStorage(LiveWallpaperSettings.videoKey) private var videoPath = ""
-    @AppStorage(SystemLockWallpaperSettings.enabledKey) private var systemLogin = true
+    @AppStorage(SystemLockWallpaperSettings.enabledKey) private var systemLogin = false
 
     private var fpsValue: Double { Double(LiveWallpaperSettings.fpsChoices.contains(fps) ? fps : 30) }
 
