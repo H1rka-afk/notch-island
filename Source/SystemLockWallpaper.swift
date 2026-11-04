@@ -81,7 +81,7 @@ final class SystemLockWallpaper {
     private func didLock() {
         guard !locked else { return }
         locked = true
-        if requested { scheduleUpdate(delay: 0) }
+        scheduleUpdate(delay: 0)
     }
 
     private func didUnlock() {
@@ -92,14 +92,8 @@ final class SystemLockWallpaper {
 
     private func setRequested(_ on: Bool) {
         requested = on
-        if on {
-            scheduleUpdate(delay: 0)
-        } else {
-            pending?.cancel()
-            if applied || UserDefaults.standard.data(forKey: Self.backupKey) != nil {
-                restoreIfNeeded(reason: "tap")
-            }
-        }
+        // Off: back to the live wallpaper still, or to the user's own.
+        scheduleUpdate(delay: 0)
     }
 
     private func scheduleUpdate(delay: TimeInterval) {
@@ -112,17 +106,30 @@ final class SystemLockWallpaper {
 
     // What the lock screen should show right now, if anything of ours.
     private enum Source {
-        case artwork(NSImage)
-        case video(String)
+        case artwork(NSImage)       // the big cover (tap in the player)
+        case blurred(NSImage)       // live wallpaper «Обложка»
+        case video(String)          // live wallpaper «Видео»
     }
 
+    // 4.10.4: the system wallpaper is only seen around the login (the
+    // windows above leave that part transparent), so it is a still of the
+    // same picture those windows show.
     private func currentSource() -> Source? {
-        if let art = state.musicArtwork { return .artwork(art) }
-        return nil
+        if requested, let art = state.musicArtwork { return .artwork(art) }
+        guard LiveWallpaperSettings.onLock else { return nil }
+        switch LiveWallpaperSettings.mode {
+        case "video":
+            let path = LiveWallpaperSettings.videoPath
+            return !path.isEmpty && FileManager.default.fileExists(atPath: path) ? .video(path) : nil
+        case "cover":
+            return state.musicArtwork.map { .blurred($0) }
+        default:
+            return nil
+        }
     }
 
     private func update() {
-        guard locked, requested, SystemLockWallpaperSettings.enabled else { return }
+        guard locked, SystemLockWallpaperSettings.enabled else { return }
         guard let source = currentSource() else {
             // Music stopped while locked: back to the user's own wallpaper.
             if applied { restoreIfNeeded(reason: "nothing to show") }
@@ -130,7 +137,8 @@ final class SystemLockWallpaper {
         }
         let key: String
         switch source {
-        case .artwork(let image): key = "art-\(ObjectIdentifier(image).hashValue)"
+        case .artwork(let image): key = "art-\(ObjectIdentifier(image).hashValue)-\(Self.coverShare)"
+        case .blurred(let image): key = "blur-\(ObjectIdentifier(image).hashValue)"
         case .video(let path): key = "video-\(path)"
         }
         guard key != lastKey || !applied else { return }
@@ -141,7 +149,8 @@ final class SystemLockWallpaper {
         }
         let artwork: CGImage?
         switch source {
-        case .artwork(let image): artwork = image.cgImage(forProposedRect: nil, context: nil, hints: nil)
+        case .artwork(let image), .blurred(let image):
+            artwork = image.cgImage(forProposedRect: nil, context: nil, hints: nil)
         case .video: artwork = nil
         }
         DispatchQueue.global(qos: .userInitiated).async { [weak self] in
@@ -150,6 +159,8 @@ final class SystemLockWallpaper {
                 switch source {
                 case .artwork:
                     files.append(artwork.flatMap { Self.renderArtwork($0, size: size) }.flatMap(Self.save))
+                case .blurred:
+                    files.append(artwork.flatMap { Self.renderArtwork($0, size: size, withCover: false) }.flatMap(Self.save))
                 case .video(let path):
                     files.append(Self.videoStill(path, size: size).flatMap(Self.save))
                 }
@@ -318,7 +329,7 @@ final class SystemLockWallpaper {
         CGFloat(min(1, max(0.3, (UserDefaults.standard.object(forKey: "lockCoverScaleV384") as? Double) ?? 0.55)))
     }
 
-    static func renderArtwork(_ art: CGImage, size: CGSize) -> CGImage? {
+    static func renderArtwork(_ art: CGImage, size: CGSize, withCover: Bool = true) -> CGImage? {
         let width = Int(size.width.rounded()), height = Int(size.height.rounded())
         guard width > 0, height > 0,
               let context = CGContext(data: nil, width: width, height: height, bitsPerComponent: 8, bytesPerRow: 0,
@@ -344,6 +355,7 @@ final class SystemLockWallpaper {
         context.setFillColor(NSColor.black.withAlphaComponent(0.28).cgColor)
         context.fill(bounds)
 
+        guard withCover else { return context.makeImage() }
         let side = bounds.height * coverShare
         let center = CGPoint(x: bounds.midX, y: bounds.height * 0.5)
         let rect = CGRect(x: center.x - side / 2, y: center.y - side / 2, width: side, height: side)

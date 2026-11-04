@@ -66,6 +66,7 @@ struct LiveWallpaperView: View {
     @AppStorage(LiveWallpaperSettings.qualityKey) private var quality = 0.75
     @AppStorage(LiveWallpaperSettings.fpsKey) private var fps = 30
     @AppStorage(LiveWallpaperSettings.videoKey) private var videoPath = ""
+    @AppStorage(SystemLockWallpaperSettings.enabledKey) private var systemLogin = true
 
     private var fpsValue: Double { Double(LiveWallpaperSettings.fpsChoices.contains(fps) ? fps : 30) }
 
@@ -97,8 +98,9 @@ struct LiveWallpaperView: View {
         }
         .animation(.easeInOut(duration: 0.8), value: state.musicArtwork.map(ObjectIdentifier.init))
         .overlay {
-            if lockScreen { LockScreenChrome() }
+            if lockScreen { LockScreenChrome(hints: !systemLogin) }
         }
+        .mask { if lockScreen && systemLogin { LoginWindowMask() } else { Color.black } }
         .ignoresSafeArea()
         .onAppear { updateReady() }
         .onChange(of: mode) { _, _ in updateReady() }
@@ -765,7 +767,20 @@ struct SavedWallpapersGrid: View {
 // 4.9.3 — the lock screen's clock, the user's picture and name and the
 // «Touch ID или пароль» hint, drawn over the live wallpaper at the places
 // macOS uses (same as the artwork wallpaper). Pure picture, no input.
+// 4.10.4: opaque down to the login, then fades out — macOS draws its real
+// user picture, name and password field in the transparent part.
+struct LoginWindowMask: View {
+    var body: some View {
+        LinearGradient(stops: [
+            .init(color: .black, location: 0),
+            .init(color: .black, location: 0.73),
+            .init(color: .clear, location: 0.80)
+        ], startPoint: .top, endPoint: .bottom)
+    }
+}
+
 struct LockScreenChrome: View {
+    var hints = true
     @ObservedObject private var identity = LockUserIdentity.shared
     @AppStorage("lockCoverClockV372") private var showsClock = true
 
@@ -795,6 +810,7 @@ struct LockScreenChrome: View {
                         .shadow(color: .black.opacity(0.25), radius: 10, y: 3)
                     }
                 }
+                if hints {
                 Group {
                     if let picture = identity.picture {
                         Image(nsImage: picture).resizable().scaledToFill()
@@ -815,6 +831,7 @@ struct LockScreenChrome: View {
                     .font(.system(size: max(11, size.height * 0.0128), weight: .semibold))
                     .foregroundStyle(.white.opacity(0.85))
                     .position(x: size.width / 2, y: size.height * 0.9355)
+                }
             }
             .frame(width: size.width, height: size.height)
             .shadow(color: .black.opacity(0.4), radius: 4, y: 1)

@@ -2473,6 +2473,12 @@ final class LockOutputRoute: ObservableObject {
 // Purely visual: the window never takes clicks or keyboard input.
 struct LockCoverWallpaper: View {
     @ObservedObject var state: IslandState
+    // 4.10.4: the locked copy leaves the login area transparent when the
+    // real macOS login is used — macOS shows its own picture, name and
+    // password field there, over a still of this same wallpaper.
+    var loginHole = false
+    @AppStorage(SystemLockWallpaperSettings.enabledKey) private var systemLogin = true
+    private var hole: Bool { loginHole && systemLogin }
     @ObservedObject private var widgets = LockWidgetsModel.shared
     @ObservedObject private var display = SystemDisplayOptions.shared
     @AppStorage("lockCoverClockV372") private var showsClock = true
@@ -2576,6 +2582,7 @@ struct LockCoverWallpaper: View {
             // through, Touch ID works) but are not visible — so a hint is
             // drawn where they are.
             .overlay(alignment: .bottom) {
+              if !hole {
                 // 3.8.9: the user's own picture and name where macOS shows
                 // them (the real ones are under this window). Only a picture
                 // and text — the password is typed into macOS as always.
@@ -2605,7 +2612,9 @@ struct LockCoverWallpaper: View {
                 }
                 .frame(width: size.width, height: size.height)
                 .shadow(color: .black.opacity(0.4), radius: 4, y: 1)
+              }
             }
+            .mask { if hole { LoginWindowMask() } else { Color.black } }
         }
         .ignoresSafeArea()
         .allowsHitTesting(false)

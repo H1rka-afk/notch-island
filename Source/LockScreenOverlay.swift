@@ -334,7 +334,7 @@ final class LockScreenOverlay {
 
     // MARK: Artwork wallpaper (3.7.2)
 
-    private func makeCoverPanel(on screen: NSScreen) -> LockIslandPanel {
+    private func makeCoverPanel(on screen: NSScreen, loginHole: Bool = false) -> LockIslandPanel {
         let panel = LockIslandPanel(contentRect: screen.frame,
                                     styleMask: [.borderless, .nonactivatingPanel],
                                     backing: .buffered, defer: false)
@@ -346,7 +346,7 @@ final class LockScreenOverlay {
         panel.isMovable = false
         panel.isReleasedWhenClosed = false
         panel.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary, .stationary, .ignoresCycle]
-        panel.contentView = NSHostingView(rootView: LockCoverWallpaper(state: state))
+        panel.contentView = NSHostingView(rootView: LockCoverWallpaper(state: state, loginHole: loginHole))
         return panel
     }
 
@@ -426,7 +426,7 @@ final class LockScreenOverlay {
             coverTapWindow = tap
         }
         if coverWindow == nil {
-            let panel = makeCoverPanel(on: screen)
+            let panel = makeCoverPanel(on: screen, loginHole: true)
             // Just below the card, padlock and widgets.
             panel.level = NSWindow.Level(rawValue: Int(Int32.max - 3))
             panel.canBecomeVisibleWithoutLogin = true
@@ -464,21 +464,20 @@ final class LockScreenOverlay {
         guard let screen = lastScreen ?? NSScreen.main else { return }
         // 4.10.2: with the real macOS login SystemLockWallpaper puts the
         // artwork into the system wallpaper — no window over the login.
-        if lockedCardVisible, SystemLockWallpaperSettings.enabled {
-            // Tap on the big artwork brings the wallpaper back, as before —
-            // the target covers only the artwork, never the login under it.
-            if let tap = coverTapWindow, let screen = lastScreen ?? NSScreen.main {
-                showCoverTap(tap, on: screen, attach: true)
-                tap.setFrame(Self.artworkOnlyFrame(on: screen), display: false)
-            }
-            return
-        } else if lockedCardVisible, let panel = coverWindow {
+        if lockedCardVisible, let panel = coverWindow {
             panel.setFrame(screen.frame, display: false)
             panel.orderFrontRegardless()
             coverBridge.updateLevel(Self.coverLayer)
             _ = coverBridge.attach(panel)
             LockIslandLog.record("cover: layer \(coverBridge.absoluteLevel) — \(coverBridge.lastStatus)")
-            if let tap = coverTapWindow { showCoverTap(tap, on: screen, attach: true) }
+            if let tap = coverTapWindow {
+                showCoverTap(tap, on: screen, attach: true)
+                // 4.10.4: with the real login under the window the tap target
+                // is only the artwork itself.
+                if SystemLockWallpaperSettings.enabled {
+                    tap.setFrame(Self.artworkOnlyFrame(on: screen), display: false)
+                }
+            }
             // Keep the card and widgets above the new wallpaper.
             mediaWindow?.orderFrontRegardless()
             widgetsWindow?.orderFrontRegardless()
@@ -652,10 +651,10 @@ final class LockScreenOverlay {
     // MARK: Live wallpaper (4.9.0)
 
     private func showLiveWallpaper() {
-        // 4.10.0: with the real macOS login the wallpaper is the system one
-        // (see SystemLockWallpaper) — no window over the login.
+        // 4.10.4: with the real macOS login the window leaves the login area
+        // transparent (LoginWindowMask); a still of the same wallpaper is the
+        // system wallpaper there (SystemLockWallpaper).
         guard LiveWallpaperSettings.onLock, LiveWallpaperSettings.mode != "off",
-              !SystemLockWallpaperSettings.enabled,
               let screen = lastScreen ?? NSScreen.main else {
             hideLiveWallpaper()
             return
