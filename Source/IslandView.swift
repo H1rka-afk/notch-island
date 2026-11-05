@@ -151,16 +151,6 @@ struct IslandView: View {
                     .opacity(state.coverGlowOpacity)
             }
 
-            // 4.12.1: a still black cover over the camera cutout itself. The
-            // island's springs can briefly make it narrower or shorter than
-            // the notch; this keeps the real notch from ever showing.
-            if state.isVisible {
-                UnevenRoundedRectangle(bottomLeadingRadius: 9, bottomTrailingRadius: 9, style: .continuous)
-                    .fill(Color.black)
-                    .frame(width: state.notchWidth + 2, height: state.notchHeight + roof + 1)
-                    .allowsHitTesting(false)
-            }
-
             shape.fill(Color.black)
                 .frame(width: shapeWidth, height: height)
                 .overlay {
@@ -298,6 +288,19 @@ struct IslandView: View {
                 CubicKeyframe(0.965, duration: 0.14)
                 CubicKeyframe(0.992, duration: 0.12)
                 CubicKeyframe(1.0, duration: 0.16)
+            }
+        }
+        // 4.12.2: a still black cover over the camera cutout itself, OUTSIDE
+        // the squash above (in 4.12.1 it was squashed together with the
+        // island, so the notch still peeked out). The island's springs can
+        // briefly make it narrower or shorter than the notch; this keeps the
+        // real notch hidden whatever the animation does.
+        .background(alignment: .top) {
+            if state.isVisible {
+                UnevenRoundedRectangle(bottomLeadingRadius: 9, bottomTrailingRadius: 9, style: .continuous)
+                    .fill(Color.black)
+                    .frame(width: state.notchWidth + 2, height: state.notchHeight + roof + 1)
+                    .allowsHitTesting(false)
             }
         }
         // The AppKit window reserves the maximum transparent canvas. Limit
