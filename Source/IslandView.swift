@@ -151,6 +151,16 @@ struct IslandView: View {
                     .opacity(state.coverGlowOpacity)
             }
 
+            // 4.12.1: a still black cover over the camera cutout itself. The
+            // island's springs can briefly make it narrower or shorter than
+            // the notch; this keeps the real notch from ever showing.
+            if state.isVisible {
+                UnevenRoundedRectangle(bottomLeadingRadius: 9, bottomTrailingRadius: 9, style: .continuous)
+                    .fill(Color.black)
+                    .frame(width: state.notchWidth + 2, height: state.notchHeight + roof + 1)
+                    .allowsHitTesting(false)
+            }
+
             shape.fill(Color.black)
                 .frame(width: shapeWidth, height: height)
                 .overlay {

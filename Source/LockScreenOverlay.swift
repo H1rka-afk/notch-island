@@ -439,7 +439,7 @@ final class LockScreenOverlay {
             stopTypingWatch()
             hideCoverTaps()
             LockCoverActivity.shared.hide(after: 0.45)
-            if let coverWindow, coverWindow.alphaValue > 0 { fade(coverWindow, to: 0, duration: 0.5) }
+            if let coverWindow, coverWindow.alphaValue > 0 { fade(coverWindow, to: 0, duration: 0.3) }
             if let coverPreviewWindow, coverPreviewWindow.alphaValue > 0 {
                 NSAnimationContext.runAnimationGroup({ context in
                     context.duration = 0.35
@@ -504,11 +504,17 @@ final class LockScreenOverlay {
 
     private func watchTyping() {
         stopTypingWatch()
-        var last = CGEventSource.secondsSinceLastEventType(.combinedSessionState, eventType: .keyDown)
-        let timer = Timer(timeInterval: 0.1, repeats: true) { [weak self] _ in
-            let age = CGEventSource.secondsSinceLastEventType(.combinedSessionState, eventType: .keyDown)
+        // 4.12.1: both the hardware and the session clocks (whichever moves
+        // first), checked 25 times a second — the artwork goes at once.
+        func keyAge() -> CFTimeInterval {
+            min(CGEventSource.secondsSinceLastEventType(.hidSystemState, eventType: .keyDown),
+                CGEventSource.secondsSinceLastEventType(.combinedSessionState, eventType: .keyDown))
+        }
+        var last = keyAge()
+        let timer = Timer(timeInterval: 0.04, repeats: true) { [weak self] _ in
+            let age = keyAge()
             defer { last = age }
-            guard age + 0.05 < last else { return }
+            guard age + 0.02 < last else { return }
             self?.typingStarted()
         }
         RunLoop.main.add(timer, forMode: .common)
