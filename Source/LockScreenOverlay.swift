@@ -295,15 +295,6 @@ final class LockScreenOverlay {
     private var widgetsWindow: LockIslandPanel?
     // 3.7.2: artwork instead of the wallpaper.
     private var coverWindow: LockIslandPanel?
-    // 4.9.0: the live wallpaper under everything on the lock screen.
-    private var liveWindow: LockIslandPanel?
-    private let liveActivity = LiveWallpaperActivity()
-    private var liveShown = false
-    private var liveReadyObserver: AnyCancellable?
-    // 4.11.0: the video plays as the system Aerial under the real login —
-    // the window copy steps aside once that has started.
-    private var liveBySystem = false
-    private var aerialObserver: NSObjectProtocol?
     private var coverPreviewWindow: LockIslandPanel?
     private var coverObserver: AnyCancellable?
     // 3.8.3: tapping the artwork on the wallpaper brings the wallpaper back.
@@ -330,10 +321,6 @@ final class LockScreenOverlay {
 
     init(state: IslandState) {
         self.state = state
-        aerialObserver = NotificationCenter.default.addObserver(forName: SystemLockWallpaper.aerialChanged,
-                                                                object: nil, queue: .main) { [weak self] note in
-            self?.aerialChanged(note.object as? String)
-        }
         coverObserver = LockCardUIState.shared.$expanded
             .removeDuplicates()
             .receive(on: DispatchQueue.main)
@@ -369,15 +356,6 @@ final class LockScreenOverlay {
         let bottom = f.minY + f.height * 0.03
         let top = min(f.maxY - f.height * 0.03, centerY + side / 2)
         return NSRect(x: f.midX - side / 2, y: bottom, width: side, height: max(40, top - bottom))
-    }
-
-    // 4.10.3: the big artwork of the system wallpaper (SystemLockWallpaper
-    // draws it at the same place and size).
-    static func artworkOnlyFrame(on screen: NSScreen) -> NSRect {
-        let f = screen.frame
-        let side = f.height * SystemLockWallpaper.coverShare
-        let centerY = f.maxY - f.height * LockCoverWallpaper.coverCenter
-        return NSRect(x: f.midX - side / 2, y: centerY - side / 2, width: side, height: side)
     }
 
     private func makeCoverTapPanel() -> LockIslandPanel {
@@ -458,9 +436,10 @@ final class LockScreenOverlay {
         let lockedCardVisible = (mediaWindow?.alphaValue ?? 0) > 0.5 && mediaWindow?.ignoresMouseEvents == false
         let previewVisible = (mediaPreviewWindow?.isVisible ?? false) && (mediaPreviewWindow?.alphaValue ?? 0) > 0.5
         guard on else {
+            stopTypingWatch()
             hideCoverTaps()
             LockCoverActivity.shared.hide(after: 0.45)
-            if let coverWindow, coverWindow.alphaValue > 0 { fade(coverWindow, to: 0, duration: 0.35) }
+            if let coverWindow, coverWindow.alphaValue > 0 { fade(coverWindow, to: 0, duration: 0.5) }
             if let coverPreviewWindow, coverPreviewWindow.alphaValue > 0 {
                 NSAnimationContext.runAnimationGroup({ context in
                     context.duration = 0.35
@@ -470,8 +449,6 @@ final class LockScreenOverlay {
             return
         }
         guard let screen = lastScreen ?? NSScreen.main else { return }
-        // 4.10.2: with the real macOS login SystemLockWallpaper puts the
-        // artwork into the system wallpaper — no window over the login.
         if lockedCardVisible, let panel = coverWindow {
             panel.setFrame(screen.frame, display: false)
             panel.orderFrontRegardless()
@@ -480,12 +457,8 @@ final class LockScreenOverlay {
             LockIslandLog.record("cover: layer \(coverBridge.absoluteLevel) — \(coverBridge.lastStatus)")
             if let tap = coverTapWindow {
                 showCoverTap(tap, on: screen, attach: true)
-                // 4.10.4: with the real login under the window the tap target
-                // is only the artwork itself.
-                if SystemLockWallpaperSettings.enabled {
-                    tap.setFrame(Self.artworkOnlyFrame(on: screen), display: false)
-                }
             }
+            watchTyping()
             // Keep the card and widgets above the new wallpaper.
             mediaWindow?.orderFrontRegardless()
             widgetsWindow?.orderFrontRegardless()
@@ -520,6 +493,40 @@ final class LockScreenOverlay {
     }
 
     // MARK: Lock-screen player (3.6.0)
+
+    // MARK: Typing hides the artwork wallpaper (4.12.0)
+
+    // When a key is pressed on the lock screen the artwork wallpaper goes
+    // away, like on iPhone when the passcode comes up. Only the time since
+    // the last key press is read (the system idle timer) — never which key,
+    // and nothing is taken from the login: the key still goes to macOS.
+    private var typingTimer: Timer?
+
+    private func watchTyping() {
+        stopTypingWatch()
+        var last = CGEventSource.secondsSinceLastEventType(.combinedSessionState, eventType: .keyDown)
+        let timer = Timer(timeInterval: 0.1, repeats: true) { [weak self] _ in
+            let age = CGEventSource.secondsSinceLastEventType(.combinedSessionState, eventType: .keyDown)
+            defer { last = age }
+            guard age + 0.05 < last else { return }
+            self?.typingStarted()
+        }
+        RunLoop.main.add(timer, forMode: .common)
+        typingTimer = timer
+    }
+
+    private func stopTypingWatch() {
+        typingTimer?.invalidate()
+        typingTimer = nil
+    }
+
+    private func typingStarted() {
+        stopTypingWatch()
+        guard LockCardUIState.shared.expanded else { return }
+        LockIslandLog.record("cover: typing — artwork wallpaper off")
+        // The same spring as a tap: the artwork flies back into the card.
+        withAnimation(.spring(response: 0.5, dampingFraction: 0.84)) { LockCardUIState.shared.expanded = false }
+    }
 
     private func makeMediaPanel() -> LockIslandPanel {
         let size = LockScreenMediaCard.panelSize
@@ -656,87 +663,7 @@ final class LockScreenOverlay {
         LockIslandLog.record("widgets: shown (\(model.items.count))")
     }
 
-    // MARK: Live wallpaper (4.9.0)
-
-    private func showLiveWallpaper() {
-        // 4.10.4: with the real macOS login the window leaves the login area
-        // transparent (LoginWindowMask); a still of the same wallpaper is the
-        // system wallpaper there (SystemLockWallpaper).
-        guard LiveWallpaperSettings.onLock, LiveWallpaperSettings.mode != "off",
-              let screen = lastScreen ?? NSScreen.main else {
-            hideLiveWallpaper()
-            return
-        }
-        let panel: LockIslandPanel
-        if let existing = liveWindow {
-            panel = existing
-        } else {
-            panel = LockIslandPanel(contentRect: screen.frame, styleMask: [.borderless, .nonactivatingPanel],
-                                    backing: .buffered, defer: false)
-            panel.isOpaque = false
-            panel.backgroundColor = .clear
-            panel.hasShadow = false
-            panel.hidesOnDeactivate = false
-            panel.ignoresMouseEvents = true      // never in the way of the login
-            panel.isMovable = false
-            panel.isReleasedWhenClosed = false
-            panel.canBecomeVisibleWithoutLogin = true
-            // Under the artwork wallpaper, the card and the widgets.
-            panel.level = NSWindow.Level(rawValue: Int(Int32.max - 4))
-            panel.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary, .stationary, .ignoresCycle]
-            panel.contentView = NSHostingView(rootView: LiveWallpaperView(state: state, activity: liveActivity,
-                                                                          lockScreen: true))
-            panel.alphaValue = 0
-            liveWindow = panel
-            // 4.9.3: visible only while there is a real picture.
-            liveReadyObserver = liveActivity.$contentReady
-                .removeDuplicates()
-                .receive(on: DispatchQueue.main)
-                .sink { [weak self] ready in self?.liveReadyChanged(ready) }
-        }
-        panel.setFrame(screen.frame, display: false)
-        liveActivity.running = true
-        panel.orderFrontRegardless()
-        _ = coverBridge.attach(panel)
-        // Everything else stays above the live wallpaper.
-        coverWindow?.orderFrontRegardless()
-        mediaWindow?.orderFrontRegardless()
-        widgetsWindow?.orderFrontRegardless()
-        liveShown = true
-        if liveActivity.contentReady && !liveBySystem { fade(panel, to: 1, duration: 0.6) }
-        LockIslandLog.record("live wallpaper: on (\(LiveWallpaperSettings.mode)) ready=\(liveActivity.contentReady)")
-    }
-
-    private func aerialChanged(_ kind: String?) {
-        let bySystem = kind == "video"
-        liveBySystem = bySystem
-        guard liveShown, let panel = liveWindow else { return }
-        if bySystem {
-            // A moment for the wallpaper agent to start the video.
-            DispatchQueue.main.asyncAfter(deadline: .now() + 2.5) { [weak self] in
-                guard let self, self.liveBySystem, self.liveShown else { return }
-                self.fade(panel, to: 0, duration: 0.8)
-                LockIslandLog.record("live wallpaper: window hidden, the system plays the video")
-            }
-        } else if liveActivity.contentReady {
-            fade(panel, to: 1, duration: 0.4)
-        }
-    }
-
-    private func liveReadyChanged(_ ready: Bool) {
-        guard liveShown, !liveBySystem, let panel = liveWindow else { return }
-        LockIslandLog.record("live wallpaper: ready=\(ready)")
-        fade(panel, to: ready ? 1 : 0, duration: ready ? 0.6 : 0.2)
-    }
-
-    private func hideLiveWallpaper() {
-        liveShown = false
-        liveActivity.running = false
-        liveWindow?.alphaValue = 0
-    }
-
     private func hideWidgets(animated: Bool) {
-        hideLiveWallpaper()
         LockCoverActivity.widgets.hide(after: animated ? 0.3 : 0)
         guard let panel = widgetsWindow, panel.alphaValue > 0 else { return }
         widgetsToken = UUID()
@@ -916,7 +843,7 @@ final class LockScreenOverlay {
 
     func showLocked(forcePreview: Bool = false) {
         // The lock-screen player is independent of the padlock switch.
-        if !forcePreview { showLiveWallpaper(); showMedia(); showWidgets() }
+        if !forcePreview { showMedia(); showWidgets() }
         guard enabled || forcePreview, let window else { return }
         // Duplicate session lock notifications may require a new SkyLight
         // attachment, but must not restart the entrance animation.

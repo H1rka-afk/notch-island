@@ -197,14 +197,6 @@ struct NotchSettingsWindowView: View {
     @AppStorage(WaveLook.sizeKey) private var waveSize = 1.0
     @AppStorage(WaveLook.fpsKey) private var waveFPS = 30
     @AppStorage(IslandLook.expandedKey) private var expandedScale = 1.0
-    // 4.9.0: live wallpapers.
-    @AppStorage(LiveWallpaperSettings.modeKey) private var liveMode = "off"
-    @AppStorage(LiveWallpaperSettings.desktopKey) private var liveDesktop = true
-    @AppStorage(LiveWallpaperSettings.lockKey) private var liveLock = true
-    @AppStorage(LiveWallpaperSettings.qualityKey) private var liveQuality = 0.75
-    @AppStorage(LiveWallpaperSettings.fpsKey) private var liveFPS = 30
-    @AppStorage(LiveWallpaperSettings.batteryKey) private var livePauseOnBattery = true
-    @AppStorage(LiveWallpaperSettings.videoKey) private var liveVideo = ""
     @AppStorage(IslandLook.compactArtworkKey) private var compactArtworkScale = 1.0
     @AppStorage("githubUpdatesV400") private var githubUpdates = true
     // 4.0.0
@@ -357,7 +349,7 @@ struct NotchSettingsWindowView: View {
     // media player, battery and AirPods are «Устройства», focus and
     // meetings are system banners, the shelf holds files and the clipboard.
     private enum Section: String, CaseIterable {
-        case general, profiles, stats, permissions, island, media, lock, wallpaper, notifications, helpers, shelf, devices, timer
+        case general, profiles, stats, permissions, island, media, lock, notifications, helpers, shelf, devices, timer
 
         var title: String {
             switch self {
@@ -368,7 +360,6 @@ struct NotchSettingsWindowView: View {
             case .island: return "Островок"
             case .media: return "Медиаплеер"
             case .lock: return "Экран блокировки"
-            case .wallpaper: return "Живые обои"
             case .notifications: return "Уведомления"
             case .helpers: return "Помощники"
             case .shelf: return "Файлы"
@@ -385,7 +376,6 @@ struct NotchSettingsWindowView: View {
             case .island: return "macbook"
             case .media: return "play.fill"
             case .lock: return "lock.fill"
-            case .wallpaper: return "photo.on.rectangle.angled"
             case .notifications: return "bell.badge.fill"
             case .helpers: return "wand.and.stars"
             case .shelf: return "tray.full.fill"
@@ -402,7 +392,6 @@ struct NotchSettingsWindowView: View {
             case .island: return Color(red: 0.20, green: 0.48, blue: 1.0)
             case .media: return Color(red: 1.0, green: 0.27, blue: 0.40)
             case .lock: return Color(red: 0.36, green: 0.38, blue: 0.45)
-            case .wallpaper: return Color(red: 0.98, green: 0.45, blue: 0.25)
             case .notifications: return Color(red: 1.0, green: 0.27, blue: 0.23)
             case .helpers: return Color(red: 0.66, green: 0.36, blue: 0.95)
             case .shelf: return Color(red: 0.04, green: 0.52, blue: 1.0)
@@ -420,7 +409,6 @@ struct NotchSettingsWindowView: View {
             case .island: return "Вид, размер и поведение островка"
             case .media: return "Плеер, спектрограмма, звук, обложки и жесты"
             case .lock: return "Плеер, обложка, виджеты и StandBy"
-            case .wallpaper: return "Живые обои на рабочем столе и экране блокировки"
             case .notifications: return "Фокусирование, встречи, сеть и система"
             case .helpers: return "Исправление раскладки и отдых для глаз"
             case .shelf: return "Полка, AirDrop, снимки экрана и буфер обмена"
@@ -438,7 +426,7 @@ struct NotchSettingsWindowView: View {
         var group: Int {
             switch self {
             case .general, .profiles, .stats, .permissions: return 0
-            case .island, .media, .lock, .wallpaper: return 1
+            case .island, .media, .lock: return 1
             case .notifications, .helpers, .shelf: return 1
             case .devices, .timer: return 2
             }
@@ -584,8 +572,7 @@ struct NotchSettingsWindowView: View {
                             sectionTile(.helpers); sectionTile(.shelf); sectionTile(.devices); sectionTile(.timer)
                         }
                         GridRow {
-                            statsTile.gridCellColumns(2)
-                            sectionTile(.wallpaper)
+                            statsTile.gridCellColumns(3)
                             sectionTile(.permissions)
                         }
                     }
@@ -698,7 +685,6 @@ struct NotchSettingsWindowView: View {
         case .timer: return .timer
         case .shelf: return .airdrop
         case .lock: return .lock
-        case .wallpaper: return .music
         case .helpers: return .eyes
         case .profiles: return .profile
         case .stats: return .eyes
@@ -753,9 +739,6 @@ struct NotchSettingsWindowView: View {
         case .media: return island.track.map { "♫ \($0.title)" } ?? "Сейчас ничего не играет"
         case .lock: return lockWidgets.enabled ? "Плеер, обложка, виджеты: \(lockWidgets.slots.count)" : "Плеер и обложка"
         case .devices: return snapshot.batterySummary
-        case .wallpaper:
-            let title = LiveWallpaperSettings.modes.first { $0.id == liveMode }?.title ?? "Выкл"
-            return liveMode == "off" ? "Выключены" : "Сейчас: \(title)"
         case .timer: return "Таймер прямо в островке"
         case .notifications: return "Фокус, встречи, система"
         case .helpers: return "Раскладка ⌃⌥L и 20-20-20"
@@ -1338,7 +1321,6 @@ struct NotchSettingsWindowView: View {
         case .island: islandSection
         case .media: mediaSection
         case .lock: lockSection
-        case .wallpaper: wallpaperSection
         case .notifications: notificationsSection
         case .helpers: helpersSection
         case .shelf: shelfSection
@@ -2007,86 +1989,6 @@ struct NotchSettingsWindowView: View {
                     toggleRow("Устройство вывода", subtitle: "AirPods, наушники, динамики; нажатие — настройки звука", isOn: labBinding("output"))
                 }
             }
-        }
-    }
-
-    // MARK: 4.9.0 Live wallpapers
-
-    private var liveModeHint: String {
-        switch liveMode {
-        case "cover": return "Играющая обложка, сильно размытая, медленно переливается; на паузе — медленнее. Без музыки видны твои обычные обои."
-        case "aurora": return "Переливы цветов обложки (или темы настроек, когда музыка не играет)."
-        case "video": return "Твоё видео по кругу, без звука. Подойдёт .mp4 или .mov."
-        default: return "Системные обои macOS не меняются: живые обои рисуются поверх них и сразу исчезают, если их выключить."
-        }
-    }
-
-    private var wallpaperSection: some View {
-        VStack(alignment: .leading, spacing: 20) {
-            group("Обои", footer: liveModeHint) {
-                VStack(alignment: .leading, spacing: 12) {
-                    SmoothSegmented(selection: $liveMode,
-                                    options: LiveWallpaperSettings.modes.map { ($0.id, $0.title) },
-                                    accent: accent(.wallpaper))
-                    if liveMode != "off" {
-                        LiveWallpaperPreview(state: island)
-                            .frame(height: 190)
-                            .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
-                            .overlay(RoundedRectangle(cornerRadius: 14, style: .continuous)
-                                .strokeBorder(Color.primary.opacity(0.15), lineWidth: 1))
-                            .transition(.opacity)
-                    }
-                }
-                .padding(14)
-                .id("search:Обои")
-                if liveMode == "video" {
-                    rowDivider
-                    row("Видео", subtitle: liveVideo.isEmpty ? "Не выбрано" : (liveVideo as NSString).lastPathComponent) {
-                        Button("Выбрать…") { chooseLiveVideo() }
-                    }
-                }
-            }
-            // 4.9.2: videos used before — one click to put one back.
-            if liveMode == "video" {
-                group("Сохранённые обои", footer: "Все видео, которые ты уже ставил, — нажми, чтобы снова включить. «×» убирает из списка, сам файл остаётся на месте.") {
-                    SavedWallpapersGrid(selection: $liveVideo, accent: accent(.wallpaper))
-                }
-            }
-            group("Где показывать", footer: "Экран блокировки — на весь экран, под обложкой и карточкой плеера; пароль и Touch ID работают как обычно. На рабочем столе обои лежат под значками и окнами; клики проходят сквозь них.") {
-                toggleRow("Рабочий стол", subtitle: "На всех мониторах и рабочих столах", isOn: $liveDesktop)
-                rowDivider
-                toggleRow("Экран блокировки", isOn: $liveLock)
-            }
-            group("Качество", footer: "Обои не рисуются, когда их не видно: окно на весь экран, Mac заблокирован или спит. Видео играет в своём качестве; качество и кадры влияют на «Обложку» и «Переливы».") {
-                row("Качество") {
-                    SmoothSegmented(selection: $liveQuality,
-                                    options: LiveWallpaperSettings.qualities.map { ($0.value, $0.title) },
-                                    accent: accent(.wallpaper))
-                        .frame(width: 280)
-                }
-                rowDivider
-                row("Кадров в секунду") {
-                    SmoothSegmented(selection: $liveFPS,
-                                    options: LiveWallpaperSettings.fpsChoices.map { ($0, "\($0)") },
-                                    accent: accent(.wallpaper))
-                        .frame(width: 220)
-                }
-                rowDivider
-                toggleRow("Останавливать от батареи", subtitle: "Обои замирают, пока Mac не на зарядке", isOn: $livePauseOnBattery)
-            }
-        }
-        .animation(.easeInOut(duration: 0.25), value: liveMode)
-    }
-
-    private func chooseLiveVideo() {
-        let panel = NSOpenPanel()
-        panel.allowedContentTypes = [.movie, .mpeg4Movie, .quickTimeMovie]
-        panel.allowsMultipleSelection = false
-        panel.canChooseDirectories = false
-        panel.message = "Выбери видео для живых обоев"
-        if panel.runModal() == .OK, let url = panel.url {
-            liveVideo = url.path
-            SavedVideos.shared.remember(url.path)
         }
     }
 

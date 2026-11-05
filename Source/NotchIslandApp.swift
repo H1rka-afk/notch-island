@@ -1781,8 +1781,6 @@ final class IslandAppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     // Keep the mini-island beneath the cursor while the main island collapses.
     private var timerPinnedX: CGFloat?
     private var lockOverlay: LockScreenOverlay?
-    private var desktopWallpaper: DesktopWallpaperController?
-    private var systemLockWallpaper: SystemLockWallpaper?
     private var lockWidgetsTimer: Timer?
     private var isScreenLocked = false
     // Screen-unlocked notifications may arrive later than the actual WindowServer
@@ -1904,10 +1902,6 @@ final class IslandAppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         // Unlike the normal media panel, this second panel is noninteractive
         // and only draws a small padlock, never personal/media information.
         lockOverlay = LockScreenOverlay(state: state)
-        // 4.9.0: live desktop wallpaper (off until chosen in Settings).
-        desktopWallpaper = DesktopWallpaperController(state: state)
-        // 4.10.0: artwork in the real macOS lock screen (password, users).
-        systemLockWallpaper = SystemLockWallpaper(state: state)
         lockOverlayStandByHook()
         lockOverlay?.prepare(on: displayScreen())
         lockStatusItem?.title = lockOverlay?.usesPrivateLockSpace == true

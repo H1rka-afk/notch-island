@@ -89,6 +89,18 @@ struct IslandView: View {
         return state.compactRevealed ? state.compactWidth : state.notchWidth
     }
 
+    // 4.12.0: the smallest squash that still covers the physical notch
+    // (with a point to spare on each side).
+    private func minNotchScaleX(_ width: CGFloat) -> CGFloat {
+        guard width > 0 else { return 1 }
+        return min(1, (state.notchWidth + 2) / width)
+    }
+
+    private func minNotchScaleY(_ height: CGFloat, roof: CGFloat) -> CGFloat {
+        guard height > 0 else { return 1 }
+        return min(1, (state.notchHeight + roof + 1) / height)
+    }
+
     private var surfaceHeight: CGFloat {
         state.event == nil
             ? (expanded ? state.expandedHeight : state.compactDisplayHeight)
@@ -245,7 +257,10 @@ struct IslandView: View {
         // 4.8.0: every change of shape (appearing, a banner taking over,
         // going back) gives the iPhone's tiny liquid squash.
         .keyframeAnimator(initialValue: IslandDropPhase(), trigger: state.islandMorphPulse) { content, phase in
-            content.scaleEffect(x: phase.x, y: phase.y, anchor: .top)
+            // 4.12.0: never smaller than the camera cutout — the real notch
+            // must not peek out at the sides or below while it springs.
+            content.scaleEffect(x: max(phase.x, minNotchScaleX(width)),
+                                y: max(phase.y, minNotchScaleY(height, roof: roof)), anchor: .top)
         } keyframes: { _ in
             KeyframeTrack(\.x) {
                 CubicKeyframe(0.975, duration: 0.12)
@@ -260,7 +275,8 @@ struct IslandView: View {
         // falling bottom, then the bottom settles with a small rebound.
         // Never larger than the final size, so nothing is clipped.
         .keyframeAnimator(initialValue: IslandDropPhase(), trigger: state.expandDropPulse) { content, phase in
-            content.scaleEffect(x: phase.x, y: phase.y, anchor: .top)
+            content.scaleEffect(x: max(phase.x, minNotchScaleX(width)),
+                                y: max(phase.y, minNotchScaleY(height, roof: roof)), anchor: .top)
         } keyframes: { _ in
             KeyframeTrack(\.x) {
                 CubicKeyframe(0.92, duration: 0.13)
@@ -2584,7 +2600,7 @@ struct LockCoverWallpaper: View {
                     .font(.system(size: max(11, size.height * 0.0128), weight: .semibold))
                     .foregroundStyle(.white.opacity(0.85))
                     .shadow(color: .black.opacity(0.4), radius: 4, y: 1)
-                    .position(x: size.width / 2, y: size.height * LockScreenChrome.hintY)
+                    .position(x: size.width / 2, y: size.height * 0.90)
                     .frame(width: size.width, height: size.height)
             }
         }

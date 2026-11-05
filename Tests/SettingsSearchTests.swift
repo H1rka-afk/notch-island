@@ -22,7 +22,7 @@ struct SettingsSearchTests {
         precondition(SettingsSearch.search("громкость zzzz").isEmpty)
         // Every entry points to a known section.
         let sections: Set<String> = ["general", "profiles", "stats", "permissions", "island", "media",
-                                     "lock", "wallpaper", "notifications", "helpers", "shelf", "devices", "timer"]
+                                     "lock", "notifications", "helpers", "shelf", "devices", "timer"]
         // 4.5.0: the spectrogram lives in the media player.
         precondition(first("спектрограмма")?.section == "media")
         precondition(SettingsSearch.index.allSatisfy { sections.contains($0.section) })
