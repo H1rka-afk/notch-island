@@ -1224,7 +1224,7 @@ final class IslandState: ObservableObject {
         guard isExpanded || canvasExpanded else { return }
         let token = UUID()
         canvasToken = token
-        withAnimation(IslandMotion.morph) {
+        withAnimation(IslandMotion.morphCollapse) {
             isExpanded = false
         }
         DispatchQueue.main.asyncAfter(deadline: .now() + IslandMotion.canvasSettle) { [weak self] in

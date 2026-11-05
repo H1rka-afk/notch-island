@@ -251,45 +251,12 @@ struct IslandView: View {
                 .allowsHitTesting(expanded)
             }
         }
-        .animation(IslandMotion.morph, value: state.isExpanded)
-        .animation(IslandMotion.morph, value: state.compactRevealed)
+        .animation(state.isExpanded ? IslandMotion.morph : IslandMotion.morphCollapse, value: state.isExpanded)
+        .animation(state.compactRevealed ? IslandMotion.morph : IslandMotion.morphCollapse, value: state.compactRevealed)
         .animation(IslandMotion.content, value: state.eventReturningToMedia)
-        // 4.8.0: every change of shape (appearing, a banner taking over,
-        // going back) gives the iPhone's tiny liquid squash.
-        .keyframeAnimator(initialValue: IslandDropPhase(), trigger: state.islandMorphPulse) { content, phase in
-            // 4.12.0: never smaller than the camera cutout — the real notch
-            // must not peek out at the sides or below while it springs.
-            content.scaleEffect(x: max(phase.x, minNotchScaleX(width)),
-                                y: max(phase.y, minNotchScaleY(height, roof: roof)), anchor: .top)
-        } keyframes: { _ in
-            KeyframeTrack(\.x) {
-                CubicKeyframe(0.975, duration: 0.12)
-                CubicKeyframe(1.0, duration: 0.3)
-            }
-            KeyframeTrack(\.y) {
-                CubicKeyframe(0.93, duration: 0.14)
-                CubicKeyframe(1.0, duration: 0.32)
-            }
-        }
-        // 4.5.0: opening is a drop of liquid — the sides lag behind the
-        // falling bottom, then the bottom settles with a small rebound.
-        // Never larger than the final size, so nothing is clipped.
-        .keyframeAnimator(initialValue: IslandDropPhase(), trigger: state.expandDropPulse) { content, phase in
-            content.scaleEffect(x: max(phase.x, minNotchScaleX(width)),
-                                y: max(phase.y, minNotchScaleY(height, roof: roof)), anchor: .top)
-        } keyframes: { _ in
-            KeyframeTrack(\.x) {
-                CubicKeyframe(0.92, duration: 0.13)
-                CubicKeyframe(0.985, duration: 0.17)
-                CubicKeyframe(1.0, duration: 0.22)
-            }
-            KeyframeTrack(\.y) {
-                CubicKeyframe(1.0, duration: 0.16)
-                CubicKeyframe(0.965, duration: 0.14)
-                CubicKeyframe(0.992, duration: 0.12)
-                CubicKeyframe(1.0, duration: 0.16)
-            }
-        }
+        // 4.12.3: no squash keyframes any more (the «spring» on every change
+        // of shape and the drop on opening) — they pulled the island inside
+        // the camera cutout.
         // 4.12.2: a still black cover over the camera cutout itself, OUTSIDE
         // the squash above (in 4.12.1 it was squashed together with the
         // island, so the notch still peeked out). The island's springs can
