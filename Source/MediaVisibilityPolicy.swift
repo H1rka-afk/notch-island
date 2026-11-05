@@ -3,9 +3,9 @@ import Foundation
 // 3.4.1 — when the music player gets out of the way.
 // Pure decisions only (no AppKit), so they are covered by tests.
 //
-// 1. Full screen: a video / browser / music app opened on the whole screen.
-//    Also when it is NOT the app that plays the music (Spotify + fullscreen
-//    YouTube), but never for an ordinary fullscreen editor.
+// 1. Full screen: a video / music app opened on the whole screen, or a
+//    browser that is itself playing (4.12.4), but never for an ordinary
+//    fullscreen editor.
 // 2. The music source itself is in front: the Yandex Music / Spotify / Music
 //    app, or the browser whose CURRENT tab plays the track (its window title
 //    shows the track or a music service).
@@ -37,6 +37,7 @@ enum MediaVisibilityPolicy {
         var frontIsFullscreen: Bool
         var hideInFullscreen: Bool
         var hideWhenSourceInFront: Bool
+        var trackPlaying: Bool = true
     }
 
     static func isMediaApp(_ bundle: String) -> Bool {
@@ -66,9 +67,15 @@ enum MediaVisibilityPolicy {
 
     static func shouldHide(_ input: Input) -> Bool {
         let fromSource = frontIsSource(front: input.frontBundle, source: input.sourceBundle)
-        if input.hideInFullscreen && input.frontIsFullscreen &&
-            (fromSource || isMediaApp(input.frontBundle)) {
-            return true
+        if input.hideInFullscreen && input.frontIsFullscreen {
+            // 4.12.4: a browser on the whole screen hides the island only
+            // while it plays something itself — not an empty or loading page,
+            // and not when the music comes from another app.
+            if browsers.contains(input.frontBundle) {
+                if input.sourceBundle == input.frontBundle && input.trackPlaying { return true }
+            } else if fromSource || isMediaApp(input.frontBundle) {
+                return true
+            }
         }
         guard input.hideWhenSourceInFront, fromSource else { return false }
         if browsers.contains(input.frontBundle) {

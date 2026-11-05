@@ -3388,7 +3388,8 @@ final class IslandAppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             MediaVisibilityPolicy.shouldHide(.init(
                 frontBundle: bundle, sourceBundle: source, trackTitle: track.title,
                 frontWindowTitle: title, frontIsFullscreen: fullscreen,
-                hideInFullscreen: hideInFullscreen, hideWhenSourceInFront: hideWhenSource))
+                hideInFullscreen: hideInFullscreen, hideWhenSourceInFront: hideWhenSource,
+                trackPlaying: track.isPlaying))
         }
         guard wantsFullscreen || wantsTitle else {
             state.updateFullscreenMediaSuppression(decide(nil, false))
@@ -3424,6 +3425,9 @@ final class IslandAppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
               front.processIdentifier != ProcessInfo.processInfo.processIdentifier,
               let bundle = front.bundleIdentifier,
               MediaVisibilityPolicy.isMediaApp(bundle) || CinemaMode.videoApps.contains(bundle),
+              // 4.12.4: a browser only while it is the one playing — an
+              // empty or still-loading page on the whole screen is not cinema.
+              !MediaVisibilityPolicy.browsers.contains(bundle) || Self.browserIsPlaying(bundle, track: state.track),
               let screen = displayScreen() else {
             if state.cinemaMode { state.setCinemaMode(false); updateIdleWings() }
             return
@@ -3447,6 +3451,12 @@ final class IslandAppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         }
     }
     private var visibilityCheckBusy = false
+
+    private static func browserIsPlaying(_ bundle: String, track: PlayingTrack?) -> Bool {
+        guard let track, track.isPlaying else { return false }
+        let source = track.source == .system ? track.sourceBundle : track.source.bundleIdentifier
+        return source == bundle
+    }
 
     // A window of this app covering the island's display. Quartz uses
     // top-left coordinates; compare sizes and the horizontal span only.

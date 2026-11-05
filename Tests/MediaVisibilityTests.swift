@@ -37,10 +37,16 @@ struct MediaVisibilityTests {
         precondition(hide(input(front: safari, source: safari, track: "Ёлка", window: "елка — слушать")))
 
         // Full screen: media app or source app → hide, editor → keep.
-        precondition(hide(input(front: safari, source: ym, window: "Фильм", fullscreen: true)))
+        // 4.12.4: a fullscreen browser only while it plays itself.
+        precondition(!hide(input(front: safari, source: ym, window: "Фильм", fullscreen: true)))
+        precondition(hide(input(front: safari, source: safari, window: "Фильм", fullscreen: true)))
+        var paused = input(front: safari, source: safari, window: "Фильм", fullscreen: true)
+        paused.trackPlaying = false
+        precondition(!hide(paused))
+        precondition(hide(input(front: "org.videolan.vlc", source: ym, fullscreen: true)))
         precondition(hide(input(front: ym, source: ym, fullscreen: true, hideSource: false)))
         precondition(!hide(input(front: "com.apple.dt.Xcode", source: ym, fullscreen: true)))
-        precondition(!hide(input(front: safari, source: ym, window: "Фильм", fullscreen: true, hideFS: false)))
+        precondition(!hide(input(front: safari, source: safari, window: "Фильм", fullscreen: true, hideFS: false)))
 
         print("MediaVisibilityTests: OK")
     }
