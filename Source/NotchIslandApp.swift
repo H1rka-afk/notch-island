@@ -173,7 +173,7 @@ final class IslandState: ObservableObject {
         lastGlowIdentity = identity
         guard coverGlowEnabled, track?.isPlaying == true, event == nil,
               !isExpanded, !canvasExpanded, compactRevealed, !isSessionLocked,
-              !mediaSuppressedInFullscreen, !unlockTransitionActive,
+              !mediaHidden, !unlockTransitionActive,
               !usesFixedMediaSatelliteCanvas else { return }
         let token = UUID()
         coverGlowToken = token
@@ -326,8 +326,9 @@ final class IslandState: ObservableObject {
         mediaVisibilitySettingsChanged?()
     }
     var mediaVisibilitySettingsChanged: (() -> Void)?
-    // 4.0.0: cinema mode — a full-screen video in front: the island and all
-    // banners stay away until it ends.
+    // 4.0.0: cinema mode — a full-screen video in front.
+    // 4.12.5: only the music player steps aside; banners, the timer and
+    // everything else still appear (as when the music app is in front).
     @Published private(set) var cinemaMode = false {
         didSet { if oldValue != cinemaMode { layoutChanged?() } }
     }
@@ -339,8 +340,24 @@ final class IslandState: ObservableObject {
             hoverEnter?.cancel(); hoverEnter = nil
             hoverExit?.cancel(); hoverExit = nil
         }
-        cinemaMode = on
+        guard on else {
+            cinemaMode = false
+            if track != nil && !mediaSuppressedInFullscreen && event == nil && !unlockTransitionActive {
+                updateCompactPresentation(isVisible: true)
+            }
+            return
+        }
+        // The player shrinks back into the notch first, like the other hide.
+        if event == nil, compactRevealed, track != nil, !unlockTransitionActive, !isSessionLocked {
+            compactRevealToken = UUID()
+            withAnimation(IslandMotion.bannerRetract) { compactRevealed = false }
+        }
+        cinemaMode = true
     }
+
+    // 4.12.5: the music player is hidden (the source or a video in front);
+    // nothing else is.
+    var mediaHidden: Bool { mediaSuppressedInFullscreen || cinemaMode }
     private var mediaSuppressionTarget = false
     private var mediaSuppressionToken = UUID()
 
@@ -370,7 +387,7 @@ final class IslandState: ObservableObject {
             }
         } else if mediaSuppressedInFullscreen {
             mediaSuppressedInFullscreen = false
-            if (track != nil || timerPresented) && event == nil && !unlockTransitionActive {
+            if (track != nil || timerPresented) && event == nil && !unlockTransitionActive && !cinemaMode {
                 updateCompactPresentation(isVisible: true)
             }
         } else if (track != nil || timerPresented) && event == nil && !unlockTransitionActive {
@@ -413,7 +430,8 @@ final class IslandState: ObservableObject {
         // Defer a frame so NSPanel is positioned before SwiftUI animates.
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.055) { [weak self] in
             guard let self, self.compactRevealToken == token,
-                  (self.track != nil || self.timerPresented), !self.isSessionLocked else { return }
+                  (self.track != nil || self.timerPresented), !self.isSessionLocked,
+                  !(self.track != nil && self.mediaHidden) else { return }
             withAnimation(IslandMotion.morph) {
                 self.compactRevealed = true
             }
@@ -481,13 +499,13 @@ final class IslandState: ObservableObject {
     // conditions presentNotice checks). Reminders wait for a free island
     // instead of being dropped silently.
     var canPresentNoticeNow: Bool {
-        !isSessionLocked && !unlockTransitionActive && !cinemaMode &&
+        !isSessionLocked && !unlockTransitionActive &&
             !isExpanded && !canvasExpanded && scheduledEvent == nil &&
             (event == nil || event == .notice)
     }
 
     func presentNotice(_ next: IslandNotice) {
-        guard !isSessionLocked, !unlockTransitionActive, !cinemaMode else { return }
+        guard !isSessionLocked, !unlockTransitionActive else { return }
         if event == .notice, notice?.kind == next.kind, eventRevealed {
             notice = next
             let token = UUID()
@@ -1156,7 +1174,7 @@ final class IslandState: ObservableObject {
         hoverEnter = nil
         hoverExit?.cancel()
         hoverExit = nil
-        guard !isSessionLocked && event == nil && !mediaSuppressedInFullscreen &&
+        guard !isSessionLocked && event == nil && !mediaHidden &&
               (track != nil || timerPresented) else { return }
         if over && dragInProgress { return }
         if over {
@@ -1195,7 +1213,7 @@ final class IslandState: ObservableObject {
     }
 
     func expandPlayer() {
-        guard !isSessionLocked && event == nil && !mediaSuppressedInFullscreen &&
+        guard !isSessionLocked && event == nil && !mediaHidden &&
               (track != nil || timerPresented) && !isExpanded else { return }
         stopCoverGlow()
         let token = UUID()
@@ -1255,8 +1273,8 @@ final class IslandState: ObservableObject {
     // The main island is for media/events; the Clock timer has a separate
     // satellite window. Do not keep a second, invisible timer in the notch.
     var isVisible: Bool {
-        !cinemaMode && !isSessionLocked && (event != nil || unlockTransitionActive ||
-            (!mediaSuppressedInFullscreen && (track != nil || timerPresented)) ||
+        !isSessionLocked && (event != nil || unlockTransitionActive ||
+            (!mediaHidden && (track != nil || timerPresented)) ||
             (track == nil && timerPresented))
     }
     var compactWing: CGFloat { 35 }
@@ -1534,7 +1552,7 @@ final class IslandState: ObservableObject {
 
     func show(_ nextEvent: IslandEvent) {
         PerformanceMonitor.write("event \(nextEvent)")
-        guard !isSessionLocked, !cinemaMode else { return }
+        guard !isSessionLocked else { return }
         // A late cable/AirPods event must not cut off the visible open-padlock
         // transition. Queue it until the single-panel handoff is finished.
         if unlockTransitionActive {
@@ -1586,7 +1604,8 @@ final class IslandState: ObservableObject {
         hoverExit?.cancel()
         hoverExit = nil
         pointerInsideIsland = false
-        let fromMedia = (track != nil || timerPresented) && event == nil && compactRevealed
+        let fromMedia = ((track != nil && !mediaHidden) || (track == nil && timerPresented))
+            && event == nil && compactRevealed
         if event != nil {
             // An event can interrupt another event: retain the CURRENT wing
             // width rather than flashing the physical-notch-sized surface.
@@ -1638,7 +1657,8 @@ final class IslandState: ObservableObject {
         DispatchQueue.main.asyncAfter(deadline: .now() + dwell + IslandMotion.bannerExitLead) { [weak self] in
             guard let self, self.eventToken == token, self.event == nextEvent,
                   !self.isSessionLocked else { return }
-            let returning = self.track != nil || self.timerPresented
+            // 4.12.5: back to the player only when it is not hidden.
+            let returning = (self.track != nil && !self.mediaHidden) || (self.track == nil && self.timerPresented)
             withAnimation(IslandMotion.bannerRetract) {
                 self.eventRestingWidth = returning ? self.compactWidth : self.notchWidth
                 self.eventReturningToMedia = returning
