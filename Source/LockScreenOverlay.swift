@@ -3,6 +3,7 @@ import SwiftUI
 import Darwin
 import QuartzCore
 import Combine
+import IOKit
 
 // A small off-screen roof keeps the black island visually attached to the
 // top bezel while WindowServer switches from loginwindow to the desktop.
@@ -504,21 +505,51 @@ final class LockScreenOverlay {
 
     private func watchTyping() {
         stopTypingWatch()
-        // 4.12.1: both the hardware and the session clocks (whichever moves
-        // first), checked 25 times a second — the artwork goes at once.
+        // 4.14.1: the login field takes keys in «secure input», and then the
+        // keyboard clock of the event system often does not move at all (the
+        // artwork stayed until something else happened). The hardware idle
+        // clock (IOHIDSystem «HIDIdleTime») restarts on ANY key; a restart
+        // with the pointer still and no click is a key press. Only the time
+        // is read — never which key.
         func keyAge() -> CFTimeInterval {
             min(CGEventSource.secondsSinceLastEventType(.hidSystemState, eventType: .keyDown),
                 CGEventSource.secondsSinceLastEventType(.combinedSessionState, eventType: .keyDown))
         }
-        var last = keyAge()
-        let timer = Timer(timeInterval: 0.04, repeats: true) { [weak self] _ in
-            let age = keyAge()
-            defer { last = age }
-            guard age + 0.02 < last else { return }
-            self?.typingStarted()
+        func clickAge() -> CFTimeInterval {
+            min(CGEventSource.secondsSinceLastEventType(.hidSystemState, eventType: .leftMouseDown),
+                CGEventSource.secondsSinceLastEventType(.hidSystemState, eventType: .rightMouseDown))
+        }
+        var lastKey = keyAge()
+        var lastIdle = Self.hardwareIdleSeconds() ?? .infinity
+        var lastMouse = NSEvent.mouseLocation
+        let started = Date()
+        let timer = Timer(timeInterval: 0.03, repeats: true) { [weak self] _ in
+            let key = keyAge()
+            let idle = Self.hardwareIdleSeconds() ?? .infinity
+            let mouse = NSEvent.mouseLocation
+            defer { lastKey = key; lastIdle = idle; lastMouse = mouse }
+            // The tap that opened the artwork must not count.
+            guard Date().timeIntervalSince(started) > 0.25 else { return }
+            if key + 0.02 < lastKey {
+                self?.typingStarted(signal: "key")
+            } else if idle + 0.02 < lastIdle, mouse == lastMouse, clickAge() > 0.35 {
+                self?.typingStarted(signal: "hid")
+            }
         }
         RunLoop.main.add(timer, forMode: .common)
         typingTimer = timer
+    }
+
+    // Seconds since the last keyboard, mouse or trackpad input, from the HID
+    // system itself.
+    private static func hardwareIdleSeconds() -> Double? {
+        let service = IOServiceGetMatchingService(kIOMainPortDefault, IOServiceMatching("IOHIDSystem"))
+        guard service != 0 else { return nil }
+        defer { IOObjectRelease(service) }
+        guard let value = IORegistryEntryCreateCFProperty(service, "HIDIdleTime" as CFString,
+                                                          kCFAllocatorDefault, 0)?.takeRetainedValue() as? NSNumber
+        else { return nil }
+        return value.doubleValue / 1_000_000_000
     }
 
     private func stopTypingWatch() {
@@ -526,10 +557,10 @@ final class LockScreenOverlay {
         typingTimer = nil
     }
 
-    private func typingStarted() {
+    private func typingStarted(signal: String) {
         stopTypingWatch()
         guard LockCardUIState.shared.expanded else { return }
-        LockIslandLog.record("cover: typing — artwork wallpaper off")
+        LockIslandLog.record("cover: typing (\(signal)) — artwork wallpaper off")
         // The same spring as a tap: the artwork flies back into the card.
         withAnimation(IslandMotion.surface) { LockCardUIState.shared.expanded = false }
     }
