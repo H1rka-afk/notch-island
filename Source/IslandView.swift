@@ -280,6 +280,11 @@ struct IslandView: View {
         .frame(width: width, height: height, alignment: .top)
         .contentShape(Rectangle())
         .onHover { state.hoverChanged($0) }
+        // 4.14.2: a click anywhere on the closed island opens it (the middle,
+        // over the camera, used to let the click through).
+        .onTapGesture {
+            if !state.isExpanded && state.event == nil { state.expandPlayer() }
+        }
         // File shelf (lab): files dropped on the island go to the shelf.
         .onDrop(of: [UTType.fileURL],
                 isTargeted: Binding(get: { state.shelfModel?.dropTargeted ?? false },
