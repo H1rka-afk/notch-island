@@ -172,6 +172,8 @@ struct NotchSettingsActions {
 
 struct NotchSettingsWindowView: View {
     @ObservedObject var island: IslandState
+    @AppStorage(IslandOpening.clickKey) private var islandOpenOnClick = true
+    @AppStorage(IslandCursor.key) private var islandHideCursor = true
     @ObservedObject var snapshot: NotchSettingsSnapshot
     @ObservedObject private var displayOptions = SystemDisplayOptions.shared
     @ObservedObject private var lockWidgets = LockWidgetsModel.shared
@@ -1761,7 +1763,7 @@ struct NotchSettingsWindowView: View {
                 }
                 rowDivider
                 toggleRow("Тактильный отклик при наведении",
-                          subtitle: "Лёгкий щелчок трекпада при открытии островка",
+                          subtitle: "Лёгкий щелчок трекпада, когда курсор наводится на островок",
                           isOn: hapticsBinding)
             }
             group("Управление") {
@@ -1877,6 +1879,22 @@ struct NotchSettingsWindowView: View {
 
     private var islandSection: some View {
         VStack(alignment: .leading, spacing: 20) {
+            group("Открытие островка", footer: islandOpenOnClick
+                  ? "Наведи курсор — островок чуть увеличится и щёлкнет трекпадом; нажми — откроется плеер или таймер."
+                  : "Островок открывается сразу, как только на него наведён курсор.") {
+                VStack(alignment: .leading, spacing: 8) {
+                    Text("Раскрывать").font(.system(size: 13))
+                    SmoothSegmented(selection: Binding(get: { islandOpenOnClick ? "click" : "hover" },
+                                                       set: { islandOpenOnClick = $0 == "click" }),
+                                    options: [("click", "По нажатию"), ("hover", "При наведении")],
+                                    accent: accent(.island))
+                }
+                .padding(14)
+                rowDivider
+                toggleRow("Прятать курсор над островком",
+                          subtitle: "Как над чёлкой: курсор исчезает над закрытым островком и возвращается в открытом",
+                          isOn: $islandHideCursor)
+            }
             group("Крылья", footer: "Когда в островке ничего не происходит, по бокам от чёлки тихо видна мелочь на выбор. Как только появляется музыка, баннер или таймер, крылья прячутся. На мышь не реагируют.") {
                 toggleRow("Крылья в покое", subtitle: "Погода, заряд, время или дата рядом с чёлкой", isOn: $wingsEnabled)
                 rowDivider

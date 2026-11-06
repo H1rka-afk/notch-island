@@ -301,7 +301,11 @@ final class IslandState: ObservableObject {
         // 4.5.0: each opening plays the liquid «drop» once.
         didSet {
             if isExpanded && !oldValue { expandDropPulse &+= 1 }
-            if isExpanded != oldValue { PerformanceMonitor.animating(isExpanded ? "open player" : "close player") }
+            if isExpanded != oldValue {
+                PerformanceMonitor.animating(isExpanded ? "open player" : "close player")
+                if isExpanded && hoverPeek { hoverPeek = false }
+                updateCursor()
+            }
         }
     }
     @Published private(set) var expandDropPulse = 0
@@ -733,6 +737,8 @@ final class IslandState: ObservableObject {
         timerHoverExit = nil
         guard showsTimerSatellite else { return }
         if over && dragInProgress { return }
+        // 4.14.0: the timer, too, opens on a click when so chosen.
+        if over && IslandOpening.onClick { return }
         if over {
             let task = DispatchWorkItem { [weak self] in
                 guard let self, self.timerPointerInside, self.showsTimerSatellite,
@@ -1125,7 +1131,17 @@ final class IslandState: ObservableObject {
     // A single gentle click when the pointer ENTERS an island. SwiftUI may
     // re-create a hover tracking region during an animated resize, so both
     // entry-state gating and a small cooldown prevent unwanted repeated taps.
-    private var pointerInsideIsland = false
+    private var pointerInsideIsland = false {
+        didSet { if pointerInsideIsland != oldValue { updateCursor() } }
+    }
+    // 4.14.0: pointer over the closed island — it grows a little (when it
+    // opens only on a click) and the cursor hides, as over the notch.
+    @Published private(set) var hoverPeek = false
+
+    private func updateCursor() {
+        IslandCursor.setHidden(IslandCursor.isEnabled && pointerInsideIsland && !isExpanded
+                               && !isSessionLocked && isVisible)
+    }
     var isPointerOverIsland: Bool { pointerInsideIsland }
 
     // Media gestures: brief visual answers, never new windows.
@@ -1172,6 +1188,7 @@ final class IslandState: ObservableObject {
         guard over != pointerInsideIsland else { return }
         let justEntered = over
         pointerInsideIsland = over
+        if !over && hoverPeek { withAnimation(IslandMotion.press) { hoverPeek = false } }
         if justEntered && hoverHapticsEnabled && !isSessionLocked && isVisible &&
            Date().timeIntervalSince(lastHoverHaptic) > 0.65 {
             lastHoverHaptic = Date()
@@ -1184,6 +1201,14 @@ final class IslandState: ObservableObject {
         guard !isSessionLocked && event == nil && !mediaHidden &&
               (track != nil || timerPresented) else { return }
         if over && dragInProgress { return }
+        // 4.14.0: opening on a click — hovering only lifts the island a bit.
+        if IslandOpening.onClick {
+            let peek = over && !isExpanded && event == nil
+            if peek != hoverPeek { withAnimation(IslandMotion.press) { hoverPeek = peek } }
+            if over { return }
+        } else if hoverPeek {
+            withAnimation(IslandMotion.press) { hoverPeek = false }
+        }
         if over {
             // An entry can arrive during charging/unlock hover suppression.
             // Schedule its opening for AFTER the suppression window instead
@@ -1931,6 +1956,11 @@ final class IslandAppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         // Unlike the normal media panel, this second panel is noninteractive
         // and only draws a small padlock, never personal/media information.
         lockOverlay = LockScreenOverlay(state: state)
+        // 4.14.0: the hidden cursor comes back if the island is gone.
+        IslandCursor.islandFrame = { [weak self] in
+            guard let panel = self?.panel, panel.isVisible, panel.alphaValue > 0.1 else { return .zero }
+            return panel.frame
+        }
         lockOverlayStandByHook()
         lockOverlay?.prepare(on: displayScreen())
         lockStatusItem?.title = lockOverlay?.usesPrivateLockSpace == true
@@ -4307,5 +4337,63 @@ private enum ArtworkColorSampler {
         return Color(red: min(1, 0.33 + 0.67 * red / weightSum),
                      green: min(1, 0.33 + 0.67 * green / weightSum),
                      blue: min(1, 0.33 + 0.67 * blue / weightSum))
+    }
+}
+
+
+// 4.14.0: how the island opens.
+enum IslandOpening {
+    static let clickKey = "islandOpenOnClickV4140"
+    static var onClick: Bool { (UserDefaults.standard.object(forKey: clickKey) as? Bool) ?? true }
+}
+
+// 4.14.0: the cursor disappears over the closed island, as it does over the
+// camera notch, and comes back when the island opens or the pointer leaves.
+// A background app may hide the cursor only with the window server's
+// «SetsCursorInBackground» property (looked up at run time; without it the
+// cursor simply stays visible).
+enum IslandCursor {
+    static let key = "islandHideCursorV4140"
+    static var isEnabled: Bool { (UserDefaults.standard.object(forKey: key) as? Bool) ?? true }
+    private static var hidden = false
+    private static var prepared = false
+
+    private typealias DefaultConnection = @convention(c) () -> Int32
+    private typealias SetProperty = @convention(c) (Int32, Int32, CFString, CFTypeRef) -> Int32
+
+    private static func allowInBackground() {
+        guard !prepared else { return }
+        prepared = true
+        guard let handle = dlopen(nil, RTLD_NOW),
+              let c = dlsym(handle, "_CGSDefaultConnection"),
+              let p = dlsym(handle, "CGSSetConnectionProperty") else { return }
+        let connection = unsafeBitCast(c, to: DefaultConnection.self)()
+        _ = unsafeBitCast(p, to: SetProperty.self)(connection, connection,
+                                                   "SetsCursorInBackground" as CFString, kCFBooleanTrue)
+    }
+
+    // Where the closed island is on screen (set by the app delegate). While
+    // the cursor is hidden it is checked a few times a second, so the cursor
+    // never stays hidden if the island vanished under it.
+    static var islandFrame: (() -> CGRect)?
+    private static var watch: Timer?
+
+    static func setHidden(_ hide: Bool) {
+        guard hide != hidden else { return }
+        allowInBackground()
+        hidden = hide
+        if hide {
+            CGDisplayHideCursor(CGMainDisplayID())
+            let timer = Timer(timeInterval: 0.3, repeats: true) { _ in
+                guard let frame = islandFrame?() else { return }
+                if !frame.insetBy(dx: -2, dy: -2).contains(NSEvent.mouseLocation) { setHidden(false) }
+            }
+            RunLoop.main.add(timer, forMode: .common)
+            watch = timer
+        } else {
+            watch?.invalidate()
+            watch = nil
+            CGDisplayShowCursor(CGMainDisplayID())
+        }
     }
 }

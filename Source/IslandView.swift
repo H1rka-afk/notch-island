@@ -254,6 +254,9 @@ struct IslandView: View {
         .animation(state.isExpanded ? IslandMotion.morph : IslandMotion.morphCollapse, value: state.isExpanded)
         .animation(state.compactRevealed ? IslandMotion.morph : IslandMotion.morphCollapse, value: state.compactRevealed)
         .animation(IslandMotion.content, value: state.eventReturningToMedia)
+        // 4.14.0: under the pointer the closed island grows a little (when it
+        // opens only on a click).
+        .scaleEffect(state.hoverPeek && !expanded && state.event == nil ? 1.045 : 1, anchor: .top)
         // 4.12.3: no squash keyframes any more (the «spring» on every change
         // of shape and the drop on opening) — they pulled the island inside
         // the camera cutout.
