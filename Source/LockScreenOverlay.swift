@@ -376,7 +376,7 @@ final class LockScreenOverlay {
             Color.black.opacity(0.02)
                 .contentShape(Rectangle())
                 .onTapGesture {
-                    withAnimation(.spring(response: 0.5, dampingFraction: 0.84)) {
+                    withAnimation(IslandMotion.surface) {
                         LockCardUIState.shared.expanded = false
                     }
                 }
@@ -531,7 +531,7 @@ final class LockScreenOverlay {
         guard LockCardUIState.shared.expanded else { return }
         LockIslandLog.record("cover: typing — artwork wallpaper off")
         // The same spring as a tap: the artwork flies back into the card.
-        withAnimation(.spring(response: 0.5, dampingFraction: 0.84)) { LockCardUIState.shared.expanded = false }
+        withAnimation(IslandMotion.surface) { LockCardUIState.shared.expanded = false }
     }
 
     private func makeMediaPanel() -> LockIslandPanel {
@@ -901,7 +901,7 @@ final class LockScreenOverlay {
         // the expanding left wing can safely contain the glyph.
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.07) { [weak self] in
             guard let self, self.generation == token, self.lockPresentationActive else { return }
-            withAnimation(.spring(response: 0.46, dampingFraction: 0.88)) {
+            withAnimation(IslandMotion.surface) {
                 presenter.expansion = 1
             }
         }

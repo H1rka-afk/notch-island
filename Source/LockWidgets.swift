@@ -134,7 +134,7 @@ final class LockWidgetsModel: ObservableObject {
 
     private func apply(_ next: [LockWidgetSlot]) {
         guard next != slots else { return }
-        withAnimation(.spring(response: 0.38, dampingFraction: 0.84)) {
+        withAnimation(IslandMotion.surface) {
             slots = next
             publish(available)
         }
@@ -208,7 +208,7 @@ struct LockWidgetsView: View {
             }
             .frame(width: size.width, height: size.height)
         }
-        .animation(.spring(response: 0.4, dampingFraction: 0.86), value: model.items.map { $0.id + ($0.wide ? "w" : "s") })
+        .animation(IslandMotion.surface, value: model.items.map { $0.id + ($0.wide ? "w" : "s") })
         .environment(\.colorScheme, .dark)
         .allowsHitTesting(false)
     }
@@ -513,7 +513,7 @@ struct LockWidgetsEditor: View {
     }
 
     private func openGallery() {
-        withAnimation(.spring(response: 0.4, dampingFraction: 0.86)) { drag.galleryOpen = true }
+        withAnimation(IslandMotion.surface) { drag.galleryOpen = true }
     }
 
     private func backdrop(_ size: CGSize) -> some View {
@@ -717,7 +717,7 @@ struct LockWidgetsEditor: View {
                 .font(.system(size: 12, weight: .medium))
                 .foregroundStyle(Color.white.opacity(0.6))
             Button {
-                withAnimation(.spring(response: 0.4, dampingFraction: 0.86)) { drag.galleryOpen = false }
+                withAnimation(IslandMotion.surface) { drag.galleryOpen = false }
             } label: {
                 Image(systemName: "xmark.circle.fill")
                     .font(.system(size: 22))

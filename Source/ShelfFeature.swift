@@ -24,13 +24,13 @@ final class ShelfModel: ObservableObject {
 
     func present() {
         presenceToken = UUID()
-        withAnimation(.spring(response: 0.5, dampingFraction: 0.68)) { presented = true }
+        withAnimation(IslandMotion.grow) { presented = true }
     }
 
     func dismiss(completion: @escaping () -> Void) {
         let token = UUID()
         presenceToken = token
-        withAnimation(.spring(response: 0.36, dampingFraction: 0.9)) { presented = false }
+        withAnimation(IslandMotion.shrink) { presented = false }
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.38) { [weak self] in
             guard let self, self.presenceToken == token else { return }
             completion()
@@ -112,7 +112,7 @@ final class ShelfModel: ObservableObject {
     func hoverChanged(_ over: Bool) {
         hoverExit?.cancel()
         if over {
-            withAnimation(.spring(response: 0.42, dampingFraction: 0.82)) { expanded = true }
+            withAnimation(IslandMotion.grow) { expanded = true }
         } else {
             let work = DispatchWorkItem { [weak self] in self?.collapse() }
             hoverExit = work
@@ -121,7 +121,7 @@ final class ShelfModel: ObservableObject {
     }
 
     func collapse() {
-        withAnimation(.spring(response: 0.38, dampingFraction: 0.9)) { expanded = false }
+        withAnimation(IslandMotion.shrink) { expanded = false }
     }
 
     func airDropAll() {
@@ -214,7 +214,7 @@ struct ShelfView: View {
         .blur(radius: shelf.presented ? 0 : 3)
         .padding(.trailing, 13)
         .frame(width: shelf.expandedSize.width + 26, height: shelf.expandedSize.height + roof, alignment: .topTrailing)
-        .animation(.spring(response: 0.42, dampingFraction: 0.82), value: shelf.showsExpanded)
+        .animation(shelf.showsExpanded ? IslandMotion.grow : IslandMotion.shrink, value: shelf.showsExpanded)
     }
 
     private var compactContent: some View {

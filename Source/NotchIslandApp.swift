@@ -645,7 +645,7 @@ final class IslandState: ObservableObject {
         }
         DispatchQueue.main.async { [weak self] in
             guard let self, self.timerSatelliteAnimationToken == token else { return }
-            withAnimation(.spring(response: 0.56, dampingFraction: 0.66)) {
+            withAnimation(IslandMotion.grow) {
                 self.timerSatellitePresence = 1
             }
         }
@@ -667,7 +667,7 @@ final class IslandState: ObservableObject {
             // 4.5.0: every exit flows back into the music island (the
             // liquid neck reappears and swallows the drop).
             self.timerSatelliteShrinksInPlace = false
-            withAnimation(.spring(response: home ? 0.4 : 0.36, dampingFraction: 0.9)) {
+            withAnimation(IslandMotion.shrink) {
                 self.timerSatellitePresence = 0
             }
         }
@@ -767,7 +767,7 @@ final class IslandState: ObservableObject {
         let token = UUID()
         timerPanelToken = token
         if timerCanvasExpanded {
-            withAnimation(.spring(response: 0.42, dampingFraction: 0.87)) {
+            withAnimation(IslandMotion.grow) {
                 timerExpanded = true
             }
             return
@@ -781,7 +781,7 @@ final class IslandState: ObservableObject {
                 self.timerCanvasExpanded = false
                 return
             }
-            withAnimation(.spring(response: 0.42, dampingFraction: 0.87)) {
+            withAnimation(IslandMotion.grow) {
                 self.timerExpanded = true
             }
         }
@@ -791,7 +791,7 @@ final class IslandState: ObservableObject {
         guard timerExpanded || timerCanvasExpanded else { return }
         let token = UUID()
         timerPanelToken = token
-        withAnimation(.spring(response: 0.38, dampingFraction: 0.88)) {
+        withAnimation(IslandMotion.shrink) {
             timerExpanded = false
         }
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.48) { [weak self] in
@@ -857,7 +857,7 @@ final class IslandState: ObservableObject {
         // An open satellite folds smoothly; the music island itself must
         // not animate here (no implicit transaction around timerActive).
         if timerExpanded {
-            withAnimation(.spring(response: 0.3, dampingFraction: 0.9)) { resetTimerSatellite() }
+            withAnimation(IslandMotion.shrink) { resetTimerSatellite() }
         } else {
             resetTimerSatellite()
         }
@@ -1147,7 +1147,7 @@ final class IslandState: ObservableObject {
     func nudgeForSwipe(next: Bool) {
         withAnimation(.easeOut(duration: 0.12)) { swipeNudge = next ? -7 : 7 }
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.12) { [weak self] in
-            withAnimation(.spring(response: 0.32, dampingFraction: 0.62)) { self?.swipeNudge = 0 }
+            withAnimation(IslandMotion.press) { self?.swipeNudge = 0 }
         }
     }
     private var hoverEnter: DispatchWorkItem?

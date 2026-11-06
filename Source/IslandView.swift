@@ -566,7 +566,7 @@ struct IslandView: View {
                     .transition(.opacity)
             }
         }
-        .animation(.spring(response: 0.55, dampingFraction: 0.86),
+        .animation(IslandMotion.surface,
                    value: state.musicArtwork.map(ObjectIdentifier.init))
         .frame(width: size, height: size)
         .clipShape(RoundedRectangle(cornerRadius: size < 35 ? 6 : 10, style: .continuous))
@@ -894,7 +894,7 @@ private struct AnimatedFavoriteStar: View {
             motion.ringScale = 0.55
             motion.ringOpacity = 0.95
             motion.rotation = -10
-            withAnimation(.spring(response: 0.30, dampingFraction: 0.52)) {
+            withAnimation(IslandMotion.press) {
                 motion.scale = 1.16
                 motion.rotation = 0
             }
@@ -913,7 +913,7 @@ private struct AnimatedFavoriteStar: View {
             }
         }
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.16) {
-            withAnimation(.spring(response: 0.26, dampingFraction: 0.59)) {
+            withAnimation(IslandMotion.press) {
                 motion.scale = 1
                 motion.rotation = 0
             }
@@ -998,7 +998,7 @@ struct DynamicIslandButtonStyle: ButtonStyle {
             .foregroundStyle(configuration.isPressed ? Color.white.opacity(0.73) : Color.white)
             .contentShape(Rectangle())
             .scaleEffect(configuration.isPressed ? 0.78 : 1.0)
-            .animation(.spring(response: 0.24, dampingFraction: 0.55), value: configuration.isPressed)
+            .animation(IslandMotion.press, value: configuration.isPressed)
     }
 }
 
@@ -1530,7 +1530,7 @@ struct TimerSatelliteView: View {
                        height: shapeHeight + state.timerTopBleed)
                 .offset(x: shapeX - satFlare)
                 .opacity(min(1, Double(presence) * 4))
-                .animation(.spring(response: 0.52, dampingFraction: 0.87),
+                .animation(state.timerExpanded ? IslandMotion.grow : IslandMotion.shrink,
                            value: state.timerExpanded)
 
             Group {
@@ -1671,7 +1671,7 @@ struct LockScreenMediaCard: View {
         }
         .frame(width: Self.panelSize(scale: scale).width, height: Self.panelSize(scale: scale).height,
                alignment: .bottom)
-        .animation(.spring(response: 0.45, dampingFraction: 0.86), value: state.track == nil)
+        .animation(IslandMotion.surface, value: state.track == nil)
     }
 
     private func card(_ song: PlayingTrack) -> some View {
@@ -1757,7 +1757,7 @@ struct LockScreenMediaCard: View {
     }
 
     private func closeOutputs() {
-        withAnimation(.spring(response: 0.35, dampingFraction: 0.9)) { ui.outputsOpen = false }
+        withAnimation(IslandMotion.surface) { ui.outputsOpen = false }
     }
 
     // 4.10.3: the same in both modes — the artwork leaves the card for the
@@ -1765,7 +1765,7 @@ struct LockScreenMediaCard: View {
     private var artworkOnWallpaper: Bool { ui.expanded }
 
     private func toggleExpanded() {
-        withAnimation(.spring(response: 0.5, dampingFraction: 0.84)) { ui.expanded.toggle() }
+        withAnimation(IslandMotion.surface) { ui.expanded.toggle() }
     }
 
     // MARK: Pieces
@@ -1852,7 +1852,7 @@ struct LockScreenMediaCard: View {
             // 4.8.3: choose where the sound goes, right on the lock screen.
             Button {
                 outputs.refresh()
-                withAnimation(.spring(response: 0.38, dampingFraction: 0.86)) { ui.outputsOpen.toggle() }
+                withAnimation(IslandMotion.surface) { ui.outputsOpen.toggle() }
             } label: {
                 Image(systemName: outputRoute.symbol)
                     .font(.system(size: 20, weight: .medium))
@@ -1898,7 +1898,7 @@ struct LockScreenMediaCard: View {
                 bars(song)
             }
             .frame(height: 60)
-            .animation(.spring(response: 0.5, dampingFraction: 0.84), value: ui.expanded)
+            .animation(IslandMotion.surface, value: ui.expanded)
             Spacer(minLength: 10)
             if song.duration > 0 { LockProgressRow(state: state) }
             Spacer(minLength: 8)

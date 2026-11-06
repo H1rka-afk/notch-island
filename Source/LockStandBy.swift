@@ -135,7 +135,7 @@ struct StandByView: View {
                     .contentShape(Rectangle())
                     .onTapGesture {
                         if ui.islandExpanded {
-                            withAnimation(.spring(response: 0.45, dampingFraction: 0.85)) { ui.islandExpanded = false }
+                            withAnimation(IslandMotion.surface) { ui.islandExpanded = false }
                         } else {
                             onDismiss()
                         }
@@ -193,9 +193,9 @@ struct StandByView: View {
         .overlay(shape.strokeBorder(Color.white.opacity(0.12), lineWidth: 1))
         .contentShape(shape)
         .onTapGesture {
-            withAnimation(.spring(response: 0.45, dampingFraction: 0.82)) { ui.islandExpanded.toggle() }
+            withAnimation(IslandMotion.surface) { ui.islandExpanded.toggle() }
         }
-        .animation(.spring(response: 0.45, dampingFraction: 0.82), value: expanded)
+        .animation(IslandMotion.surface, value: expanded)
     }
 
     private var cover: some View {
