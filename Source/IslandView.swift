@@ -279,7 +279,8 @@ struct IslandView: View {
         // it reaches the actual compact media island.
         .frame(width: width, height: height, alignment: .top)
         .contentShape(Rectangle())
-        .onHover { state.hoverChanged($0) }
+        // 4.14.5: while closed, the pointer is reported by CursorBehindIsland.
+        .onHover { over in if state.isExpanded || state.canvasExpanded { state.hoverChanged(over) } }
         // 4.14.2: a click anywhere on the closed island opens it (the middle,
         // over the camera, used to let the click through).
         .onTapGesture {
@@ -1567,7 +1568,7 @@ struct TimerSatelliteView: View {
         // 4.14.4: lifts a little under the pointer, like the music island.
         .scaleEffect(state.timerHoverPeek && !state.timerExpanded ? 1.06 : 1, anchor: .top)
         .contentShape(Rectangle())
-        .onHover { state.timerHoverChanged($0) }
+        .onHover { over in if state.timerExpanded { state.timerHoverChanged(over) } }
         .frame(width: state.timerPanelSize.width,
                height: state.timerPanelSize.height, alignment: .topLeading)
         .padding(.leading, state.timerLeadInset)

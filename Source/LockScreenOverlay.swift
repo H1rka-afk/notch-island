@@ -96,6 +96,8 @@ private final class PadlockPresentation: ObservableObject {
     @Published var symbolOpacity: Double = 0
     @Published var surfaceOpacity: Double = 1
     @Published var unlocked = false
+    // 4.14.5: lifts a little under the pointer, like every island.
+    @Published var peek = false
 
     func reset(expanded: Bool) {
         expansion = expanded ? 1 : 0
@@ -147,6 +149,7 @@ private struct PadlockNotchView: View {
                height: notch.mediaCompactHeight + padlockTopBleed,
                alignment: .bottom)
         .opacity(appearance.surfaceOpacity)
+        .scaleEffect(appearance.peek ? 1.06 : 1, anchor: .top)
         // No implicit or nested .animation modifiers: the controller gives
         // each entrance/unlock/retraction one explicit transaction.
         .allowsHitTesting(false)
@@ -864,7 +867,27 @@ final class LockScreenOverlay {
     // 4.14.3: where the padlock island is on the lock screen (for the cursor).
     var padlockFrame: CGRect? {
         guard let window, window.isVisible, window.alphaValue > 0.1 else { return nil }
-        return window.frame
+        // The visible padlock island: centred, notch + wings wide.
+        let f = window.frame
+        let width = state.notchWidth + 76 * min(1, max(0, secureAppearance.expansion))
+        let height = state.mediaCompactHeight
+        return CGRect(x: f.midX - width / 2, y: f.maxY - padlockTopBleed - height, width: width, height: height)
+    }
+    var padlockWindow: NSWindow? { window }
+
+    // 4.14.5: the cursor copy on the lock screen lives in the same private
+    // space as the padlock, right under it.
+    func attachUnderPadlock(_ panel: NSWindow) {
+        guard let window else { return }
+        panel.level = window.level
+        _ = bridge.attach(panel)
+        panel.order(.below, relativeTo: window.windowNumber)
+    }
+
+    func padlockHover(_ inside: Bool) {
+        guard inside != secureAppearance.peek else { return }
+        if inside { IslandHover.tap() }
+        withAnimation(IslandMotion.press) { secureAppearance.peek = inside }
     }
 
     func reposition(on screen: NSScreen?) {

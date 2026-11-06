@@ -225,7 +225,7 @@ struct ShelfView: View {
         .frame(width: size.width, height: size.height + roof, alignment: .topTrailing)
         .scaleEffect(shelf.peek && !shelf.showsExpanded ? 1.06 : 1, anchor: .topTrailing)
         .contentShape(Rectangle())
-        .onHover { shelf.hoverChanged($0) }
+        .onHover { over in if shelf.showsExpanded { shelf.hoverChanged(over) } }
         .onDrop(of: [UTType.fileURL], delegate: ShelfDropDelegate(shelf: shelf))
         .scaleEffect(shelf.presented ? 1 : 0.35, anchor: .topTrailing)
         .offset(x: shelf.presented ? 0 : 16)
