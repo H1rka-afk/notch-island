@@ -26,13 +26,24 @@ enum IslandDemo: String, CaseIterable, Equatable {
         }
     }
 
-    var expanded: Bool { self == .music || self == .airpods }
+    // 4.15.0: only the player is shown open; everything else is a closed
+    // island exactly like the real one (notch in the middle, wings).
+    var expanded: Bool { self == .music }
 
-    var size: CGSize {
+    // Width of each side next to the notch — enough for the icon and text.
+    var wing: CGFloat {
         switch self {
-        case .music: return CGSize(width: 380, height: 116)
-        case .airpods: return CGSize(width: 340, height: 104)
-        default: return CGSize(width: 320, height: 38)
+        case .music: return 35
+        case .charging: return 70
+        case .airpods: return 46
+        case .focus: return 92
+        case .timer: return 52
+        case .airdrop: return 52
+        case .lock: return 38
+        case .meeting: return 64
+        case .volume: return 52
+        case .profile: return 86
+        case .eyes: return 52
         }
     }
 }
@@ -43,20 +54,26 @@ struct IslandDemoView: View {
     var scale: CGFloat = 1
 
     var body: some View {
-        let size = demo.size
-        let radius: CGFloat = demo.expanded ? 30 : 14
-        ZStack {
-            UnevenRoundedRectangle(topLeadingRadius: 0, bottomLeadingRadius: radius,
-                                   bottomTrailingRadius: radius, topTrailingRadius: 0, style: .continuous)
+        // 4.15.0: the real island's sizes and shape — drop curves into the
+        // screen edge, 13-pt corners when closed, 26 when open.
+        let open = demo.expanded
+        let flare: CGFloat = open ? 13 : island.edgeFlare
+        let width = open ? island.expandedWidth : max(island.notchWidth + demo.wing * 2, island.compactWidth)
+        let height = open ? island.expandedHeight : island.mediaCompactHeight
+        let fit: CGFloat = open ? min(1, 150 / max(1, height)) : 1
+        ZStack(alignment: .top) {
+            IslandSilhouette(bottomRadius: open ? 26 : 13, flare: flare, roof: 0)
                 .fill(Color.black)
-                .shadow(color: .black.opacity(0.35), radius: 12, y: 6)
+                .frame(width: width + flare * 2, height: height)
+                .shadow(color: .black.opacity(0.3), radius: 10, y: 5)
             content
+                .frame(width: width, height: height)
                 .id(demo)
                 .transition(.opacity.combined(with: .scale(scale: 0.92)))
         }
-        .frame(width: size.width, height: size.height)
-        .scaleEffect(scale, anchor: .top)
-        .animation(.spring(response: 0.5, dampingFraction: 0.78), value: demo)
+        .frame(width: width + flare * 2, height: height)
+        .scaleEffect(scale * fit, anchor: .top)
+        .animation(IslandMotion.grow, value: demo)
         .environment(\.colorScheme, .dark)
     }
 
@@ -64,13 +81,16 @@ struct IslandDemoView: View {
     private var content: some View {
         switch demo {
         case .music: musicCard
-        case .airpods: airPodsCard
+        case .airpods:
+            compact(left: Image(systemName: island.airPods?.name.lowercased().contains("max") == true ? "airpodsmax" : "airpodspro"),
+                    leftColor: .white,
+                    right: Text("\(island.airPods?.left ?? 82)%"), rightColor: .green)
         case .charging:
             compact(left: Image(systemName: "bolt.fill"), leftColor: .green,
-                    right: Text("\(island.power?.percentage ?? 87)%"), rightColor: .green)
+                    right: Text("Зарядка \(island.power?.percentage ?? 87)%"), rightColor: .white)
         case .focus:
             compact(left: Image(systemName: "moon.fill"), leftColor: Color(red: 0.49, green: 0.48, blue: 1),
-                    right: Text("Вкл"), rightColor: Color(red: 0.49, green: 0.48, blue: 1))
+                    right: Text("Не беспокоить"), rightColor: Color(red: 0.49, green: 0.48, blue: 1))
         case .timer:
             compact(left: Image(systemName: "timer"), leftColor: .orange, right: Text("4:59"), rightColor: .orange)
         case .airdrop:
@@ -93,13 +113,17 @@ struct IslandDemoView: View {
     }
 
     private func compact(left: Image, leftColor: Color, right: Text, rightColor: Color) -> some View {
-        HStack {
-            left.font(.system(size: 15, weight: .bold)).foregroundStyle(leftColor)
-                .padding(.leading, 18)
-            Spacer()
-            right.font(.system(size: 13, weight: .bold, design: .rounded)).monospacedDigit()
+        HStack(spacing: 0) {
+            left.font(.system(size: 14, weight: .semibold)).foregroundStyle(leftColor)
+                .frame(width: demo.wing)
+            // The camera notch is in the middle, as on the real screen.
+            Color.clear.frame(width: island.notchWidth)
+            right.font(.system(size: 12.5, weight: .semibold, design: .rounded)).monospacedDigit()
                 .foregroundStyle(rightColor)
-                .padding(.trailing, 18)
+                .lineLimit(1)
+                .minimumScaleFactor(0.7)
+                .padding(.trailing, 10)
+                .frame(width: demo.wing, alignment: .trailing)
         }
     }
 
@@ -136,9 +160,10 @@ struct IslandDemoView: View {
             .font(.system(size: 13, weight: .semibold))
             .foregroundStyle(.white)
         }
-        .padding(.horizontal, 20)
-        .padding(.top, 30)
-        .padding(.bottom, 14)
+        .padding(.horizontal, 24)
+        .padding(.top, island.notchHeight + 10)
+        .padding(.bottom, 16)
+        .frame(maxHeight: .infinity, alignment: .top)
     }
 
     private var airPodsCard: some View {
@@ -216,7 +241,6 @@ struct IslandStage: View {
             shape.fill(RadialGradient(colors: [island.musicArtworkTint.opacity(0.6), .clear],
                                       center: .bottomTrailing, startRadius: 4, endRadius: 360))
             shape.fill(LinearGradient(colors: [Color.white.opacity(0.16), .clear], startPoint: .top, endPoint: .center))
-            IslandDemoView(island: island, demo: current)
             Text(current.caption)
                 .font(.system(size: 12.5, weight: .semibold, design: .rounded))
                 .foregroundStyle(.white.opacity(0.9))
@@ -229,6 +253,9 @@ struct IslandStage: View {
         .frame(height: 176)
         .clipShape(shape)
         .overlay(shape.strokeBorder(Color.white.opacity(0.28), lineWidth: 1))
+        // The stage's top edge is the screen's top edge: the island sits
+        // over its frame line and curves into it.
+        .overlay(alignment: .top) { IslandDemoView(island: island, demo: current) }
         .shadow(color: a.opacity(0.35), radius: 14, y: 6)
         .animation(.easeInOut(duration: 0.35), value: current)
         .animation(.easeInOut(duration: 0.5), value: accent)

@@ -9,6 +9,19 @@ import IOKit
 // top bezel while WindowServer switches from loginwindow to the desktop.
 // It does not alter the visible bottom edge or the SkyLight space.
 private let padlockTopBleed: CGFloat = 7
+// 4.15.0: room in the padlock windows for a notice on either side.
+private let padlockCanvasExtra: CGFloat = 340
+
+// 4.15.0 — what the padlock island shows for a moment on the lock screen.
+struct LockNotice: Equatable {
+    var symbol: String
+    var tint: Color
+    var text: String
+    var duration: TimeInterval
+    // Each side as wide as the text needs (the icon side matches).
+    var wing: CGFloat { min(160, max(46, CGFloat(text.count) * 7.4 + 22)) }
+    static func == (a: LockNotice, b: LockNotice) -> Bool { a.symbol == b.symbol && a.text == b.text }
+}
 
 // Lock-screen windows must be allowed to sit flush against the physical
 // camera notch. AppKit's default frame constraint can push a panel downward
@@ -98,6 +111,8 @@ private final class PadlockPresentation: ObservableObject {
     @Published var unlocked = false
     // 4.14.5: lifts a little under the pointer, like every island.
     @Published var peek = false
+    // 4.15.0: a short notice in place of the padlock (focus, eye break…).
+    @Published var notice: LockNotice?
 
     func reset(expanded: Bool) {
         expansion = expanded ? 1 : 0
@@ -112,7 +127,8 @@ private struct PadlockNotchView: View {
     @ObservedObject var appearance: PadlockPresentation
 
     private var width: CGFloat {
-        notch.notchWidth + 76 * min(1, max(0, appearance.expansion))
+        if let notice = appearance.notice { return notch.notchWidth + notice.wing * 2 }
+        return notch.notchWidth + 76 * min(1, max(0, appearance.expansion))
     }
 
     var body: some View {
@@ -139,12 +155,30 @@ private struct PadlockNotchView: View {
                 .foregroundStyle(.white.opacity(0.94))
                 .frame(width: 38, height: notch.mediaCompactHeight)
                 .offset(x: 2)
-                .opacity(appearance.symbolOpacity)
+                .opacity(appearance.notice == nil ? appearance.symbolOpacity : 0)
                 Spacer(minLength: 0)
             }
             .frame(width: width, height: notch.mediaCompactHeight)
+            if let notice = appearance.notice {
+                HStack(spacing: 0) {
+                    Image(systemName: notice.symbol)
+                        .font(.system(size: 14, weight: .semibold))
+                        .foregroundStyle(notice.tint)
+                        .frame(width: notice.wing)
+                    Color.clear.frame(width: notch.notchWidth)
+                    Text(notice.text)
+                        .font(.system(size: 12, weight: .semibold, design: .rounded))
+                        .foregroundStyle(.white)
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.7)
+                        .padding(.trailing, 10)
+                        .frame(width: notice.wing, alignment: .trailing)
+                }
+                .frame(width: width, height: notch.mediaCompactHeight)
+                .transition(.opacity.combined(with: .scale(scale: 0.86)))
+            }
         }
-        .frame(width: notch.notchWidth + 96,
+        .frame(width: notch.notchWidth + padlockCanvasExtra,
                height: notch.mediaCompactHeight + padlockTopBleed,
                alignment: .bottom)
         .opacity(appearance.surfaceOpacity)
@@ -815,7 +849,7 @@ final class LockScreenOverlay {
     func prepare(on screen: NSScreen?) {
         guard let screen else { return }
         if window == nil {
-            let panel = LockIslandPanel(contentRect: NSRect(x: 0, y: 0, width: state.notchWidth + 96, height: state.mediaCompactHeight + padlockTopBleed),
+            let panel = LockIslandPanel(contentRect: NSRect(x: 0, y: 0, width: state.notchWidth + padlockCanvasExtra, height: state.mediaCompactHeight + padlockTopBleed),
                                     styleMask: [.borderless, .nonactivatingPanel],
                                     backing: .buffered, defer: false)
             panel.isOpaque = false
@@ -841,7 +875,7 @@ final class LockScreenOverlay {
         }
         prepareMedia(on: screen)
         if postUnlockWindow == nil {
-            let desktop = LockIslandPanel(contentRect: NSRect(x: 0, y: 0, width: state.notchWidth + 96, height: state.mediaCompactHeight + padlockTopBleed),
+            let desktop = LockIslandPanel(contentRect: NSRect(x: 0, y: 0, width: state.notchWidth + padlockCanvasExtra, height: state.mediaCompactHeight + padlockTopBleed),
                                       styleMask: [.borderless, .nonactivatingPanel],
                                       backing: .buffered, defer: false)
             desktop.backgroundColor = .clear
@@ -868,7 +902,8 @@ final class LockScreenOverlay {
         guard let window, window.isVisible, window.alphaValue > 0.1 else { return nil }
         // The visible padlock island: centred, notch + wings wide.
         let f = window.frame
-        let width = state.notchWidth + 76 * min(1, max(0, secureAppearance.expansion))
+        let width = secureAppearance.notice.map { state.notchWidth + $0.wing * 2 }
+            ?? state.notchWidth + 76 * min(1, max(0, secureAppearance.expansion))
         let height = state.mediaCompactHeight
         return CGRect(x: f.midX - width / 2, y: f.maxY - padlockTopBleed - height, width: width, height: height)
     }
@@ -883,6 +918,21 @@ final class LockScreenOverlay {
         panel.order(.below, relativeTo: window.windowNumber)
     }
 
+    private var lockNoticeToken = UUID()
+
+    // 4.15.0: a short notice in the padlock island while the Mac is locked.
+    func showLockNotice(_ notice: LockNotice) {
+        guard let window, window.isVisible, window.alphaValue > 0.1 else { return }
+        let token = UUID()
+        lockNoticeToken = token
+        LockIslandLog.record("lock notice: \(notice.symbol)")
+        withAnimation(IslandMotion.grow) { secureAppearance.notice = notice }
+        DispatchQueue.main.asyncAfter(deadline: .now() + notice.duration) { [weak self] in
+            guard let self, self.lockNoticeToken == token else { return }
+            withAnimation(IslandMotion.shrink) { self.secureAppearance.notice = nil }
+        }
+    }
+
     func padlockHover(_ inside: Bool) {
         guard inside != secureAppearance.peek else { return }
         if inside { IslandHover.tap() }
@@ -891,7 +941,7 @@ final class LockScreenOverlay {
 
     func reposition(on screen: NSScreen?) {
         guard let screen, let window else { return }
-        let width = state.notchWidth + 96
+        let width = state.notchWidth + padlockCanvasExtra
         let height = state.mediaCompactHeight + padlockTopBleed
         // Keep the BOTTOM edge fixed. The extra roof extends beyond the
         // screen's top boundary, so a brief WindowServer coordinate shift

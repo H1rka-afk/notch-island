@@ -515,7 +515,35 @@ final class IslandState: ObservableObject {
             (event == nil || event == .notice)
     }
 
+    // 4.15.0: while the Mac is locked, short notices go to the padlock
+    // island on the lock screen.
+    var lockNoticeHandler: ((LockNotice) -> Void)?
+
+    private func lockNotice(for event: IslandEvent) -> LockNotice? {
+        switch event {
+        case .charging:
+            let p = power?.percentage ?? 0
+            return LockNotice(symbol: "bolt.fill", tint: ChargingPalette.color(for: p), text: "\(p)%",
+                              duration: IslandMotion.eventHoldCharging + 0.6)
+        case .lowBattery:
+            let p = power?.percentage ?? 0
+            return LockNotice(symbol: "battery.25", tint: ChargingPalette.color(for: p), text: "Низкий заряд · \(p)%",
+                              duration: 4)
+        case .airPods:
+            let p = airPodsPrimaryBattery.map { "\($0)%" } ?? "Подключены"
+            return LockNotice(symbol: airPods?.name.lowercased().contains("max") == true ? "airpodsmax" : "airpodspro",
+                              tint: .white, text: p, duration: 3)
+        default:
+            return nil
+        }
+    }
+
     func presentNotice(_ next: IslandNotice) {
+        if isSessionLocked {
+            lockNoticeHandler?(LockNotice(symbol: next.symbol, tint: next.tint, text: next.text,
+                                          duration: max(2.2, min(next.duration, 6))))
+            return
+        }
         guard !isSessionLocked, !unlockTransitionActive else { return }
         if event == .notice, notice?.kind == next.kind, eventRevealed {
             notice = next
@@ -547,7 +575,14 @@ final class IslandState: ObservableObject {
     }
 
     func presentFocusChange(_ presentation: FocusPresentation) {
-        guard !isSessionLocked else { return }
+        if isSessionLocked {
+            let mode = presentation.mode
+            lockNoticeHandler?(LockNotice(symbol: mode.displaySymbol,
+                                          tint: presentation.isOn ? FocusPalette.color(for: mode.tintName) : .white.opacity(0.6),
+                                          text: presentation.isOn ? mode.name : "\(mode.name): выкл.",
+                                          duration: IslandMotion.eventHoldFocus))
+            return
+        }
         focusPresentation = presentation
         focusPulse += 1
         show(.focus)
@@ -1615,7 +1650,10 @@ final class IslandState: ObservableObject {
 
     func show(_ nextEvent: IslandEvent) {
         PerformanceMonitor.write("event \(nextEvent)")
-        guard !isSessionLocked else { return }
+        if isSessionLocked {
+            if let notice = lockNotice(for: nextEvent) { lockNoticeHandler?(notice) }
+            return
+        }
         // A late cable/AirPods event must not cut off the visible open-padlock
         // transition. Queue it until the single-panel handoff is finished.
         if unlockTransitionActive {
@@ -2053,6 +2091,7 @@ final class IslandAppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         // Unlike the normal media panel, this second panel is noninteractive
         // and only draws a small padlock, never personal/media information.
         lockOverlay = LockScreenOverlay(state: state)
+        state.lockNoticeHandler = { [weak self] notice in self?.lockOverlay?.showLockNotice(notice) }
         // 4.14.2: the cursor goes behind the closed island — 4.14.3: and
         // behind the timer, the shelf, the idle wings and the padlock.
         CursorBehindIsland.shared.start(regions: { [weak self] in self?.cursorRegions() ?? [] })

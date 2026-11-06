@@ -733,7 +733,7 @@ private struct ChargingThreeSidedContour: Shape {
     }
 }
 
-private enum ChargingPalette {
+enum ChargingPalette {
     static func color(for percentage: Int?) -> Color {
         let healthy = BannerTheme.tint(Color(red: 0.24, green: 0.89, blue: 0.52))
         guard let percentage else { return healthy }
