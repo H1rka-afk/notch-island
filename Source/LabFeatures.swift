@@ -19,6 +19,7 @@ enum LabFeature: String, CaseIterable {
     case airdrop     // 3.9.4
     case eyes        // 3.17.0: the 20-20-20 rule
     case layout      // 4.3.0: fix text typed in the wrong layout
+    case delivery    // 4.16.0: taxi, food and parcels from notifications
 
     var key: String { "lab.\(rawValue).v330" }
 

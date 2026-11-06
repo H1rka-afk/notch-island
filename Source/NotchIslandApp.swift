@@ -57,7 +57,7 @@ struct IslandNotice: Equatable {
     enum Kind: String {
         case volume, output, microphone, camera, vpn, network, thermal, cpu
         case disk, clipboard, screenshot, meeting, reminder, sleepTimer, shelf
-        case airdrop, eyeBreak, layoutFix
+        case airdrop, eyeBreak, layoutFix, delivery
     }
     enum Tap: Equatable {
         case none
@@ -1433,7 +1433,11 @@ final class IslandState: ObservableObject {
     // 3.18.1: wide enough that «Обновить» never reaches the rounded edge.
     var updateWing: CGFloat { 84 }
     var updateWidth: CGFloat { notchWidth + updateWing * 2 }
-    var noticeWing: CGFloat { 56 }
+    // 4.16.0: longer texts (taxi, delivery) get wider wings, short ones stay 56.
+    var noticeWing: CGFloat {
+        guard let text = notice?.text, notice?.kind == .delivery else { return 56 }
+        return min(170, max(56, CGFloat(text.count) * 6.4 + 22))
+    }
     var noticeWidth: CGFloat { notchWidth + noticeWing * 2 }
     private var naturalEventWidth: CGFloat {
         if event == .airPods { return airPodsWidth }
@@ -1898,6 +1902,7 @@ final class IslandAppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private let shelf = ShelfModel()
     private let airDropWatch = AirDropReceiveWatch()
     private let eyeBreak = EyeBreakWatch()
+    private let deliveryWatch = DeliveryNotificationWatch()
     private var eyeBreakTimer: Timer?
     private var eyeBreakCounts = true
     private let loadSampler = SystemLoadSampler()
@@ -2610,6 +2615,12 @@ final class IslandAppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
                 text: "Пора", tap: .openApp("com.apple.reminders"), duration: 6,
                 accessibility: "Напоминание: \(title)"))
         }
+        deliveryWatch.onUpdate = { [weak self] service, line in
+            self?.state.presentNotice(IslandNotice(
+                kind: .delivery, symbol: service.symbol, tint: service.tint,
+                text: line, duration: 5,
+                accessibility: "\(service.name): \(line)"))
+        }
         layoutHotKey.onPress = { [weak self] in self?.layoutFixer.run() }
         layoutFixer.pauseClipboardWatch = { [weak self] seconds in self?.clipboardWatch.pause(for: seconds) }
         layoutFixer.onResult = { [weak self] toRussian in
@@ -2697,6 +2708,7 @@ final class IslandAppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         LabFeature.screenshots.isOn ? screenshotWatch.start() : screenshotWatch.stop()
         LabFeature.airdrop.isOn ? airDropWatch.start() : airDropWatch.stop()
         LabFeature.eyes.isOn ? eyeBreak.start() : eyeBreak.stop()
+        LabFeature.delivery.isOn ? deliveryWatch.start() : deliveryWatch.stop()
         LabFeature.hotkey.isOn ? hotKey.register() : hotKey.unregister()
         LabFeature.layout.isOn ? layoutHotKey.register() : layoutHotKey.unregister()
         agenda.calendarEnabled = LabFeature.calendar.isOn
@@ -2708,7 +2720,7 @@ final class IslandAppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
     private func stopLaboratory() {
         outputMonitor.stop(); privacyMonitor.stop(); networkWatch.stopVPN(); networkWatch.stopInternet()
-        loadMonitor.stop(); diskWatch.stop(); clipboardWatch.stop(); screenshotWatch.stop(); airDropWatch.stop(); eyeBreak.stop()
+        loadMonitor.stop(); diskWatch.stop(); clipboardWatch.stop(); screenshotWatch.stop(); airDropWatch.stop(); eyeBreak.stop(); deliveryWatch.stop()
         agenda.stop(); hotKey.unregister(); layoutHotKey.unregister(); sleepTimer?.invalidate()
     }
 

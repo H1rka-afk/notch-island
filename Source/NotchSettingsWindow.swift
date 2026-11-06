@@ -2380,6 +2380,9 @@ struct NotchSettingsWindowView: View {
                 rowDivider
                 toggleRow("Напоминания", subtitle: "Когда подошёл срок", isOn: labBinding("reminders"))
             }
+            group("Такси и доставка", footer: "Яндекс Go, Лавка, Еда, ВкусВилл, Самокат, Купер, Ozon, Wildberries, СДЭК и другие. Работает, когда их уведомления приходят на Mac — с iPhone (Дублирование iPhone) или с сайта в браузере. Нужен Полный доступ к диску; уведомления только читаются.") {
+                toggleRow("Такси, еда и посылки", subtitle: "«Водитель подъезжает», «Курьер в пути» — прямо в островке", isOn: labBinding("delivery"))
+            }
             group("Приватность и сеть") {
                 toggleRow("Камера и микрофон", subtitle: "Когда их начинает или перестаёт использовать приложение", isOn: labBinding("privacy"))
                 rowDivider
