@@ -731,6 +731,11 @@ final class IslandState: ObservableObject {
         // Do not restart pending expand/collapse timers on those events.
         guard over != timerPointerInside else { return }
         timerPointerInside = over
+        // 4.14.4: like the music island — a click on the trackpad and a small
+        // lift under the pointer, opening on a click.
+        if over { IslandHover.tap() }
+        let peek = over && IslandOpening.onClick && !timerExpanded
+        if peek != timerHoverPeek { withAnimation(IslandMotion.press) { timerHoverPeek = peek } }
         timerHoverOpen?.cancel()
         timerHoverOpen = nil
         timerHoverExit?.cancel()
@@ -1137,6 +1142,7 @@ final class IslandState: ObservableObject {
     // 4.14.0: pointer over the closed island — it grows a little (when it
     // opens only on a click) and the cursor hides, as over the notch.
     @Published private(set) var hoverPeek = false
+    @Published private(set) var timerHoverPeek = false
 
     // 4.14.2: the cursor now slides BEHIND the island (CursorBehindIsland);
     // nothing to do on hover any more.
@@ -1150,7 +1156,7 @@ final class IslandState: ObservableObject {
         if unlockTransitionActive {
             // 4.14.3: the padlock island after unlocking.
             width = unlockSurfaceWidth
-            height = max(notchHeight, compactDisplayHeight)
+            height = mediaCompactHeight
         } else if !isVisible || isExpanded || canvasExpanded {
             return nil
         } else if event != nil {
@@ -1210,11 +1216,11 @@ final class IslandState: ObservableObject {
         let justEntered = over
         pointerInsideIsland = over
         if !over && hoverPeek { withAnimation(IslandMotion.press) { hoverPeek = false } }
-        if justEntered && hoverHapticsEnabled && !isSessionLocked && isVisible &&
-           Date().timeIntervalSince(lastHoverHaptic) > 0.65 {
-            lastHoverHaptic = Date()
-            NSHapticFeedbackManager.defaultPerformer.perform(.alignment, performanceTime: .now)
+        // 4.14.4: banners lift under the pointer too.
+        if over && IslandOpening.onClick && event != nil && !isExpanded && !hoverPeek {
+            withAnimation(IslandMotion.press) { hoverPeek = true }
         }
+        if justEntered && !isSessionLocked && isVisible { IslandHover.tap() }
         hoverEnter?.cancel()
         hoverEnter = nil
         hoverExit?.cancel()
@@ -1342,7 +1348,9 @@ final class IslandState: ObservableObject {
     // Other compact states still use the true measured notch height.
     // 4.14.2: 2.6 pt below the cutout — the notch no longer shows under it.
     var mediaCompactHeight: CGFloat { notchHeight + 2.6 }
-    var compactDisplayHeight: CGFloat { track != nil ? mediaCompactHeight : notchHeight }
+    // 4.14.4: ONE height for every closed island (music, timer, banners,
+    // padlock, wings) — the media player's.
+    var compactDisplayHeight: CGFloat { mediaCompactHeight }
     // 4.8.0: about 10 % smaller; the contents are drawn at 92 % (IslandView)
     // and the open shape has 13 pt concave «drop» curves on each side.
     // 4.8.4: times the size chosen in Settings (85–115 %).
@@ -1378,21 +1386,22 @@ final class IslandState: ObservableObject {
     var updateWidth: CGFloat { notchWidth + updateWing * 2 }
     var noticeWing: CGFloat { 56 }
     var noticeWidth: CGFloat { notchWidth + noticeWing * 2 }
-    var eventWidth: CGFloat {
+    private var naturalEventWidth: CGFloat {
         if event == .airPods { return airPodsWidth }
         if event == .focus { return focusWidth }
         if event == .update { return updateWidth }
         if event == .notice { return noticeWidth }
         return notchWidth + powerEventWing * 2
     }
+    // 4.14.4: banners are at least as wide as the music island and as tall;
+    // wider only when their text and icons need it.
+    var eventWidth: CGFloat { max(naturalEventWidth, notchWidth + compactWing * 2) }
     // The cutout itself contains no pixels. Put the charging glow's bottom
     // bridge just BELOW the physical notch, rather than trying to draw it
     // through the camera cutout where macOS cannot display anything.
     // Keep AirPods and media at their original height.
     var chargingBridgeDepth: CGFloat { 1.2 }
-    var eventHeight: CGFloat {
-        notchHeight + ((event == .charging || event == .lowBattery) ? chargingBridgeDepth : 0)
-    }
+    var eventHeight: CGFloat { mediaCompactHeight }
     // A clear border in the hosting window is required for an OUTSIDE glow.
     // This does not change the shape width or the physical notch position.
     var chargingGlowWindowMargin: CGFloat { 7 }
@@ -1412,7 +1421,7 @@ final class IslandState: ObservableObject {
         let maxEventWidth = max(chargingWidth, notchWidth + lowBatteryWing * 2,
                                 notchWidth + unpluggedWing * 2, airPodsWidth, focusWidth, updateWidth, noticeWidth)
         return CGSize(width: max(maxEventWidth + max(glow, edgeFlare) * 2, compactWidth + edgeFlare * 2),
-                      height: max(notchHeight + chargingBridgeDepth + islandTopBleed + glow,
+                      height: max(mediaCompactHeight + chargingBridgeDepth + islandTopBleed + glow,
                                   compactDisplayHeight + islandTopBleed))
     }
 
@@ -1421,7 +1430,7 @@ final class IslandState: ObservableObject {
             // Reserve the complete final canvas BEFORE presenting the panel.
             // The silhouette contracts only within this single window.
             return CGSize(width: max(notchWidth + 76, compactWidth) + edgeFlare * 2,
-                          height: max(notchHeight, compactDisplayHeight) + islandTopBleed)
+                          height: mediaCompactHeight + islandTopBleed)
         }
         if event != nil || eventHandoffCanvasActive || coverGlowCanvasInUse {
             // Hold a single AppKit frame through charging/other events and
@@ -1860,30 +1869,34 @@ final class IslandAppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         guard let screen = displayScreen() else { return list }
         if isScreenLocked || state.isSessionLocked {
             if let frame = lockOverlay?.padlockFrame {
-                list.append(.init(rect: frame, level: .screenSaver, ghost: false, main: false))
+                list.append(.init(id: "padlock", rect: frame, level: .screenSaver, window: 0, ghost: false, hover: nil))
             }
             return list
         }
         if let panel, panel.isVisible, panel.alphaValue > 0.1, let rect = state.closedIslandRect(on: screen) {
-            list.append(.init(rect: rect, level: panel.level, ghost: true, main: true))
+            list.append(.init(id: "island", rect: rect, level: panel.level, window: panel.windowNumber, ghost: true,
+                              hover: { [weak self] in self?.state.hoverChanged($0) }))
         }
         if let timer = timerPanel, timer.isVisible, timer.alphaValue > 0.1, state.showsTimerSatellite, !state.timerExpanded {
             let d = state.timerCompactDiameter
             let f = timer.frame
-            list.append(.init(rect: CGRect(x: f.minX + state.timerLeadInset, y: screen.frame.maxY - d, width: d, height: d),
-                              level: timer.level, ghost: true, main: false))
+            list.append(.init(id: "timer", rect: CGRect(x: f.minX + state.timerLeadInset, y: screen.frame.maxY - d, width: d, height: d),
+                              level: timer.level, window: timer.windowNumber, ghost: true,
+                              hover: { [weak self] in self?.state.timerHoverChanged($0) }))
         }
         if let shelf = shelfPanel, shelfPanelVisible, shelf.isVisible, shelf.alphaValue > 0.1, !self.shelf.showsExpanded {
             let side = self.shelf.compactSize
             let f = shelf.frame
-            list.append(.init(rect: CGRect(x: f.minX, y: screen.frame.maxY - side, width: side, height: side),
-                              level: shelf.level, ghost: true, main: false))
+            // The closed shelf sits at the right of its window.
+            list.append(.init(id: "shelf", rect: CGRect(x: f.maxX - side - 13, y: screen.frame.maxY - side, width: side, height: side),
+                              level: shelf.level, window: shelf.windowNumber, ghost: true,
+                              hover: { [weak self] in self?.shelf.hoverChanged($0) }))
         }
         if let wings = idleWingsPanel, wings.isVisible, wings.alphaValue > 0.1 {
             let f = wings.frame
-            list.append(.init(rect: CGRect(x: f.minX, y: screen.frame.maxY - state.notchHeight,
-                                           width: f.width, height: state.notchHeight),
-                              level: wings.level, ghost: true, main: false))
+            list.append(.init(rect: CGRect(x: f.minX, y: screen.frame.maxY - state.mediaCompactHeight,
+                                           width: f.width, height: state.mediaCompactHeight),
+                              level: wings.level, window: wings.windowNumber, ghost: true, hover: nil))
         }
         return list
     }
@@ -2019,9 +2032,7 @@ final class IslandAppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         lockOverlay = LockScreenOverlay(state: state)
         // 4.14.2: the cursor goes behind the closed island — 4.14.3: and
         // behind the timer, the shelf, the idle wings and the padlock.
-        CursorBehindIsland.shared.start(
-            regions: { [weak self] in self?.cursorRegions() ?? [] },
-            hover: { [weak self] inside in self?.state.hoverChanged(inside) })
+        CursorBehindIsland.shared.start(regions: { [weak self] in self?.cursorRegions() ?? [] })
         lockOverlayStandByHook()
         lockOverlay?.prepare(on: displayScreen())
         lockStatusItem?.title = lockOverlay?.usesPrivateLockSpace == true
@@ -2917,8 +2928,8 @@ final class IslandAppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         if want, let screen {
             let centre = state.notchCenterX ?? screen.frame.midX
             let width = state.notchWidth + IdleWings.wing * 2 + state.edgeFlare * 2
-            let frame = CGRect(x: centre - width / 2, y: screen.frame.maxY - state.notchHeight,
-                               width: width, height: state.notchHeight + state.islandTopBleed)
+            let frame = CGRect(x: centre - width / 2, y: screen.frame.maxY - state.mediaCompactHeight,
+                               width: width, height: state.mediaCompactHeight + state.islandTopBleed)
             if panel.frame != frame { panel.setFrame(frame, display: true) }
             if [IdleWings.left, IdleWings.right].contains("weather") {
                 WeatherService.shared.refreshIfNeeded(allowPrompt: false) {}
@@ -4469,29 +4480,31 @@ enum IslandCursor {
 // copy ignores the mouse and the real (hidden) cursor clicks as usual.
 final class CursorBehindIsland {
     struct Region {
+        var id: String
         var rect: CGRect
         var level: NSWindow.Level
-        var ghost: Bool      // false on the lock screen: the cursor only hides
-        var main: Bool       // the music island: its hover is fed from here
+        var window: Int          // the island's window: the copy goes right under it
+        var ghost: Bool          // false on the lock screen: the cursor only hides
+        var hover: ((Bool) -> Void)?
     }
 
     static let shared = CursorBehindIsland()
     private var regions: (() -> [Region])?
-    private var hover: ((Bool) -> Void)?
     private var monitors: [Any] = []
     private var ghost: NSPanel?
     private var imageView: NSImageView?
-    private var mode = 0          // 0 normal, 1 copy under the island, 2 hidden
-    private var insideMain = false
+    private var mode = 0          // 0 normal, 1 copy under an island, 2 hidden
+    private var ghostOwner = 0
+    private var inside: Set<String> = []
     private var idleCheck: Timer?
+    private var follow: Timer?
     private var hotSpot = NSPoint.zero
 
     // Around a region where the copy takes over (points).
     private let margin: CGFloat = 36
 
-    func start(regions: @escaping () -> [Region], hover: @escaping (Bool) -> Void) {
+    func start(regions: @escaping () -> [Region]) {
         self.regions = regions
-        self.hover = hover
         guard monitors.isEmpty else { return }
         let mask: NSEvent.EventTypeMask = [.mouseMoved, .leftMouseDragged, .rightMouseDragged]
         if let global = NSEvent.addGlobalMonitorForEvents(matching: mask, handler: { [weak self] _ in self?.update() }) {
@@ -4502,7 +4515,7 @@ final class CursorBehindIsland {
         }) {
             monitors.append(local)
         }
-        // The island can open, close or move without the mouse moving.
+        // Islands open, close and move without the mouse moving.
         let timer = Timer(timeInterval: 0.15, repeats: true) { [weak self] _ in self?.update() }
         RunLoop.main.add(timer, forMode: .common)
         idleCheck = timer
@@ -4511,14 +4524,16 @@ final class CursorBehindIsland {
     private func update() {
         let mouse = NSEvent.mouseLocation
         let list = regions?() ?? []
-        // 4.14.3: the music island learns about the pointer from here too —
-        // with the real cursor hidden, its own hover tracking can stay silent.
-        let mainRect = list.first(where: { $0.main })?.rect
-        let nowInside = mainRect?.contains(mouse) ?? false
-        if nowInside != insideMain {
-            insideMain = nowInside
-            if nowInside || mainRect != nil { hover?(nowInside) }
+        // 4.14.4: every island learns about the pointer from here — with the
+        // real cursor hidden, its own hover tracking can stay silent.
+        var now: Set<String> = []
+        for region in list where region.rect.contains(mouse) { now.insert(region.id) }
+        for region in list where region.hover != nil {
+            let was = inside.contains(region.id), isIn = now.contains(region.id)
+            if was != isIn { region.hover?(isIn) }
         }
+        // An island that opened (and left the list) keeps its own tracking.
+        inside = now
         guard IslandCursor.isEnabled else { return setMode(0, region: nil) }
         if let region = list.first(where: { !$0.ghost && $0.rect.contains(mouse) }) {
             return setMode(2, region: region)
@@ -4532,7 +4547,7 @@ final class CursorBehindIsland {
     }
 
     private func setMode(_ next: Int, region: Region?) {
-        if next == 1, let region { ghost?.level = NSWindow.Level(rawValue: region.level.rawValue - 1) }
+        if next == 1, let region, region.window != ghostOwner { attach(under: region) }
         guard next != mode else { return }
         mode = next
         switch next {
@@ -4544,23 +4559,50 @@ final class CursorBehindIsland {
             ghost.setContentSize(size)
             imageView?.frame = NSRect(origin: .zero, size: size)
             hotSpot = cursor.hotSpot
-            if let region { ghost.level = NSWindow.Level(rawValue: region.level.rawValue - 1) }
-            ghost.orderFrontRegardless()
+            place(at: NSEvent.mouseLocation)
+            if let region { attach(under: region) }
             IslandCursor.setHidden(true)
+            // Follows the pointer every frame too, in case the event stream
+            // pauses (the copy used to hang in place).
+            let timer = Timer(timeInterval: 1.0 / 90.0, repeats: true) { [weak self] _ in
+                self?.place(at: NSEvent.mouseLocation)
+            }
+            RunLoop.main.add(timer, forMode: .common)
+            follow = timer
         case 2:
-            ghost?.orderOut(nil)
+            stopFollowing()
             IslandCursor.setHidden(true)
         default:
-            ghost?.orderOut(nil)
+            stopFollowing()
             IslandCursor.setHidden(false)
         }
+    }
+
+    private func stopFollowing() {
+        follow?.invalidate()
+        follow = nil
+        ghost?.orderOut(nil)
+        ghostOwner = 0
+    }
+
+    // Same level as the island, ordered just below its window: above the
+    // menu bar and everything else, under the island only.
+    private func attach(under region: Region) {
+        guard let ghost = ghost ?? (mode == 1 ? makeGhost() : nil) else { return }
+        ghost.level = region.level
+        if region.window > 0 {
+            ghost.order(.below, relativeTo: region.window)
+        } else {
+            ghost.orderFrontRegardless()
+        }
+        ghostOwner = region.window
     }
 
     private func place(at mouse: NSPoint) {
         guard let ghost else { return }
         // Window origin is bottom-left; the hot spot is measured from top-left.
         let origin = NSPoint(x: mouse.x - hotSpot.x, y: mouse.y - (ghost.frame.height - hotSpot.y))
-        ghost.setFrameOrigin(origin)
+        if ghost.frame.origin != origin { ghost.setFrameOrigin(origin) }
     }
 
     private func makeGhost() -> NSPanel {

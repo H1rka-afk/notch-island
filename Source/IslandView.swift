@@ -256,7 +256,7 @@ struct IslandView: View {
         .animation(IslandMotion.content, value: state.eventReturningToMedia)
         // 4.14.0: under the pointer the closed island grows a little (when it
         // opens only on a click).
-        .scaleEffect(state.hoverPeek && !expanded && state.event == nil ? 1.045 : 1, anchor: .top)
+        .scaleEffect(state.hoverPeek && !expanded ? 1.045 : 1, anchor: .top)
         // 4.12.3: no squash keyframes any more (the «spring» on every change
         // of shape and the drop on opening) — they pulled the island inside
         // the camera cutout.
@@ -1564,6 +1564,8 @@ struct TimerSatelliteView: View {
         }
         .frame(width: openingWidth,
                height: openingHeight + state.timerTopBleed, alignment: .topLeading)
+        // 4.14.4: lifts a little under the pointer, like the music island.
+        .scaleEffect(state.timerHoverPeek && !state.timerExpanded ? 1.06 : 1, anchor: .top)
         .contentShape(Rectangle())
         .onHover { state.timerHoverChanged($0) }
         .frame(width: state.timerPanelSize.width,

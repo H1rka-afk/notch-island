@@ -126,14 +126,14 @@ struct IdleWingsView: View {
             Color.clear.frame(width: state.notchWidth)
             item(right).frame(width: wing).offset(x: -3)
         }
-        .frame(height: state.notchHeight)
+        .frame(height: state.mediaCompactHeight)
         .padding(.top, roof)
         .background(alignment: .top) {
             // 4.8.5: drop curves at the screen edge.
             IslandSilhouette(bottomRadius: 10, flare: state.edgeFlare, roof: roof)
                 .fill(Color.black)
                 .frame(width: state.notchWidth + IdleWings.wing * 2 + state.edgeFlare * 2,
-                       height: state.notchHeight + roof)
+                       height: state.mediaCompactHeight + roof)
         }
         .foregroundStyle(.white)
         .font(.system(size: 11.5, weight: .semibold, design: .rounded))

@@ -124,7 +124,7 @@ private struct PadlockNotchView: View {
         // independent of the private SkyLight window's fixed size.
         ZStack(alignment: .bottom) {
             contour.fill(Color.black)
-                .frame(width: width, height: notch.notchHeight + padlockTopBleed)
+                .frame(width: width, height: notch.mediaCompactHeight + padlockTopBleed)
 
             HStack(spacing: 0) {
                 ZStack {
@@ -136,15 +136,15 @@ private struct PadlockNotchView: View {
                 .font(.system(size: 18, weight: .medium))
                 .symbolRenderingMode(.monochrome)
                 .foregroundStyle(.white.opacity(0.94))
-                .frame(width: 38, height: notch.notchHeight)
+                .frame(width: 38, height: notch.mediaCompactHeight)
                 .offset(x: 2)
                 .opacity(appearance.symbolOpacity)
                 Spacer(minLength: 0)
             }
-            .frame(width: width, height: notch.notchHeight)
+            .frame(width: width, height: notch.mediaCompactHeight)
         }
         .frame(width: notch.notchWidth + 96,
-               height: notch.notchHeight + padlockTopBleed,
+               height: notch.mediaCompactHeight + padlockTopBleed,
                alignment: .bottom)
         .opacity(appearance.surfaceOpacity)
         // No implicit or nested .animation modifiers: the controller gives
@@ -813,7 +813,7 @@ final class LockScreenOverlay {
     func prepare(on screen: NSScreen?) {
         guard let screen else { return }
         if window == nil {
-            let panel = LockIslandPanel(contentRect: NSRect(x: 0, y: 0, width: state.notchWidth + 96, height: state.notchHeight + padlockTopBleed),
+            let panel = LockIslandPanel(contentRect: NSRect(x: 0, y: 0, width: state.notchWidth + 96, height: state.mediaCompactHeight + padlockTopBleed),
                                     styleMask: [.borderless, .nonactivatingPanel],
                                     backing: .buffered, defer: false)
             panel.isOpaque = false
@@ -839,7 +839,7 @@ final class LockScreenOverlay {
         }
         prepareMedia(on: screen)
         if postUnlockWindow == nil {
-            let desktop = LockIslandPanel(contentRect: NSRect(x: 0, y: 0, width: state.notchWidth + 96, height: state.notchHeight + padlockTopBleed),
+            let desktop = LockIslandPanel(contentRect: NSRect(x: 0, y: 0, width: state.notchWidth + 96, height: state.mediaCompactHeight + padlockTopBleed),
                                       styleMask: [.borderless, .nonactivatingPanel],
                                       backing: .buffered, defer: false)
             desktop.backgroundColor = .clear
@@ -870,12 +870,12 @@ final class LockScreenOverlay {
     func reposition(on screen: NSScreen?) {
         guard let screen, let window else { return }
         let width = state.notchWidth + 96
-        let height = state.notchHeight + padlockTopBleed
+        let height = state.mediaCompactHeight + padlockTopBleed
         // Keep the BOTTOM edge fixed. The extra roof extends beyond the
         // screen's top boundary, so a brief WindowServer coordinate shift
         // cannot expose a gap above the animated padlock.
         let frame = NSRect(x: (state.notchCenterX ?? screen.frame.midX) - width / 2,
-                           y: screen.frame.maxY - state.notchHeight,
+                           y: screen.frame.maxY - state.mediaCompactHeight,
                            width: width, height: height)
         window.setFrame(frame, display: false)
         postUnlockWindow?.setFrame(frame, display: false)

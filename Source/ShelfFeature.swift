@@ -9,6 +9,9 @@ import UniformTypeIdentifiers
 // Only references are kept: the files themselves are never moved or copied.
 final class ShelfModel: ObservableObject {
     @Published private(set) var items: [URL] = []
+    // 4.14.4: under the pointer the closed shelf lifts a little and opens
+    // on a click (or at once, when the island opens on hover).
+    @Published private(set) var peek = false
     @Published var dropTargeted = false {
         didSet { if dropTargeted && !oldValue { watchDragEnd() } }
     }
@@ -109,15 +112,28 @@ final class ShelfModel: ObservableObject {
         UserDefaults.standard.set(items.map(\.path), forKey: key)
     }
 
+    private var pointerInside = false
+
     func hoverChanged(_ over: Bool) {
+        guard over != pointerInside else { return }
+        pointerInside = over
         hoverExit?.cancel()
+        if over { IslandHover.tap() }
+        let lift = over && IslandOpening.onClick && !expanded
+        if lift != peek { withAnimation(IslandMotion.press) { peek = lift } }
         if over {
-            withAnimation(IslandMotion.grow) { expanded = true }
+            if !IslandOpening.onClick { withAnimation(IslandMotion.grow) { expanded = true } }
         } else {
             let work = DispatchWorkItem { [weak self] in self?.collapse() }
             hoverExit = work
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.35, execute: work)
         }
+    }
+
+    func openFromClick() {
+        hoverExit?.cancel()
+        if peek { peek = false }
+        withAnimation(IslandMotion.grow) { expanded = true }
     }
 
     func collapse() {
@@ -199,12 +215,15 @@ struct ShelfView: View {
                 } else {
                     compactContent
                         .frame(width: size.width, height: size.height)
+                        .contentShape(Rectangle())
+                        .onTapGesture { shelf.openFromClick() }
                         .transition(.opacity)
                 }
             }
             .padding(.top, roof)
         }
         .frame(width: size.width, height: size.height + roof, alignment: .topTrailing)
+        .scaleEffect(shelf.peek && !shelf.showsExpanded ? 1.06 : 1, anchor: .topTrailing)
         .contentShape(Rectangle())
         .onHover { shelf.hoverChanged($0) }
         .onDrop(of: [UTType.fileURL], delegate: ShelfDropDelegate(shelf: shelf))
