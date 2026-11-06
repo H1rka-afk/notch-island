@@ -2403,7 +2403,7 @@ final class IslandAppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private func setUpLaboratory() {
         state.noticeTapHandler = { [weak self] tap in self?.handleNoticeTap(tap) }
         outputMonitor.onVolume = { [weak self] level, muted in
-            guard let self, LabFeature.volume.isOn else { return }
+            guard let self, LabFeature.volume.isOn, !VolumeDuck.isDucking else { return }
             let symbol = muted || level <= 0.001 ? "speaker.slash.fill"
                 : level < 0.34 ? "speaker.wave.1.fill" : level < 0.67 ? "speaker.wave.2.fill" : "speaker.wave.3.fill"
             self.state.presentNotice(IslandNotice(

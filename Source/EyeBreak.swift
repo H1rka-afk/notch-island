@@ -66,7 +66,61 @@ enum EyeBreakSound {
         let name = moment == .start ? "Purr" : "Glass"
         if cache[name] == nil { preload() }
         guard let sound = cache[name]?.copy() as? NSSound else { return }
-        sound.volume = moment == .start ? 0.45 : 0.4
-        sound.play()
+        let base: Float = moment == .start ? 0.45 : 0.4
+        // 4.14.6: music and video get quieter while the sound plays; the
+        // sound itself is raised by the same amount, so it is heard exactly
+        // as loud as before.
+        if VolumeDuck.isEnabled, VolumeDuck.duck(for: sound.duration) {
+            sound.volume = min(1, base / VolumeDuck.factor)
+            DispatchQueue.main.asyncAfter(deadline: .now() + VolumeDuck.rampDown) { sound.play() }
+        } else {
+            sound.volume = base
+            sound.play()
+        }
+    }
+}
+
+// 4.14.6 — «ducking»: macOS has no volume per app, so the whole output is
+// lowered for the length of the break sound and then put back. If the
+// volume was changed by hand meanwhile, it is left as the user set it.
+enum VolumeDuck {
+    static let key = "eyeBreakDuckV4146"
+    static var isEnabled: Bool { (UserDefaults.standard.object(forKey: key) as? Bool) ?? true }
+    static let factor: Float = 0.45
+    static let rampDown: Double = 0.15
+    static let rampUp: Double = 0.45
+    // True while Ovira itself moves the volume — the volume banner stays away.
+    private(set) static var isDucking = false
+    private static var token = UUID()
+
+    @discardableResult
+    static func duck(for seconds: Double) -> Bool {
+        guard !isDucking, let start = SystemVolume.current(), start > 0.02, !SystemVolume.isMuted() else { return false }
+        let current = UUID()
+        token = current
+        isDucking = true
+        let low = start * factor
+        ramp(from: start, to: low, over: rampDown)
+        DispatchQueue.main.asyncAfter(deadline: .now() + rampDown + seconds + 0.15) {
+            guard token == current else { return }
+            if let now = SystemVolume.current(), abs(now - low) < 0.04 {
+                ramp(from: low, to: start, over: rampUp)
+            }
+            DispatchQueue.main.asyncAfter(deadline: .now() + rampUp + 0.35) {
+                if token == current { isDucking = false }
+            }
+        }
+        return true
+    }
+
+    private static func ramp(from a: Float, to b: Float, over duration: Double) {
+        let steps = 10
+        for i in 1...steps {
+            let t = Float(i) / Float(steps)
+            let eased = t * t * (3 - 2 * t)
+            DispatchQueue.main.asyncAfter(deadline: .now() + duration * Double(i) / Double(steps)) {
+                SystemVolume.set(a + (b - a) * eased)
+            }
+        }
     }
 }

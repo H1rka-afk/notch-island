@@ -172,6 +172,7 @@ struct NotchSettingsActions {
 
 struct NotchSettingsWindowView: View {
     @ObservedObject var island: IslandState
+    @AppStorage(VolumeDuck.key) private var eyeBreakDuck = true
     @AppStorage(IslandOpening.clickKey) private var islandOpenOnClick = true
     @AppStorage(IslandCursor.key) private var islandHideCursor = true
     @ObservedObject var snapshot: NotchSettingsSnapshot
@@ -2402,6 +2403,10 @@ struct NotchSettingsWindowView: View {
                 toggleRow("Правило 20-20-20", subtitle: "Напоминание отдохнуть глазам", isOn: labBinding("eyes"))
                 rowDivider
                 toggleRow("Звук в начале и в конце", subtitle: "Короткий мягкий звук, когда пора смотреть вдаль и когда отдых закончился", isOn: $eyeBreakSound)
+                rowDivider
+                toggleRow("Приглушать музыку на время звука",
+                          subtitle: "Музыка и видео становятся тише, пока звучит сигнал перерыва; сам сигнал — той же громкости",
+                          isOn: $eyeBreakDuck)
                 rowDivider
                 row("Как выглядит", subtitle: "Покажет напоминание в островке прямо сейчас — все 20 секунд") {
                     Button("Показать") { actions.previewEyeBreak() }
