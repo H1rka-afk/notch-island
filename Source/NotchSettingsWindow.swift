@@ -27,6 +27,9 @@ final class NotchSettingsSnapshot: ObservableObject {
     @Published var searchHighlight: String?
     // 4.13.0: checks, logs and fine sizes live under «Дополнительно».
     @Published var advancedOpen = false
+    // 4.13.1: the long tabs are split into pages.
+    @Published var mediaPage = "player"
+    @Published var lockPage = "player"
     @Published var resetArmed = false
     var highlightToken = UUID()
     @Published var updateStatus = "Проверка папки «Загрузки»…"
@@ -1300,6 +1303,11 @@ struct NotchSettingsWindowView: View {
         snapshot.searchHighlight = entry.title
         // The result may be inside «Дополнительно».
         snapshot.advancedOpen = true
+        // …or on another page of a long tab.
+        if let page = SettingsPages.page(for: entry) {
+            if entry.section == "media" { snapshot.mediaPage = page }
+            if entry.section == "lock" { snapshot.lockPage = page }
+        }
         let token = UUID()
         snapshot.highlightToken = token
         DispatchQueue.main.asyncAfter(deadline: .now() + 2.2) {
@@ -1931,6 +1939,8 @@ struct NotchSettingsWindowView: View {
 
     private var mediaSection: some View {
         VStack(alignment: .leading, spacing: 20) {
+            pagePicker(selection: $snapshot.mediaPage, pages: SettingsPages.media, section: .media)
+            if snapshot.mediaPage == "player" {
             group("Развёрнутый плеер", footer: "Новый: крупная обложка, её цвета светятся за кнопками, название приложения, выбор устройства вывода (AirPods, динамики…) и ползунок громкости. Классический — как раньше, компактнее.") {
                 SmoothSegmented(selection: $playerStyle,
                                 options: [("new", "Новый"), ("classic", "Классический")],
@@ -1938,7 +1948,10 @@ struct NotchSettingsWindowView: View {
                     .padding(14)
                 .id("search:Развёрнутый плеер")
             }
+            mediaBehaviour
+            }
             // 4.5.0: the spectrogram is part of the player.
+            if snapshot.mediaPage == "wave" {
             Group {
                 group("Спектрограмма", footer: "Как на iPhone: шесть полос — частоты от баса слева до высоких справа. Полоса резко подпрыгивает на ударе и плавно опускается, полоса без звука остаётся точкой, на паузе все опускаются в точки. Без живого звука играет похожий ритм. Звук не записывается и не сохраняется.") {
                     toggleRow("Живая спектрограмма", isOn: audioBinding)
@@ -1970,6 +1983,15 @@ struct NotchSettingsWindowView: View {
                         .disabled(!snapshot.audioCaptureEnabled)
                 }
             }
+            }
+            if snapshot.mediaPage == "services" {
+                mediaServices
+            }
+        }
+    }
+
+    // 4.13.1: «Плеер» page — how the player behaves.
+    private var mediaBehaviour: some View {
             Group {
                 group("Медиаплеер") {
                     toggleRow("Скрывать в полноэкранном режиме",
@@ -1995,6 +2017,17 @@ struct NotchSettingsWindowView: View {
                 group("Жесты", footer: "Наведи курсор на островок с музыкой. Свайп двумя пальцами влево — следующий трек, вправо — предыдущий. Прокрутка вверх и вниз (или колесо мыши) меняет громкость.") {
                     toggleRow("Жесты на медиаплеере", isOn: gesturesBinding)
                 }
+                group("Звук", footer: "Баннеры при изменении громкости клавишами и при смене устройства вывода. Нажатие на баннер открывает настройки звука.") {
+                    toggleRow("Громкость", subtitle: "Уровень при изменении громкости клавишами", isOn: labBinding("volume"))
+                    rowDivider
+                    toggleRow("Устройство вывода", subtitle: "AirPods, наушники, динамики; нажатие — настройки звука", isOn: labBinding("output"))
+                }
+            }
+    }
+
+    // 4.13.1: «Сервисы» page — favourites and artwork search.
+    private var mediaServices: some View {
+            Group {
                 group("Обложки",
                       footer: "Сначала у самого плеера, затем в каталогах Яндекс Музыки, Apple Music и Deezer. В журнал названия треков не записываются.") {
                     row("Текущий трек") {
@@ -2015,13 +2048,7 @@ struct NotchSettingsWindowView: View {
                         Button("Настроить…") { actions.setupYandexFavorites() }
                     }
                 }
-                group("Звук", footer: "Баннеры при изменении громкости клавишами и при смене устройства вывода. Нажатие на баннер открывает настройки звука.") {
-                    toggleRow("Громкость", subtitle: "Уровень при изменении громкости клавишами", isOn: labBinding("volume"))
-                    rowDivider
-                    toggleRow("Устройство вывода", subtitle: "AirPods, наушники, динамики; нажатие — настройки звука", isOn: labBinding("output"))
-                }
             }
-        }
     }
 
     private var cardStyleHint: String {
@@ -2036,6 +2063,8 @@ struct NotchSettingsWindowView: View {
 
     private var lockSection: some View {
         VStack(alignment: .leading, spacing: 20) {
+            pagePicker(selection: $snapshot.lockPage, pages: SettingsPages.lock, section: .lock)
+            if snapshot.lockPage == "player" {
             group(nil, footer: "Экспериментальное отображение поверх экрана блокировки.") {
                 toggleRow("Замочек на экране блокировки", isOn: lockBinding)
             }
@@ -2128,6 +2157,8 @@ struct NotchSettingsWindowView: View {
                     Button("Показать") { actions.previewLockMedia() }
                 }
             }
+            }
+            if snapshot.lockPage == "standby" {
             group("StandBy", footer: "Как iPhone на зарядке: Mac заблокирован, подключён к питанию и его не трогают 20 секунд — весь экран становится большими часами с зарядом и музыкой или погодой. Нажатие в любом месте (кроме раскрытого островка с музыкой) или любая клавиша возвращают обычный экран входа — пароль никогда не вводится вслепую.") {
                 toggleRow("StandBy на зарядке", isOn: $standbyEnabled)
                 rowDivider
@@ -2164,6 +2195,8 @@ struct NotchSettingsWindowView: View {
                     Button("Показать") { actions.previewStandBy() }
                 }
             }
+            }
+            if snapshot.lockPage == "widgets" {
             group("Виджеты под часами",
                   footer: "Как на iPhone: под часами четыре места — маленький круглый виджет занимает одно, широкий два. «Изменить виджеты…» открывает экран блокировки: «+» — галерея с живыми превью (нажми или перетащи виджет в ряд), «−» — убрать, стрелки — размер, перетаскивание — порядок. Виджет без данных (AirPods не подключены, таймер не запущен) на экране блокировки не показывается. Погода — сервис Open-Meteo: ему передаётся только название города.") {
                 toggleRow("Показывать виджеты", isOn: Binding(get: { lockWidgets.enabled },
@@ -2216,6 +2249,7 @@ struct NotchSettingsWindowView: View {
                             }
                         }
                     }
+            }
             }
             advanced {
                 group("Проверка") {
@@ -2472,6 +2506,12 @@ struct NotchSettingsWindowView: View {
                 hint(footer).padding(.horizontal, 6)
             }
         }
+    }
+
+    // 4.13.1: pages of a long tab.
+    private func pagePicker(selection: Binding<String>, pages: [(String, String)], section: Section) -> some View {
+        SmoothSegmented(selection: selection, options: pages, accent: accent(section))
+            .padding(.horizontal, 2)
     }
 
     // 4.13.0: checks, logs and rarely needed sizes, folded away.
@@ -3486,5 +3526,36 @@ enum SettingsReset {
             UserDefaults.standard.removeObject(forKey: key)
         }
         UserDefaults.standard.synchronize()
+    }
+}
+
+// 4.13.1: which page of a long tab a settings entry lives on.
+enum SettingsPages {
+    static let media: [(String, String)] = [("player", "Плеер"), ("wave", "Спектрограмма"), ("services", "Обложки и избранное")]
+    static let lock: [(String, String)] = [("player", "Плеер и обложка"), ("standby", "StandBy"), ("widgets", "Виджеты")]
+
+    private static let mediaWave: Set<String> = ["Вид полос", "Размытие обложки", "Размер спектрограммы", "Кадров в секунду",
+                                                 "Живая спектрограмма", "Чувствительность", "Скорость реакции",
+                                                 "Плавность затухания", "Акцент баса", "Порог тишины", "Готовые профили",
+                                                 "Спектрограмма", "Реакция на звук"]
+    private static let mediaServices: Set<String> = ["Текущий трек", "Журнал поиска обложек", "Spotify", "Яндекс Музыка",
+                                                     "Обложки", "Избранное"]
+    private static let lockStandBy: Set<String> = ["StandBy", "Цвет текста", "StandBy на зарядке", "Не гасить экран", "Ночной режим"]
+    private static let lockWidgets: Set<String> = ["Размер виджетов", "Изменить виджеты", "Виджеты под часами", "Показывать виджеты"]
+
+    static func page(for entry: SettingsSearchEntry) -> String? {
+        switch entry.section {
+        case "media":
+            if mediaWave.contains(entry.title) { return "wave" }
+            if mediaServices.contains(entry.title) { return "services" }
+            return "player"
+        case "lock":
+            if lockStandBy.contains(entry.title) { return "standby" }
+            if lockWidgets.contains(entry.title) { return "widgets" }
+            if ["Анимация замка", "Журнал замочка"].contains(entry.title) { return nil }
+            return "player"
+        default:
+            return nil
+        }
     }
 }
