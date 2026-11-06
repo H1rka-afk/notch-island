@@ -930,10 +930,24 @@ final class IslandState: ObservableObject {
     func timerTick() { }
 
 
+    // 4.15.1: Bluetooth often reports one connection two or three times
+    // within a few seconds (each earbud, then the case) — one banner only.
+    private var lastAirPodsBanner: (name: String, at: Date)?
+
+    func airPodsAnnouncedRecently(_ outputName: String) -> Bool {
+        guard let last = lastAirPodsBanner, Date().timeIntervalSince(last.at) < 15 else { return false }
+        let a = last.name.lowercased(), b = outputName.lowercased()
+        return a == b || a.contains(b) || b.contains(a)
+    }
+
     func receiveAirPods(_ status: AirPodsStatus, newlyConnected: Bool) {
         // Avoid repainting the entire island for identical Bluetooth snapshots.
         if airPods != status { airPods = status }
-        if newlyConnected && !isSessionLocked { show(.airPods) }
+        guard newlyConnected else { return }
+        if let last = lastAirPodsBanner, last.name == status.name, Date().timeIntervalSince(last.at) < 15 { return }
+        lastAirPodsBanner = (status.name, Date())
+        // While locked this becomes a short notice on the padlock (4.15.0).
+        show(.airPods)
     }
     @Published var notchWidth: CGFloat = 194 { didSet { layoutChanged?() } }
     @Published var notchHeight: CGFloat = 38 { didSet { layoutChanged?() } }
@@ -2453,10 +2467,16 @@ final class IslandAppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         }
         outputMonitor.onDevice = { [weak self] name, symbol in
             guard let self, LabFeature.output.isOn else { return }
-            self.state.presentNotice(IslandNotice(
+            // 4.15.1: AirPods already get their own banner — the «sound now
+            // goes to…» one for the same headphones would be a second one.
+            // A short wait lets the AirPods banner come first.
+            DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) { [weak self] in
+                guard let self, !self.state.airPodsAnnouncedRecently(name) else { return }
+                self.state.presentNotice(IslandNotice(
                 kind: .output, symbol: symbol, tint: Color(red: 0.39, green: 0.82, blue: 1.0),
                 text: name, tap: .openSettingsPane("x-apple.systempreferences:com.apple.Sound-Settings.extension"),
                 duration: 2.6, accessibility: "Звук: \(name)"))
+            }
         }
         privacyMonitor.onChange = { [weak self] camera, active in
             guard let self, LabFeature.privacy.isOn else { return }
