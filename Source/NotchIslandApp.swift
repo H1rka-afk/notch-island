@@ -1894,7 +1894,7 @@ final class IslandAppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         }
         if let wings = idleWingsPanel, wings.isVisible, wings.alphaValue > 0.1 {
             let f = wings.frame
-            list.append(.init(rect: CGRect(x: f.minX, y: screen.frame.maxY - state.mediaCompactHeight,
+            list.append(.init(id: "wings", rect: CGRect(x: f.minX, y: screen.frame.maxY - state.mediaCompactHeight,
                                            width: f.width, height: state.mediaCompactHeight),
                               level: wings.level, window: wings.windowNumber, ghost: true, hover: nil))
         }
@@ -4621,5 +4621,17 @@ final class CursorBehindIsland {
         imageView = view
         ghost = panel
         return panel
+    }
+}
+
+
+// 4.14.4: one trackpad click for every island under the pointer.
+enum IslandHover {
+    private static var last = Date.distantPast
+    static func tap() {
+        guard (UserDefaults.standard.object(forKey: "hoverHapticsEnabledV303") as? Bool) ?? true,
+              Date().timeIntervalSince(last) > 0.4 else { return }
+        last = Date()
+        NSHapticFeedbackManager.defaultPerformer.perform(.alignment, performanceTime: .now)
     }
 }
