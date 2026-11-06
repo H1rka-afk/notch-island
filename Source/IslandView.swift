@@ -232,6 +232,12 @@ struct IslandView: View {
                     .mask(alignment: .top) {
                         shape.frame(width: shapeWidth, height: height)
                     }
+                    // 4.16.4: the banner's contents must not widen the ZStack.
+                    // When the banner ended, the ZStack shrank from the banner
+                    // width to the media width inside the «return to media»
+                    // animation, and the whole island jumped right by half the
+                    // difference and slid back (the jerk after every banner).
+                    .frame(width: shapeWidth, alignment: .top)
             }
 
             // The expanded card stays mounted until the spring finishes its

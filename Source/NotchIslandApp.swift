@@ -4389,6 +4389,15 @@ final class IslandAppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
                     NSWorkspace.shared.open(file)
                 }
             },
+            openPerformanceLog: {
+                // 4.16.4: reveal it in Finder too — easy to attach to a message.
+                let file = FileManager.default.homeDirectoryForCurrentUser
+                    .appendingPathComponent("Library/Logs/NotchIsland-Performance.log")
+                if FileManager.default.fileExists(atPath: file.path) {
+                    NSWorkspace.shared.activateFileViewerSelecting([file])
+                    NSWorkspace.shared.open(file)
+                }
+            },
             previewLockWidgets: { [weak self] in
                 guard let self else { return }
                 self.refreshLockWidgets()

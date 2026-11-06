@@ -160,6 +160,7 @@ struct NotchSettingsActions {
     let refreshClock: () -> Void
     let forceQuit: () -> Void
     let openClockLog: () -> Void
+    let openPerformanceLog: () -> Void
     let previewLockWidgets: () -> Void
     let resetLockWidgetsPosition: () -> Void
     let previewLockMedia: () -> Void
@@ -1720,6 +1721,10 @@ struct NotchSettingsWindowView: View {
                                     options: [("off", "Выкл"), ("battery", "От батареи"), ("always", "Всегда")],
                                     accent: accent(.general))
                         .frame(width: 270)
+                }
+                rowDivider
+                row("Журнал подёргиваний", subtitle: "Где островок задержался или дёрнулся в анимации и сколько процессора занимает Ovira") {
+                    Button("Открыть") { actions.openPerformanceLog() }
                 }
                 rowDivider
                 row("Знакомство с Ovira", subtitle: "Короткий тур: что умеет островок, разрешения, профиль") {
