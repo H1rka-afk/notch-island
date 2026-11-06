@@ -1411,7 +1411,7 @@ private struct AirPodsChargeRing: View {
     }
 }
 
-private extension IslandState {
+extension IslandState {
     var airPodsPrimaryBattery: Int? {
         guard let airPods else { return nil }
         if let caseBattery = airPods.caseBattery { return caseBattery }
