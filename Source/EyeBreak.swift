@@ -51,10 +51,21 @@ enum EyeBreakSound {
     static let key = "eyeBreakSoundV461"
     static var isEnabled: Bool { (UserDefaults.standard.object(forKey: key) as? Bool) ?? true }
 
+    // 4.13.0: loaded once, ahead of time — reading the sound file at the
+    // moment of the break held the island for ~0.1 s as the banner opened.
+    private static var cache: [String: NSSound] = [:]
+
+    static func preload() {
+        for name in ["Purr", "Glass"] where cache[name] == nil {
+            cache[name] = NSSound(named: NSSound.Name(name))
+        }
+    }
+
     static func play(_ moment: Moment) {
         guard isEnabled else { return }
         let name = moment == .start ? "Purr" : "Glass"
-        guard let sound = NSSound(named: NSSound.Name(name))?.copy() as? NSSound else { return }
+        if cache[name] == nil { preload() }
+        guard let sound = cache[name]?.copy() as? NSSound else { return }
         sound.volume = moment == .start ? 0.45 : 0.4
         sound.play()
     }

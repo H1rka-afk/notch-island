@@ -25,6 +25,9 @@ final class NotchSettingsSnapshot: ObservableObject {
     // 3.5.1: settings search.
     @Published var searchQuery = ""
     @Published var searchHighlight: String?
+    // 4.13.0: checks, logs and fine sizes live under «Дополнительно».
+    @Published var advancedOpen = false
+    @Published var resetArmed = false
     var highlightToken = UUID()
     @Published var updateStatus = "Проверка папки «Загрузки»…"
     @Published var updateAvailableVersion: String?
@@ -1295,6 +1298,8 @@ struct NotchSettingsWindowView: View {
             snapshot.onHome = false
         }
         snapshot.searchHighlight = entry.title
+        // The result may be inside «Дополнительно».
+        snapshot.advancedOpen = true
         let token = UUID()
         snapshot.highlightToken = token
         DispatchQueue.main.asyncAfter(deadline: .now() + 2.2) {
@@ -1698,7 +1703,7 @@ struct NotchSettingsWindowView: View {
                           subtitle: "Цвета темы, раздела и играющей обложки плавно перетекают за стеклом окна. В энергосбережении — реже, но не замирает",
                           isOn: $settingsAnimatedBackground)
                 rowDivider
-                row("Энергосбережение", subtitle: "Волна и живые фоны обновляются реже. Меньше нагрузки и нагрева") {
+                row("Энергосбережение", subtitle: "Волна и анимированные фоны обновляются реже. Меньше нагрузки и нагрева") {
                     SmoothSegmented(selection: $energySaverMode,
                                     options: [("off", "Выкл"), ("battery", "От батареи"), ("always", "Всегда")],
                                     accent: accent(.general))
@@ -1751,32 +1756,57 @@ struct NotchSettingsWindowView: View {
                           subtitle: "Лёгкий щелчок трекпада при открытии островка",
                           isOn: hapticsBinding)
             }
-            group("Диагностика",
-                  footer: snapshot.diagnosticsMessage.isEmpty
-                    ? "Один файл с версией, подписью, разрешениями и последними записями всех журналов. Названия треков в него не попадают."
-                    : snapshot.diagnosticsMessage) {
-                row("Отчёт для разработчика") {
-                    HStack(spacing: 6) {
-                        Button("Скопировать") { actions.copyDiagnostics() }
-                        Button("Открыть") { actions.openDiagnostics() }
-                    }
-                }
-            }
             group("Управление") {
                 toggleRow("Горячая клавиша ⌃⌥N", subtitle: "Открывает и закрывает островок", isOn: labBinding("hotkey"))
             }
-            group("Уборка", footer: snapshot.cleanupMessage.isEmpty
-                  ? "Старые архивы и папки Ovira из «Загрузок» и тестовые файлы из ~/Library/Logs переносятся в Корзину."
-                  : snapshot.cleanupMessage) {
-                row("Старые версии и тестовые файлы") {
-                    Button("Убрать в Корзину") { actions.runCleanup() }
-                }
-            }
             group("Приложение") {
+                // 4.13.0: everything back as after installation.
+                row("Сбросить все настройки",
+                    subtitle: snapshot.resetArmed
+                        ? "Все переключатели и размеры вернутся к стандартным, Ovira перезапустится. Статистика, избранное и обновления не трогаются."
+                        : "Вернуть всё как после установки") {
+                    if snapshot.resetArmed {
+                        HStack(spacing: 6) {
+                            Button("Отмена") { snapshot.resetArmed = false }
+                            Button("Сбросить") {
+                                SettingsReset.resetAll()
+                                actions.relaunchApp()
+                            }
+                            .buttonStyle(.borderedProminent)
+                            .tint(.red)
+                        }
+                    } else {
+                        Button("Сбросить…") {
+                            snapshot.resetArmed = true
+                            DispatchQueue.main.asyncAfter(deadline: .now() + 8) { snapshot.resetArmed = false }
+                        }
+                    }
+                }
+                rowDivider
                 row("Завершить работу Ovira", subtitle: "Сразу, без ожидания анимаций") {
                     Button("Выйти") { actions.forceQuit() }
                         .buttonStyle(.borderedProminent)
                         .tint(.red)
+                }
+            }
+            advanced {
+                group("Диагностика",
+                      footer: snapshot.diagnosticsMessage.isEmpty
+                        ? "Один файл с версией, подписью, разрешениями и последними записями всех журналов. Названия треков в него не попадают."
+                        : snapshot.diagnosticsMessage) {
+                    row("Отчёт для разработчика") {
+                        HStack(spacing: 6) {
+                            Button("Скопировать") { actions.copyDiagnostics() }
+                            Button("Открыть") { actions.openDiagnostics() }
+                        }
+                    }
+                }
+                group("Уборка", footer: snapshot.cleanupMessage.isEmpty
+                      ? "Старые архивы и папки Ovira из «Загрузок» и тестовые файлы из ~/Library/Logs переносятся в Корзину."
+                      : snapshot.cleanupMessage) {
+                    row("Старые версии и тестовые файлы") {
+                        Button("Убрать в Корзину") { actions.runCleanup() }
+                    }
                 }
             }
         }
@@ -1876,23 +1906,25 @@ struct NotchSettingsWindowView: View {
                                  binding: $compactArtworkScale, range: IslandLook.compactArtworkRange, step: 0.05,
                                  defaultValue: 1)
             }
-            group("Физическая чёлка",
-                  footer: island.autoNotchSize
-                    ? "Ширина берётся из геометрии дисплея."
-                    : "Меняй ширину, только если края островка не совпадают с чёлкой.") {
-                toggleRow("Определять ширину автоматически", isOn: autoWidthBinding)
-                rowDivider
-                sliderRow("Ширина", value: "\(Int(island.notchWidth.rounded())) pt",
-                          binding: widthBinding, range: 160...280, step: 1,
-                          disabled: island.autoNotchSize)
-            }
-            group("Размеры", footer: "Только для справки: крылья, скругления и анимации не настраиваются.") {
-                HStack(spacing: 0) {
-                    metric("Медиа", String(format: "%.1f pt", Double(island.mediaCompactHeight)))
-                    metric("Зарядка", String(format: "%.1f pt", Double(island.notchHeight + island.chargingBridgeDepth)))
-                    metric("Чёлка", String(format: "%.0f pt", Double(island.notchHeight)))
+            advanced {
+                group("Физическая чёлка",
+                      footer: island.autoNotchSize
+                        ? "Ширина берётся из геометрии дисплея."
+                        : "Меняй ширину, только если края островка не совпадают с чёлкой.") {
+                    toggleRow("Определять ширину автоматически", isOn: autoWidthBinding)
+                    rowDivider
+                    sliderRow("Ширина", value: "\(Int(island.notchWidth.rounded())) pt",
+                              binding: widthBinding, range: 160...280, step: 1,
+                              disabled: island.autoNotchSize)
                 }
-                .padding(14)
+                group("Размеры", footer: "Только для справки: крылья, скругления и анимации не настраиваются.") {
+                    HStack(spacing: 0) {
+                        metric("Медиа", String(format: "%.1f pt", Double(island.mediaCompactHeight)))
+                        metric("Зарядка", String(format: "%.1f pt", Double(island.notchHeight + island.chargingBridgeDepth)))
+                        metric("Чёлка", String(format: "%.0f pt", Double(island.notchHeight)))
+                    }
+                    .padding(14)
+                }
             }
         }
     }
@@ -2185,13 +2217,15 @@ struct NotchSettingsWindowView: View {
                         }
                     }
             }
-            group("Проверка") {
-                row("Анимация замка") {
-                    Button("Показать") { actions.previewLock() }
-                }
-                rowDivider
-                row("Журнал замочка") {
-                    Button("Открыть") { actions.openLockLog() }
+            advanced {
+                group("Проверка") {
+                    row("Анимация замка") {
+                        Button("Показать") { actions.previewLock() }
+                    }
+                    rowDivider
+                    row("Журнал замочка") {
+                        Button("Открыть") { actions.openLockLog() }
+                    }
                 }
             }
         }
@@ -2240,17 +2274,19 @@ struct NotchSettingsWindowView: View {
                     Button("Проверить…") { actions.openAccessibility() }
                 }
             }
-            group("Проверка") {
-                row("Анимация таймера") {
-                    Button("Показать") { actions.previewTimer() }
-                }
-                rowDivider
-                row("Найти таймер в «Часах»") {
-                    Button("Проверить") { actions.refreshClock() }
-                }
-                rowDivider
-                row("Журнал проверки") {
-                    Button("Открыть") { actions.openClockLog() }
+            advanced {
+                group("Проверка") {
+                    row("Анимация таймера") {
+                        Button("Показать") { actions.previewTimer() }
+                    }
+                    rowDivider
+                    row("Найти таймер в «Часах»") {
+                        Button("Проверить") { actions.refreshClock() }
+                    }
+                    rowDivider
+                    row("Журнал проверки") {
+                        Button("Открыть") { actions.openClockLog() }
+                    }
                 }
             }
         }
@@ -2346,19 +2382,6 @@ struct NotchSettingsWindowView: View {
                     Text(snapshot.batteryTimeText).font(.system(size: 12)).foregroundStyle(.secondary)
                 }
             }
-            group("Проверка батареи", footer: "Демонстрация на 7 секунд, реальный заряд не меняется. Если островок занят, тест встанет в очередь.") {
-                row("Низкий заряд") {
-                    HStack(spacing: 6) {
-                        ForEach([20, 10, 5, 1], id: \.self) { threshold in
-                            Button("\(threshold)%") { actions.previewLowBattery(threshold) }
-                        }
-                    }
-                }
-                rowDivider
-                row("Подключение зарядки") {
-                    Button("Показать") { actions.previewCharging() }
-                }
-            }
             group("AirPods", footer: "При подключении в островке крутится объёмная модель наушников и виден заряд. Заряд кейса виден, только если macOS его сообщает.") {
                 row("Подключённые AirPods") {
                     Button("Показать") { actions.previewAirPods() }
@@ -2370,6 +2393,21 @@ struct NotchSettingsWindowView: View {
                     rowDivider
                     row((path as NSString).lastPathComponent) {
                         Button("Извлечь") { actions.ejectVolume(path) }
+                    }
+                }
+            }
+            advanced {
+                group("Проверка батареи", footer: "Демонстрация на 7 секунд, реальный заряд не меняется. Если островок занят, тест встанет в очередь.") {
+                    row("Низкий заряд") {
+                        HStack(spacing: 6) {
+                            ForEach([20, 10, 5, 1], id: \.self) { threshold in
+                                Button("\(threshold)%") { actions.previewLowBattery(threshold) }
+                            }
+                        }
+                    }
+                    rowDivider
+                    row("Подключение зарядки") {
+                        Button("Показать") { actions.previewCharging() }
                     }
                 }
             }
@@ -2432,6 +2470,32 @@ struct NotchSettingsWindowView: View {
             .settingsCard(cornerRadius: 18)
             if let footer {
                 hint(footer).padding(.horizontal, 6)
+            }
+        }
+    }
+
+    // 4.13.0: checks, logs and rarely needed sizes, folded away.
+    private func advanced<Content: View>(@ViewBuilder content: () -> Content) -> some View {
+        VStack(alignment: .leading, spacing: 20) {
+            Button {
+                withAnimation(.easeInOut(duration: 0.22)) { snapshot.advancedOpen.toggle() }
+            } label: {
+                HStack(spacing: 7) {
+                    Image(systemName: "chevron.right")
+                        .font(.system(size: 10, weight: .bold))
+                        .rotationEffect(.degrees(snapshot.advancedOpen ? 90 : 0))
+                    Text("Дополнительно").font(.system(size: 12.5, weight: .semibold))
+                    Text("проверки, журналы, тонкие настройки")
+                        .font(.system(size: 12))
+                        .foregroundStyle(.secondary)
+                }
+                .padding(.leading, 6)
+                .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            if snapshot.advancedOpen {
+                content()
+                    .transition(.opacity)
             }
         }
     }
@@ -3402,5 +3466,25 @@ struct WindowAppearanceSetter: NSViewRepresentable {
             guard let window = view.window else { return }
             if window.appearance?.name != wanted?.name { window.appearance = wanted }
         }
+    }
+}
+
+
+// 4.13.0: «Сбросить все настройки». Only switches, sizes and looks go back
+// to their defaults; the day statistics, favourites, history, update and
+// migration records stay.
+enum SettingsReset {
+    private static let keep = ["stats", "favorite", "recent", "history", "backup", "migrat", "update",
+                               "onboard", "tour", "installed", "lastversion", "clientid", "token", "signing"]
+
+    static func resetAll() {
+        guard let domain = Bundle.main.bundleIdentifier,
+              let values = UserDefaults.standard.persistentDomain(forName: domain) else { return }
+        for key in values.keys {
+            let lower = key.lowercased()
+            if keep.contains(where: { lower.contains($0) }) { continue }
+            UserDefaults.standard.removeObject(forKey: key)
+        }
+        UserDefaults.standard.synchronize()
     }
 }

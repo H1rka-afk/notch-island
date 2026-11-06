@@ -312,7 +312,9 @@ struct IslandView: View {
                                       live: state.audioLive,
                                       maxHeight: 16, barWidth: 2.2,
                                       barSpacing: 1.7, tint: state.musicArtworkTint,
-                                      artwork: state.musicArtwork)
+                                      artwork: state.musicArtwork,
+                                      active: state.isVisible && !state.mediaHidden && state.event == nil
+                                          && !state.isExpanded && state.compactRevealed)
                         .offset(x: -3)
                         .opacity(state.volumeLevel == nil ? 1 : 0)
                     if let level = state.volumeLevel {
@@ -1013,6 +1015,10 @@ private struct AudioReactiveBars: View {
     var tint: Color
     // 3.18.0: the cover shows through the bars, blurred — as on iPhone.
     var artwork: NSImage? = nil
+    // 4.13.0: false while these bars cannot be seen (the player is open,
+    // a banner covers it, or the player is hidden behind the music app) —
+    // they stop drawing instead of animating at full rate behind it.
+    var active = true
 
     // No @State: the command-line build has no SwiftUI macro plugin.
     @StateObject private var driver = WaveformDriver()
@@ -1022,7 +1028,7 @@ private struct AudioReactiveBars: View {
     @AppStorage(WaveLook.blurKey) private var blurAmount = 0.4
     @AppStorage(WaveLook.sizeKey) private var sizeScale = 1.0
 
-    private var animating: Bool { playing || driver.settling }
+    private var animating: Bool { active && (playing || driver.settling) }
 
     private var blurredCover: NSImage? {
         style == "artwork" ? ArtworkBlur.blurred(artwork, amount: blurAmount) : nil

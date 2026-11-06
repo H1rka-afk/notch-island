@@ -299,7 +299,10 @@ final class IslandState: ObservableObject {
     @Published private(set) var previousPulse = 0
     @Published var isExpanded = false {
         // 4.5.0: each opening plays the liquid «drop» once.
-        didSet { if isExpanded && !oldValue { expandDropPulse &+= 1 } }
+        didSet {
+            if isExpanded && !oldValue { expandDropPulse &+= 1 }
+            if isExpanded != oldValue { PerformanceMonitor.animating(isExpanded ? "open player" : "close player") }
+        }
     }
     @Published private(set) var expandDropPulse = 0
     // 4.8.0: bumps on every shape change (appear, banner in/out).
@@ -398,7 +401,9 @@ final class IslandState: ObservableObject {
     }
     // The host window reserves space immediately, while this flag gently
     // grows the visible black surface out from the *physical* camera notch.
-    @Published private(set) var compactRevealed = false
+    @Published private(set) var compactRevealed = false {
+        didSet { if compactRevealed != oldValue { PerformanceMonitor.animating(compactRevealed ? "player in" : "player out") } }
+    }
     private var compactRevealToken = UUID()
 
     // Real unlock animates inside the existing media NSPanel; no additional
@@ -444,7 +449,9 @@ final class IslandState: ObservableObject {
     // collapse it shrinks *after* the visual spring has completed.
     @Published private(set) var canvasExpanded = false { didSet { layoutChanged?() } }
     @Published var event: IslandEvent? { didSet { layoutChanged?() } }
-    @Published private(set) var eventRevealed = false
+    @Published private(set) var eventRevealed = false {
+        didSet { if eventRevealed != oldValue { PerformanceMonitor.animating(eventRevealed ? "banner in" : "banner out") } }
+    }
     // Banner contents appear after the shape and leave before it (3.2.0).
     @Published private(set) var eventContentVisible = false
     // Starting width of the next event. Avoid collapsing to the hardware
@@ -1873,6 +1880,8 @@ final class IslandAppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         // The two-command status menu and nonactivating island panels remain.
         NSApp.setActivationPolicy(.regular)
         PerformanceMonitor.start()
+        // 4.13.0: sounds read from disk now, not when a break starts.
+        DispatchQueue.main.asyncAfter(deadline: .now() + 3) { EyeBreakSound.preload() }
         standby.show = { [weak self] on in
             guard let self else { return }
             self.lockOverlay?.setStandBy(on, on: self.displayScreen())
@@ -1937,8 +1946,10 @@ final class IslandAppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
         state.layoutChanged = { [weak self] in
             guard let self else { return }
-            self.updatePanelFrame(animated: true)
-            self.lockOverlay?.reposition(on: self.displayScreen())
+            PerformanceMonitor.measure("panel layout") {
+                self.updatePanelFrame(animated: true)
+                self.lockOverlay?.reposition(on: self.displayScreen())
+            }
             // layoutChanged can run within a @Published didSet. Drain on the
             // next main-loop turn so the full state transition has completed.
             DispatchQueue.main.async { [weak self] in self?.drainLowBatteryQueue() }

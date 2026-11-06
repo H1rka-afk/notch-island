@@ -62,6 +62,24 @@ enum PerformanceMonitor {
         lock.unlock()
     }
 
+    // 4.13.0: while the island animates, even short main-thread hiccups
+    // (a dropped frame or two) are written down with what was running —
+    // they are what makes a spring look jerky.
+    private static var animationUntil: UInt64 = 0
+    private static var animationName = ""
+
+    static func animating(_ name: String, for seconds: Double = 0.7) {
+        let until = DispatchTime.now().uptimeNanoseconds + UInt64(seconds * 1_000_000_000)
+        lock.lock()
+        if until > animationUntil { animationUntil = until; animationName = name }
+        lock.unlock()
+    }
+
+    private static func currentAnimation() -> String? {
+        lock.lock(); defer { lock.unlock() }
+        return DispatchTime.now().uptimeNanoseconds < animationUntil ? animationName : nil
+    }
+
     private static func operation() -> String {
         lock.lock(); defer { lock.unlock() }
         return currentOperation
@@ -84,8 +102,12 @@ enum PerformanceMonitor {
                 }
             }
             let waited = Double(DispatchTime.now().uptimeNanoseconds - sent) / 1_000_000
+            let animation = currentAnimation()
             if waited > 80 {
-                write(String(format: "STALL main thread %.0f ms (during: %@)", waited, seenOperation))
+                write(String(format: "STALL main thread %.0f ms (during: %@)%@", waited, seenOperation,
+                             animation.map { " in animation: \($0)" } ?? ""))
+            } else if let animation, waited > 30 {
+                write(String(format: "hitch %.0f ms in animation: %@ (during: %@)", waited, animation, operation()))
             }
             if Date().timeIntervalSince(lastCPUAt) >= 30 {
                 let now = cpuSeconds()
@@ -94,8 +116,9 @@ enum PerformanceMonitor {
                 lastCPU = now
                 lastCPUAt = Date()
             }
-            // 3.16.3: 4 checks a second are enough to catch stalls.
-            Thread.sleep(forTimeInterval: 0.25)
+            // 3.16.3: 4 checks a second are enough to catch stalls; during
+            // an animation every frame is watched.
+            Thread.sleep(forTimeInterval: currentAnimation() == nil ? 0.25 : 0.012)
         }
     }
 
