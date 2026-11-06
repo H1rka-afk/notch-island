@@ -861,6 +861,12 @@ final class LockScreenOverlay {
         reposition(on: screen)
     }
 
+    // 4.14.3: where the padlock island is on the lock screen (for the cursor).
+    var padlockFrame: CGRect? {
+        guard let window, window.isVisible, window.alphaValue > 0.1 else { return nil }
+        return window.frame
+    }
+
     func reposition(on screen: NSScreen?) {
         guard let screen, let window else { return }
         let width = state.notchWidth + 96
