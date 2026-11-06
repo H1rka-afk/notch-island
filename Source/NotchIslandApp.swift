@@ -541,7 +541,8 @@ final class IslandState: ObservableObject {
     func presentNotice(_ next: IslandNotice) {
         if isSessionLocked {
             lockNoticeHandler?(LockNotice(symbol: next.symbol, tint: next.tint, text: next.text,
-                                          duration: max(2.2, min(next.duration, 6)), image: next.thumbnail))
+                                          duration: max(2.2, min(next.duration, 6)), image: next.thumbnail,
+                                          lopsided: next.kind == .delivery))
             return
         }
         guard !isSessionLocked, !unlockTransitionActive else { return }
@@ -1215,7 +1216,7 @@ final class IslandState: ObservableObject {
             width = compactRevealed ? compactWidth : notchWidth
             height = compactDisplayHeight
         }
-        let centre = notchCenterX ?? screen.frame.midX
+        let centre = (notchCenterX ?? screen.frame.midX) + eventShift
         return CGRect(x: centre - width / 2, y: screen.frame.maxY - height, width: width, height: height)
     }
     var isPointerOverIsland: Bool { pointerInsideIsland }
@@ -1434,16 +1435,21 @@ final class IslandState: ObservableObject {
     var updateWing: CGFloat { 84 }
     var updateWidth: CGFloat { notchWidth + updateWing * 2 }
     // 4.16.0: longer texts (taxi, delivery) get wider wings, short ones stay 56.
-    var noticeWing: CGFloat {
-        guard let text = notice?.text, notice?.kind == .delivery else { return 56 }
-        // 4.16.2: just as wide as the text really is (measured), at most 124 —
-        // a longer line scales down a little instead of widening the island.
-        let font = NSFont.systemFont(ofSize: 11, weight: .semibold)
-        let rounded = font.fontDescriptor.withDesign(.rounded).flatMap { NSFont(descriptor: $0, size: 11) } ?? font
-        let width = (text as NSString).size(withAttributes: [.font: rounded]).width
-        return min(124, max(56, ceil(width) + 16))
+    var noticeWing: CGFloat { 56 }
+    // 4.16.3: delivery banners are lopsided — a small icon wing on the left,
+    // the right wing as wide as the text. The island shifts right by half
+    // the difference so the camera gap stays exactly over the notch.
+    private var isDeliveryNotice: Bool { notice?.kind == .delivery }
+    var noticeLeftWing: CGFloat { isDeliveryNotice ? DeliveryLayout.iconWing : noticeWing }
+    var noticeRightWing: CGFloat {
+        guard isDeliveryNotice, let text = notice?.text else { return noticeWing }
+        return DeliveryLayout.textWing(text, size: 11, maximum: 170)
     }
-    var noticeWidth: CGFloat { notchWidth + noticeWing * 2 }
+    var noticeWidth: CGFloat { notchWidth + noticeLeftWing + noticeRightWing }
+    var eventShift: CGFloat {
+        guard event == .notice, eventRevealed, isDeliveryNotice else { return 0 }
+        return (noticeRightWing - noticeLeftWing) / 2
+    }
     private var naturalEventWidth: CGFloat {
         if event == .airPods { return airPodsWidth }
         if event == .focus { return focusWidth }
@@ -1477,7 +1483,7 @@ final class IslandState: ObservableObject {
     var sharedEventCanvas: CGSize {
         let glow = chargingGlowWindowMargin
         let maxEventWidth = max(chargingWidth, notchWidth + lowBatteryWing * 2,
-                                notchWidth + unpluggedWing * 2, airPodsWidth, focusWidth, updateWidth, noticeWidth)
+                                notchWidth + unpluggedWing * 2, airPodsWidth, focusWidth, updateWidth, notchWidth + 2 * max(noticeLeftWing, noticeRightWing))
         return CGSize(width: max(maxEventWidth + max(glow, edgeFlare) * 2, compactWidth + edgeFlare * 2),
                       height: max(mediaCompactHeight + chargingBridgeDepth + islandTopBleed + glow,
                                   compactDisplayHeight + islandTopBleed))
@@ -2968,7 +2974,7 @@ final class IslandAppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         }
         if state.event != nil {
             let width = max(state.eventWidth, state.eventRestingWidth ?? 0)
-            return centre - width / 2
+            return centre + state.eventShift - width / 2
         }
         return notchLeft - state.leftWing
     }

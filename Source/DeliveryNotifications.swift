@@ -339,3 +339,16 @@ final class DeliveryIcons {
         return safe + ".img"
     }
 }
+
+// 4.16.3: the delivery banner is lopsided — a small wing for the app icon on
+// the left, and the right wing exactly as wide as the text.
+enum DeliveryLayout {
+    static let iconWing: CGFloat = 42
+
+    static func textWing(_ text: String, size: CGFloat, maximum: CGFloat) -> CGFloat {
+        let font = NSFont.systemFont(ofSize: size, weight: .semibold)
+        let rounded = font.fontDescriptor.withDesign(.rounded).flatMap { NSFont(descriptor: $0, size: size) } ?? font
+        let width = (text as NSString).size(withAttributes: [.font: rounded]).width
+        return min(maximum, max(56, ceil(width) + 22))
+    }
+}

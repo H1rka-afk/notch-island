@@ -254,6 +254,9 @@ struct IslandView: View {
         .animation(state.isExpanded ? IslandMotion.morph : IslandMotion.morphCollapse, value: state.isExpanded)
         .animation(state.compactRevealed ? IslandMotion.morph : IslandMotion.morphCollapse, value: state.compactRevealed)
         .animation(IslandMotion.content, value: state.eventReturningToMedia)
+        // 4.16.3: a lopsided delivery banner keeps its camera gap over the notch.
+        .offset(x: state.eventShift)
+        .animation(state.eventShift == 0 ? IslandMotion.shrink : IslandMotion.grow, value: state.eventShift)
         // 4.14.0: under the pointer the closed island grows a little (when it
         // opens only on a click).
         .scaleEffect(state.hoverPeek && !expanded ? 1.045 : 1, anchor: .top)
@@ -608,7 +611,8 @@ struct IslandView: View {
             .frame(width: state.airPodsWidth, height: state.eventHeight)
         } else if event == .notice {
             NoticeEventContent(notice: state.notice,
-                               wing: state.noticeWing,
+                               leftWing: state.noticeLeftWing,
+                               rightWing: state.noticeRightWing,
                                notchWidth: state.notchWidth,
                                height: state.eventHeight)
                 .frame(width: state.noticeWidth, height: state.eventHeight)
@@ -1246,7 +1250,8 @@ private struct VolumeLevelGlyph: View {
 // optional level bar under the label (volume, CPU).
 private struct NoticeEventContent: View {
     let notice: IslandNotice?
-    let wing: CGFloat
+    let leftWing: CGFloat
+    let rightWing: CGFloat
     let notchWidth: CGFloat
     let height: CGFloat
 
@@ -1267,7 +1272,7 @@ private struct NoticeEventContent: View {
                         .contentTransition(.symbolEffect(.replace))
                 }
             }
-            .frame(width: wing, height: height)
+            .frame(width: leftWing, height: height)
             .offset(x: 2)
             Color.clear.frame(width: notchWidth, height: height)
             VStack(spacing: 3) {
@@ -1286,9 +1291,9 @@ private struct NoticeEventContent: View {
                     .frame(width: 34, height: 3)
                 }
             }
-            .frame(width: wing - 6, height: height)
+            .frame(width: rightWing - 6, height: height)
             .offset(x: -3)
-            .frame(width: wing, height: height)
+            .frame(width: rightWing, height: height)
         }
         .animation(.easeOut(duration: 0.15), value: notice?.level)
         .animation(.easeOut(duration: 0.15), value: notice?.text)

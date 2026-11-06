@@ -19,8 +19,12 @@ struct LockNotice: Equatable {
     var text: String
     var duration: TimeInterval
     var image: NSImage? = nil      // 4.16.1: an app icon instead of the symbol
+    var lopsided = false           // 4.16.3: delivery — small icon side, text side to fit
     // Each side as wide as the text needs (the icon side matches).
-    var wing: CGFloat { min(image == nil ? 160 : 132, max(46, CGFloat(text.count) * 7.4 + 22)) }
+    var wing: CGFloat { min(160, max(46, CGFloat(text.count) * 7.4 + 22)) }
+    var leftWing: CGFloat { lopsided ? DeliveryLayout.iconWing : wing }
+    var rightWing: CGFloat { lopsided ? DeliveryLayout.textWing(text, size: 12, maximum: 158) : wing }
+    var shift: CGFloat { (rightWing - leftWing) / 2 }
     static func == (a: LockNotice, b: LockNotice) -> Bool { a.symbol == b.symbol && a.text == b.text }
 }
 
@@ -128,7 +132,7 @@ private struct PadlockNotchView: View {
     @ObservedObject var appearance: PadlockPresentation
 
     private var width: CGFloat {
-        if let notice = appearance.notice { return notch.notchWidth + notice.wing * 2 }
+        if let notice = appearance.notice { return notch.notchWidth + notice.leftWing + notice.rightWing }
         return notch.notchWidth + 76 * min(1, max(0, appearance.expansion))
     }
 
@@ -175,7 +179,7 @@ private struct PadlockNotchView: View {
                                 .foregroundStyle(notice.tint)
                         }
                     }
-                    .frame(width: notice.wing)
+                    .frame(width: notice.leftWing)
                     Color.clear.frame(width: notch.notchWidth)
                     Text(notice.text)
                         .font(.system(size: 12, weight: .semibold, design: .rounded))
@@ -183,12 +187,13 @@ private struct PadlockNotchView: View {
                         .lineLimit(1)
                         .minimumScaleFactor(0.7)
                         .padding(.trailing, 10)
-                        .frame(width: notice.wing, alignment: .trailing)
+                        .frame(width: notice.rightWing, alignment: .trailing)
                 }
                 .frame(width: width, height: notch.mediaCompactHeight)
                 .transition(.opacity.combined(with: .scale(scale: 0.86)))
             }
         }
+        .offset(x: appearance.notice?.shift ?? 0)
         .frame(width: notch.notchWidth + padlockCanvasExtra,
                height: notch.mediaCompactHeight + padlockTopBleed,
                alignment: .bottom)
@@ -913,10 +918,11 @@ final class LockScreenOverlay {
         guard let window, window.isVisible, window.alphaValue > 0.1 else { return nil }
         // The visible padlock island: centred, notch + wings wide.
         let f = window.frame
-        let width = secureAppearance.notice.map { state.notchWidth + $0.wing * 2 }
+        let width = secureAppearance.notice.map { state.notchWidth + $0.leftWing + $0.rightWing }
             ?? state.notchWidth + 76 * min(1, max(0, secureAppearance.expansion))
         let height = state.mediaCompactHeight
-        return CGRect(x: f.midX - width / 2, y: f.maxY - padlockTopBleed - height, width: width, height: height)
+        let shift = secureAppearance.notice?.shift ?? 0
+        return CGRect(x: f.midX + shift - width / 2, y: f.maxY - padlockTopBleed - height, width: width, height: height)
     }
     var padlockWindow: NSWindow? { window }
 
