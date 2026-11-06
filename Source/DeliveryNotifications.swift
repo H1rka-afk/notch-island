@@ -122,9 +122,9 @@ enum DeliveryCatalog {
     // One line for the island: the body when it is short, else the title.
     static func line(title: String, subtitle: String, body: String) -> String {
         let candidates = [body, subtitle, title].map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
-        let text = candidates.first(where: { !$0.isEmpty && $0.count <= 38 })
+        let text = candidates.first(where: { !$0.isEmpty && $0.count <= 26 })
             ?? candidates.first(where: { !$0.isEmpty }) ?? ""
-        return text.count > 38 ? String(text.prefix(36)) + "…" : text
+        return text.count > 28 ? String(text.prefix(26)) + "…" : text
     }
 }
 

@@ -1436,7 +1436,12 @@ final class IslandState: ObservableObject {
     // 4.16.0: longer texts (taxi, delivery) get wider wings, short ones stay 56.
     var noticeWing: CGFloat {
         guard let text = notice?.text, notice?.kind == .delivery else { return 56 }
-        return min(170, max(56, CGFloat(text.count) * 6.4 + 22))
+        // 4.16.2: just as wide as the text really is (measured), at most 124 —
+        // a longer line scales down a little instead of widening the island.
+        let font = NSFont.systemFont(ofSize: 11, weight: .semibold)
+        let rounded = font.fontDescriptor.withDesign(.rounded).flatMap { NSFont(descriptor: $0, size: 11) } ?? font
+        let width = (text as NSString).size(withAttributes: [.font: rounded]).width
+        return min(124, max(56, ceil(width) + 16))
     }
     var noticeWidth: CGFloat { notchWidth + noticeWing * 2 }
     private var naturalEventWidth: CGFloat {
@@ -3256,10 +3261,10 @@ final class IslandAppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private var deliveryDemoStep = 0
     private func previewDeliveryIsland() {
         let samples: [(String, String)] = [
-            ("Яндекс Go", "Водитель подъедет через 3 мин"),
+            ("Яндекс Go", "Водитель через 3 мин"),
             ("Лавка", "Курьер уже в пути"),
-            ("Ozon", "Заказ ждёт в пункте выдачи"),
-            ("ВкусВилл", "Заказ собран, курьер выехал"),
+            ("Ozon", "Заказ в пункте выдачи"),
+            ("ВкусВилл", "Курьер выехал"),
         ]
         let sample = samples[deliveryDemoStep % samples.count]
         deliveryDemoStep += 1

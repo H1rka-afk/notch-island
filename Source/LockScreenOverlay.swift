@@ -20,7 +20,7 @@ struct LockNotice: Equatable {
     var duration: TimeInterval
     var image: NSImage? = nil      // 4.16.1: an app icon instead of the symbol
     // Each side as wide as the text needs (the icon side matches).
-    var wing: CGFloat { min(160, max(46, CGFloat(text.count) * 7.4 + 22)) }
+    var wing: CGFloat { min(image == nil ? 160 : 132, max(46, CGFloat(text.count) * 7.4 + 22)) }
     static func == (a: LockNotice, b: LockNotice) -> Bool { a.symbol == b.symbol && a.text == b.text }
 }
 
