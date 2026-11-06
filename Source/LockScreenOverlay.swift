@@ -116,17 +116,16 @@ private struct PadlockNotchView: View {
     }
 
     var body: some View {
-        let contour = UnevenRoundedRectangle(topLeadingRadius: 0,
-                                             bottomLeadingRadius: 17,
-                                             bottomTrailingRadius: 17,
-                                             topTrailingRadius: 0,
-                                             style: .continuous)
+        // 4.14.7: the same drop curves into the screen edge as every other
+        // island (and the same 13-pt corners).
+        let flare = notch.edgeFlare
+        let contour = IslandSilhouette(bottomRadius: 13, flare: flare, roof: padlockTopBleed)
         // The glyph and black silhouette are both children of this SAME
         // variable-width container. The container's stable outer frame is
         // independent of the private SkyLight window's fixed size.
         ZStack(alignment: .bottom) {
             contour.fill(Color.black)
-                .frame(width: width, height: notch.mediaCompactHeight + padlockTopBleed)
+                .frame(width: width + flare * 2, height: notch.mediaCompactHeight + padlockTopBleed)
 
             HStack(spacing: 0) {
                 ZStack {
