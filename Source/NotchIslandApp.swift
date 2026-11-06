@@ -541,7 +541,7 @@ final class IslandState: ObservableObject {
     func presentNotice(_ next: IslandNotice) {
         if isSessionLocked {
             lockNoticeHandler?(LockNotice(symbol: next.symbol, tint: next.tint, text: next.text,
-                                          duration: max(2.2, min(next.duration, 6))))
+                                          duration: max(2.2, min(next.duration, 6)), image: next.thumbnail))
             return
         }
         guard !isSessionLocked, !unlockTransitionActive else { return }
@@ -2615,11 +2615,8 @@ final class IslandAppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
                 text: "Пора", tap: .openApp("com.apple.reminders"), duration: 6,
                 accessibility: "Напоминание: \(title)"))
         }
-        deliveryWatch.onUpdate = { [weak self] service, line in
-            self?.state.presentNotice(IslandNotice(
-                kind: .delivery, symbol: service.symbol, tint: service.tint,
-                text: line, duration: 5,
-                accessibility: "\(service.name): \(line)"))
+        deliveryWatch.onUpdate = { [weak self] service, line, app in
+            self?.presentDelivery(service, line: line, appID: app)
         }
         layoutHotKey.onPress = { [weak self] in self?.layoutFixer.run() }
         layoutFixer.pauseClipboardWatch = { [weak self] seconds in self?.clipboardWatch.pause(for: seconds) }
@@ -3243,6 +3240,31 @@ final class IslandAppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private func installAvailableUpdate() {
         guard let candidate = updater.availableCandidate else { return }
         updater.install(candidate)
+    }
+
+    // 4.16.1: taxi / food / parcel banner with the service's own icon.
+    private func presentDelivery(_ service: DeliveryService, line: String, appID: String) {
+        DeliveryIcons.shared.icon(for: service, appID: appID) { [weak self] image in
+            self?.state.presentNotice(IslandNotice(
+                kind: .delivery, symbol: service.symbol, tint: service.tint,
+                text: line, thumbnail: image, duration: 5,
+                accessibility: "\(service.name): \(line)"))
+        }
+    }
+
+    // Demonstration only: nothing is read, three sample services in turn.
+    private var deliveryDemoStep = 0
+    private func previewDeliveryIsland() {
+        let samples: [(String, String)] = [
+            ("Яндекс Go", "Водитель подъедет через 3 мин"),
+            ("Лавка", "Курьер уже в пути"),
+            ("Ozon", "Заказ ждёт в пункте выдачи"),
+            ("ВкусВилл", "Заказ собран, курьер выехал"),
+        ]
+        let sample = samples[deliveryDemoStep % samples.count]
+        deliveryDemoStep += 1
+        guard let service = DeliveryCatalog.service(named: sample.0) else { return }
+        presentDelivery(service, line: sample.1, appID: "")
     }
 
     private func previewFocusIsland() {
@@ -4252,6 +4274,7 @@ final class IslandAppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             previewAirPods: { [weak self] in self?.showConnectedAirPods() },
             setFocusIsland: { [weak self] value in self?.setFocusIslandEnabled(value) },
             previewFocus: { [weak self] in self?.previewFocusIsland() },
+            previewDelivery: { [weak self] in self?.previewDeliveryIsland() },
             openFullDiskAccess: { [weak self] in self?.openFullDiskAccessSettings() },
             installUpdate: { [weak self] in self?.installAvailableUpdate() },
             setMediaGestures: { [weak self] value in self?.setMediaGesturesEnabled(value) },

@@ -18,6 +18,7 @@ struct LockNotice: Equatable {
     var tint: Color
     var text: String
     var duration: TimeInterval
+    var image: NSImage? = nil      // 4.16.1: an app icon instead of the symbol
     // Each side as wide as the text needs (the icon side matches).
     var wing: CGFloat { min(160, max(46, CGFloat(text.count) * 7.4 + 22)) }
     static func == (a: LockNotice, b: LockNotice) -> Bool { a.symbol == b.symbol && a.text == b.text }
@@ -161,10 +162,20 @@ private struct PadlockNotchView: View {
             .frame(width: width, height: notch.mediaCompactHeight)
             if let notice = appearance.notice {
                 HStack(spacing: 0) {
-                    Image(systemName: notice.symbol)
-                        .font(.system(size: 14, weight: .semibold))
-                        .foregroundStyle(notice.tint)
-                        .frame(width: notice.wing)
+                    Group {
+                        if let image = notice.image {
+                            Image(nsImage: image)
+                                .resizable()
+                                .scaledToFill()
+                                .frame(width: 22, height: 22)
+                                .clipShape(RoundedRectangle(cornerRadius: 5.5, style: .continuous))
+                        } else {
+                            Image(systemName: notice.symbol)
+                                .font(.system(size: 14, weight: .semibold))
+                                .foregroundStyle(notice.tint)
+                        }
+                    }
+                    .frame(width: notice.wing)
                     Color.clear.frame(width: notch.notchWidth)
                     Text(notice.text)
                         .font(.system(size: 12, weight: .semibold, design: .rounded))

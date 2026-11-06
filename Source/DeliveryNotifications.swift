@@ -13,47 +13,110 @@ import SwiftUI
 // Nothing is changed or sent anywhere. Reading the database needs Full Disk
 // Access — the same one the Focus banner uses.
 struct DeliveryService {
-    let name: String
-    let symbol: String
-    let tint: Color
-    let ids: [String]        // pieces of the app's identifier
-    let words: [String]      // or words in the notification (website pushes)
+    enum Category { case taxi, lavka, food, groceries, parcel }
+    let name: String          // brand, as people call it
+    let category: Category
+    let ids: [String]         // pieces of the app's identifier
+    let words: [String]       // or words in the notification (website pushes)
+    let store: String?        // App Store search term for the icon
+
+    var symbol: String {
+        switch category {
+        case .taxi: return "car.fill"
+        case .lavka: return "basket.fill"
+        case .food: return "takeoutbag.and.cup.and.straw.fill"
+        case .groceries: return "cart.fill"
+        case .parcel: return "shippingbox.fill"
+        }
+    }
+    var tint: Color {
+        switch category {
+        case .taxi: return Color(red: 1.0, green: 0.82, blue: 0.0)
+        case .lavka: return Color(red: 1.0, green: 0.36, blue: 0.47)
+        case .food: return Color(red: 1.0, green: 0.55, blue: 0.1)
+        case .groceries: return Color(red: 0.3, green: 0.85, blue: 0.4)
+        case .parcel: return Color(red: 0.45, green: 0.68, blue: 1.0)
+        }
+    }
 }
 
 enum DeliveryCatalog {
+    private static func b(_ name: String, _ category: DeliveryService.Category, _ ids: [String],
+                          _ words: [String] = [], store: String? = nil) -> DeliveryService {
+        DeliveryService(name: name, category: category, ids: ids, words: words, store: store ?? name)
+    }
+
     static let services: [DeliveryService] = [
-        DeliveryService(name: "Такси", symbol: "car.fill", tint: Color(red: 1.0, green: 0.82, blue: 0.0),
-                        ids: ["yandex.taxi", "ru.yandex.mobile.taxi", "yandex.go", "yandexgo", "ru.yandex.ytaxi",
-                              "uber", "citymobil", "taxi.maxim", "bolt.client", "ee.mtakso", "vezet", "drivee"],
-                        words: ["яндекс go", "yandex go", "водитель", "такси", "ситимобил", "максим"]),
-        DeliveryService(name: "Лавка", symbol: "basket.fill", tint: Color(red: 1.0, green: 0.36, blue: 0.47),
-                        ids: ["lavka", "ru.yandex.grocery"],
-                        words: ["лавка"]),
-        DeliveryService(name: "Еда", symbol: "takeoutbag.and.cup.and.straw.fill", tint: Color(red: 1.0, green: 0.55, blue: 0.1),
-                        ids: ["yandex.eda", "foodfox", "deliveryclub", "delivery-club", "dodopizza", "dodo", "kfc",
-                              "burgerking", "vkusnoitochka", "tanuki", "yakitoriya", "chibbis"],
-                        words: ["яндекс еда", "delivery club", "доставка еды", "курьер", "додо"]),
-        DeliveryService(name: "Продукты", symbol: "cart.fill", tint: Color(red: 0.3, green: 0.85, blue: 0.4),
-                        ids: ["vkusvill", "samokat", "kuper", "sbermarket", "perekrestok", "magnit", "metro-cc",
-                              "auchan", "lentaonline", "utkonos", "pyaterochka"],
-                        words: ["вкусвилл", "самокат", "купер", "сбермаркет", "перекрёсток", "перекресток", "магнит"]),
-        DeliveryService(name: "Посылка", symbol: "shippingbox.fill", tint: Color(red: 0.45, green: 0.68, blue: 1.0),
-                        ids: ["ozon", "wildberries", "cdek", "pochta", "boxberry", "aliexpress", "yandex.market",
-                              "beru", "dpd", "avito", "lamoda"],
-                        words: ["ozon", "озон", "wildberries", "вайлдберриз", "сдэк", "cdek", "почта россии", "пункт выдачи",
-                                "постамат", "яндекс маркет"])
+        // Taxi
+        b("Яндекс Go", .taxi, ["yandex.taxi", "ru.yandex.ytaxi", "ru.yandex.mobile.taxi", "yandex.go", "yandexgo"],
+          ["яндекс go", "yandex go", "яндекс такси"]),
+        b("Uber", .taxi, ["uber"], ["uber"], store: "Uber Russia"),
+        b("Ситимобил", .taxi, ["citymobil"], ["ситимобил"]),
+        b("Максим", .taxi, ["taxi.maxim", "taximaxim"], ["такси максим"], store: "Такси Максим"),
+        b("Bolt", .taxi, ["bolt.client", "ee.mtakso"], ["bolt"]),
+        b("Везёт", .taxi, ["vezet"], ["везёт"], store: "Везёт такси"),
+        b("inDrive", .taxi, ["indriver", "indrive", "drivee"], ["indrive"]),
+        // Lavka
+        b("Лавка", .lavka, ["lavka", "ru.yandex.grocery"], ["лавка"], store: "Яндекс Лавка"),
+        // Food
+        b("Яндекс Еда", .food, ["yandex.eda", "foodfox"], ["яндекс еда"]),
+        b("Delivery Club", .food, ["deliveryclub", "delivery-club"], ["delivery club"], store: "Маркет Деливери"),
+        b("Додо Пицца", .food, ["dodopizza"], ["додо"]),
+        b("KFC", .food, ["kfc"], ["kfc"], store: "KFC Россия"),
+        b("Вкусно — и точка", .food, ["vkusnoitochka"], ["вкусно — и точка", "вкусно и точка"], store: "Вкусно и точка"),
+        b("Бургер Кинг", .food, ["burgerking"], ["бургер кинг"]),
+        b("Тануки", .food, ["tanuki"], ["тануки"]),
+        b("Якитория", .food, ["yakitoriya"], ["якитория"]),
+        b("Чиббис", .food, ["chibbis"], ["чиббис"]),
+        // Groceries
+        b("ВкусВилл", .groceries, ["vkusvill"], ["вкусвилл"]),
+        b("Самокат", .groceries, ["samokat"], ["самокат"]),
+        b("Купер", .groceries, ["kuper", "sbermarket"], ["купер", "сбермаркет"]),
+        b("Перекрёсток", .groceries, ["perekrestok"], ["перекрёсток", "перекресток"], store: "Перекрёсток впрок"),
+        b("Магнит", .groceries, ["magnit"], ["магнит"]),
+        b("Пятёрочка", .groceries, ["pyaterochka"], ["пятёрочка", "пятерочка"]),
+        b("Ашан", .groceries, ["auchan"], ["ашан"]),
+        b("Утконос", .groceries, ["utkonos"], ["утконос"]),
+        b("Metro", .groceries, ["metro-cc"], [], store: "METRO Россия"),
+        b("Лента", .groceries, ["lentaonline"], [], store: "Лента онлайн"),
+        // Parcels
+        b("Ozon", .parcel, ["ozon"], ["ozon", "озон"]),
+        b("Wildberries", .parcel, ["wildberries"], ["wildberries", "вайлдберриз"]),
+        b("СДЭК", .parcel, ["cdek"], ["сдэк", "cdek"]),
+        b("Почта России", .parcel, ["pochta"], ["почта россии"]),
+        b("Boxberry", .parcel, ["boxberry"], ["boxberry"]),
+        b("AliExpress", .parcel, ["aliexpress"], ["aliexpress"]),
+        b("Яндекс Маркет", .parcel, ["yandex.market", "beru"], ["яндекс маркет"]),
+        b("DPD", .parcel, ["dpd"], [], store: "DPD Russia"),
+        b("Авито", .parcel, ["avito"], ["авито доставка"]),
+        b("Lamoda", .parcel, ["lamoda"], ["lamoda"]),
     ]
+
+    // Website notifications without a known brand: by what they talk about.
+    private static let generic: [(words: [String], service: DeliveryService)] = [
+        (["водитель", "такси"], DeliveryService(name: "Такси", category: .taxi, ids: [], words: [], store: nil)),
+        (["курьер", "доставка еды"], DeliveryService(name: "Доставка", category: .food, ids: [], words: [], store: nil)),
+        (["пункт выдачи", "постамат", "посылка"], DeliveryService(name: "Посылка", category: .parcel, ids: [], words: [], store: nil)),
+    ]
+
+    static func service(named name: String) -> DeliveryService? { services.first { $0.name == name } }
+
+    static func isBrowser(_ appID: String) -> Bool {
+        let id = appID.lowercased()
+        let browsers = ["com.apple.safari", "com.google.chrome", "ru.yandex.desktop.yandex-browser", "yandex.browser",
+                        "org.mozilla.firefox", "com.microsoft.edgemac", "com.operasoftware", "company.thebrowser"]
+        return browsers.contains(where: { id.contains($0) })
+    }
 
     // Which service a notification belongs to, if any.
     static func match(appID: String, text: String) -> DeliveryService? {
         let id = appID.lowercased()
-        if let s = services.first(where: { s in s.ids.contains(where: { id.contains($0) }) }) { return s }
+        if !isBrowser(id), let s = services.first(where: { s in s.ids.contains(where: { id.contains($0) }) }) { return s }
         // Website notifications come from the browser: look at the words.
-        let browsers = ["com.apple.safari", "com.google.chrome", "ru.yandex.desktop.yandex-browser", "yandex.browser",
-                        "org.mozilla.firefox", "com.microsoft.edgemac", "com.operasoftware", "company.thebrowser"]
-        guard browsers.contains(where: { id.contains($0) }) || id.contains("mirroring") else { return nil }
+        guard isBrowser(id) || id.contains("mirroring") else { return nil }
         let lower = text.lowercased()
-        return services.first(where: { s in s.words.contains(where: { lower.contains($0) }) })
+        if let s = services.first(where: { s in s.words.contains(where: { lower.contains($0) }) }) { return s }
+        return generic.first(where: { g in g.words.contains(where: { lower.contains($0) }) })?.service
     }
 
     // One line for the island: the body when it is short, else the title.
@@ -66,7 +129,7 @@ enum DeliveryCatalog {
 }
 
 final class DeliveryNotificationWatch {
-    var onUpdate: ((DeliveryService, String) -> Void)?
+    var onUpdate: ((DeliveryService, String, String) -> Void)?
     private var timer: Timer?
     private var lastID: Int64 = -1
     private var seenApps: Set<String> = []
@@ -153,7 +216,7 @@ final class DeliveryNotificationWatch {
             let line = DeliveryCatalog.line(title: title, subtitle: subtitle, body: body)
             guard !line.isEmpty else { continue }
             DeliveryLog.write("shown: \(service.name) from \(app)")
-            DispatchQueue.main.async { [weak self] in self?.onUpdate?(service, line) }
+            DispatchQueue.main.async { [weak self] in self?.onUpdate?(service, line, app) }
         }
     }
 
@@ -179,5 +242,100 @@ enum DeliveryLog {
         } else {
             try? text.write(to: url, atomically: true, encoding: .utf8)
         }
+    }
+}
+
+// 4.16.1: the real app icon instead of a coloured symbol. A Mac app gives its
+// own icon; an iPhone app (notifications via iPhone Mirroring) or a website
+// gets the icon from the public App Store catalogue — once, then it is kept
+// in ~/Library/Caches. Only the app's name or identifier is sent, never the
+// text of the notification. If nothing is found, the coloured symbol stays.
+final class DeliveryIcons {
+    static let shared = DeliveryIcons()
+    private var memory: [String: NSImage] = [:]
+    private var missing: Set<String> = []
+    private let folder: URL = {
+        let base = FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask).first
+            ?? FileManager.default.temporaryDirectory
+        return base.appendingPathComponent("Ovira/DeliveryIcons", isDirectory: true)
+    }()
+
+    func icon(for service: DeliveryService, appID: String, completion: @escaping (NSImage?) -> Void) {
+        let key = service.store == nil ? "" : service.name
+        // A real Mac app (not a browser): its own icon, no network.
+        if !appID.isEmpty, !DeliveryCatalog.isBrowser(appID),
+           let url = NSWorkspace.shared.urlForApplication(withBundleIdentifier: appID) {
+            completion(NSWorkspace.shared.icon(forFile: url.path)); return
+        }
+        guard !key.isEmpty, !missing.contains(key) else { completion(nil); return }
+        if let image = memory[key] { completion(image); return }
+        let file = folder.appendingPathComponent(Self.fileName(key))
+        if let image = NSImage(contentsOf: file) { memory[key] = image; completion(image); return }
+
+        let mirrored = !appID.isEmpty && !DeliveryCatalog.isBrowser(appID) && appID.contains(".")
+        var parts = URLComponents(string: "https://itunes.apple.com/" + (mirrored ? "lookup" : "search"))!
+        parts.queryItems = mirrored
+            ? [URLQueryItem(name: "bundleId", value: appID), URLQueryItem(name: "country", value: "ru")]
+            : [URLQueryItem(name: "term", value: service.store), URLQueryItem(name: "entity", value: "software"),
+               URLQueryItem(name: "country", value: "ru"), URLQueryItem(name: "limit", value: "1")]
+        var finished = false
+        let finish: (NSImage?) -> Void = { [weak self] image in
+            DispatchQueue.main.async {
+                guard !finished else { return }
+                finished = true
+                if let image { self?.memory[key] = image }
+                completion(image)
+            }
+        }
+        // Never keep a notification waiting for long.
+        DispatchQueue.main.asyncAfter(deadline: .now() + 3) { finish(nil) }
+        fetchArtwork(parts.url!) { [weak self] data in
+            guard let self, let data, let image = NSImage(data: data) else {
+                if mirrored { self?.retryBySearch(service, key: key, finish: finish) } else { finish(nil) }
+                return
+            }
+            self.save(data, key: key)
+            finish(image)
+        }
+    }
+
+    // Mirrored app not in the Russian catalogue by its id: try by name.
+    private func retryBySearch(_ service: DeliveryService, key: String, finish: @escaping (NSImage?) -> Void) {
+        var parts = URLComponents(string: "https://itunes.apple.com/search")!
+        parts.queryItems = [URLQueryItem(name: "term", value: service.store), URLQueryItem(name: "entity", value: "software"),
+                            URLQueryItem(name: "country", value: "ru"), URLQueryItem(name: "limit", value: "1")]
+        fetchArtwork(parts.url!) { [weak self] data in
+            guard let self, let data, let image = NSImage(data: data) else {
+                DispatchQueue.main.async { self?.missing.insert(key) }
+                finish(nil); return
+            }
+            self.save(data, key: key)
+            finish(image)
+        }
+    }
+
+    private func fetchArtwork(_ url: URL, completion: @escaping (Data?) -> Void) {
+        var request = URLRequest(url: url, timeoutInterval: 6)
+        request.setValue("Ovira", forHTTPHeaderField: "User-Agent")
+        URLSession.shared.dataTask(with: request) { data, _, _ in
+            guard let data,
+                  let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+                  let first = (json["results"] as? [[String: Any]])?.first,
+                  let art = (first["artworkUrl512"] ?? first["artworkUrl100"]) as? String,
+                  let artURL = URL(string: art) else { completion(nil); return }
+            URLSession.shared.dataTask(with: URLRequest(url: artURL, timeoutInterval: 8)) { image, _, _ in
+                completion(image)
+            }.resume()
+        }.resume()
+    }
+
+    private func save(_ data: Data, key: String) {
+        try? FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+        try? data.write(to: folder.appendingPathComponent(Self.fileName(key)))
+    }
+
+    private static func fileName(_ key: String) -> String {
+        let safe = key.unicodeScalars.map { CharacterSet.alphanumerics.contains($0) ? String($0) : "_" }.joined()
+        return safe + ".img"
     }
 }
