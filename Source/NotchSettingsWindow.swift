@@ -201,6 +201,7 @@ struct NotchSettingsWindowView: View {
     // 3.13.0: flowing colours behind the settings window.
     @AppStorage("settingsAnimatedBackgroundV3130") private var settingsAnimatedBackground = true
     @AppStorage("energySaverModeV3164") private var energySaverMode = "battery"
+    @AppStorage(AppUpdater.intervalKey) private var updateInterval = 3.0
     @AppStorage("waveArtworkV3180") private var waveArtwork = true
     @AppStorage(WaveLook.styleKey) private var waveStyle = WaveLook.legacyStyle
     @AppStorage(WaveLook.colorKey) private var waveColor = ""
@@ -1733,7 +1734,23 @@ struct NotchSettingsWindowView: View {
             }
             group("Обновление",
                   footer: "Новые версии Ovira сам находит на GitHub (H1rka-afk/notch-island-releases), скачивает готовую сборку в фоне и показывает «Обновить». Установка — несколько секунд, разрешения сохраняются. Архив, положенный в «Загрузки», тоже подхватывается, как раньше.") {
-                toggleRow("Обновления с GitHub", subtitle: "Проверять раз в 3 часа и скачивать новую версию заранее", isOn: $githubUpdates)
+                toggleRow("Обновления с GitHub", subtitle: "Проверять и скачивать новую версию заранее", isOn: $githubUpdates)
+                rowDivider
+                // 4.18.0: how often.
+                VStack(alignment: .leading, spacing: 8) {
+                    Text("Проверять обновления").font(.system(size: 13))
+                    SmoothSegmented(selection: Binding(get: { updateInterval },
+                                                       set: {
+                                                           updateInterval = $0
+                                                           NotificationCenter.default.post(name: AppUpdater.intervalChanged, object: nil)
+                                                       }),
+                                    options: AppUpdater.intervalOptions)
+                        .frame(height: 28)
+                }
+                .padding(.horizontal, 14)
+                .padding(.vertical, 11)
+                .disabled(!githubUpdates)
+                .opacity(githubUpdates ? 1 : 0.5)
                 rowDivider
                 HStack(alignment: .center, spacing: 12) {
                     Image(systemName: snapshot.updateAvailableVersion == nil

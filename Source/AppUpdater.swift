@@ -59,6 +59,14 @@ final class AppUpdater {
     ]
     static let githubKey = "githubUpdatesV400"
     static var githubEnabled: Bool { (UserDefaults.standard.object(forKey: githubKey) as? Bool) ?? true }
+    // 4.18.0: how often to look for a new version (hours), chosen in Settings.
+    static let intervalKey = "updateIntervalHoursV4180"
+    static let intervalOptions: [(Double, String)] = [(1, "1 ч"), (3, "3 ч"), (6, "6 ч"), (24, "День"), (168, "Неделя")]
+    static var intervalHours: Double {
+        let v = (UserDefaults.standard.object(forKey: intervalKey) as? Double) ?? 3
+        return intervalOptions.contains(where: { $0.0 == v }) ? v : 3
+    }
+    static let intervalChanged = Notification.Name("OviraUpdateIntervalChanged")
     private var lastGitHubCheck = Date.distantPast
     private var githubTimer: Timer?
     private var downloading = false
@@ -96,12 +104,26 @@ final class AppUpdater {
         timer.tolerance = 4
         RunLoop.main.add(timer, forMode: .common)
         self.timer = timer
-        // 3.21.0: GitHub — shortly after launch, then every 3 hours.
+        // 3.21.0: GitHub — shortly after launch, then at the chosen interval
+        // (4.18.0; every 3 hours by default).
         DispatchQueue.main.asyncAfter(deadline: .now() + 20) { [weak self] in self?.checkGitHub() }
-        let remote = Timer(timeInterval: 3 * 3600, repeats: true) { [weak self] _ in self?.checkGitHub() }
-        remote.tolerance = 600
+        scheduleGitHub()
+        NotificationCenter.default.addObserver(forName: Self.intervalChanged, object: nil, queue: .main) { [weak self] _ in
+            self?.scheduleGitHub()
+        }
+    }
+
+    private func scheduleGitHub() {
+        githubTimer?.invalidate()
+        let interval = Self.intervalHours * 3600
+        let remote = Timer(timeInterval: interval, repeats: true) { [weak self] _ in self?.checkGitHub() }
+        remote.tolerance = min(600, interval * 0.1)
         RunLoop.main.add(remote, forMode: .common)
         githubTimer = remote
+        // A shorter interval than the time already passed: look now.
+        if Date().timeIntervalSince(lastGitHubCheck) > interval {
+            DispatchQueue.main.asyncAfter(deadline: .now() + 2) { [weak self] in self?.checkGitHub() }
+        }
     }
 
     // MARK: GitHub releases (3.21.0)
@@ -111,7 +133,7 @@ final class AppUpdater {
     func checkGitHub(force: Bool = false) {
         guard Self.githubEnabled, !downloading else { return }
         if case .installing = state { return }
-        if !force && Date().timeIntervalSince(lastGitHubCheck) < 10 * 60 { return }
+        if !force && Date().timeIntervalSince(lastGitHubCheck) < min(10 * 60, Self.intervalHours * 3600 * 0.5) { return }
         lastGitHubCheck = Date()
         let group = DispatchGroup()
         let lock = NSLock()

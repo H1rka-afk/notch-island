@@ -117,7 +117,8 @@ enum IslandLook {
 
     static var expandedScale: CGFloat {
         let v = (UserDefaults.standard.object(forKey: expandedKey) as? Double) ?? 1
-        return CGFloat(min(expandedRange.upperBound, max(expandedRange.lowerBound, v)))
+        // 4.18.0: the open island is about 6 % smaller at every setting.
+        return CGFloat(min(expandedRange.upperBound, max(expandedRange.lowerBound, v))) * 0.94
     }
     static var compactArtworkScale: CGFloat {
         let v = (UserDefaults.standard.object(forKey: compactArtworkKey) as? Double) ?? 1

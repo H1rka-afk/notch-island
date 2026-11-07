@@ -218,7 +218,7 @@ struct OutputDeviceButton: View {
                 .frame(width: 30, height: 43)
                 .contentShape(Rectangle())
         }
-        .buttonStyle(DynamicIslandButtonStyle())
+        .buttonStyle(IPhoneControlStyle(diameter: 38))
         .help("Звук: \(route.name)")
         .accessibilityLabel("Звук: \(route.name). Выбрать устройство")
         .onAppear { route.refresh(); list.refresh() }
@@ -255,6 +255,14 @@ enum OutputMenu {
             item.state = device.name == current ? .on : .off
             menu.addItem(item)
         }
+        // 4.18.0: the island lives above menus (screen-saver level), so the
+        // list used to open UNDER the player. While it is open the island's
+        // windows step down just below the menu level, then return.
+        let menuLevel = NSWindow.Level.popUpMenu.rawValue
+        let lowered = NSApp.windows.filter { $0.isVisible && $0.level.rawValue >= menuLevel }
+        let saved = lowered.map { $0.level }
+        lowered.forEach { $0.level = NSWindow.Level(rawValue: menuLevel - 1) }
+        defer { for (window, level) in zip(lowered, saved) { window.level = level } }
         menu.popUp(positioning: nil, at: NSEvent.mouseLocation, in: nil)
     }
 }

@@ -2804,6 +2804,17 @@ final class IslandAppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             weather.refreshIfNeeded(allowPrompt: !isScreenLocked) { [weak self] in self?.refreshLockWidgets() }
         }
         if wanted.contains(.battery), let item = LockWidgetBuilder.battery(state.power) { available[.battery] = item }
+        // 4.18.0
+        if wanted.contains(.date) { available[.date] = LockWidgetBuilder.date() }
+        if wanted.contains(.moon) { available[.moon] = LockWidgetBuilder.moon() }
+        if wanted.contains(.sound), let item = LockWidgetBuilder.sound() { available[.sound] = item }
+        if wanted.contains(.storage), let item = LockWidgetBuilder.storage() { available[.storage] = item }
+        if wanted.contains(.uptime) { available[.uptime] = LockWidgetBuilder.uptime() }
+        if wanted.contains(.nowPlaying),
+           let item = LockWidgetBuilder.nowPlaying(title: state.track?.title, artist: state.track?.artist,
+                                                   playing: state.track?.isPlaying == true) {
+            available[.nowPlaying] = item
+        }
         // 3.12.0
         if wanted.contains(.accessories),
            let item = LockWidgetBuilder.accessories(AccessoryBatteryReader.read()) { available[.accessories] = item }

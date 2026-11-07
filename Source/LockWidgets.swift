@@ -10,6 +10,7 @@ import SystemConfiguration
 enum LockWidgetKind: String, CaseIterable, Identifiable {
     case weather, battery, airpods, calendar, reminders, timer, focus
     case accessories, system, sun        // 3.12.0
+    case date, moon, sound, storage, uptime, nowPlaying   // 4.18.0
 
     var id: String { rawValue }
 
@@ -25,6 +26,12 @@ enum LockWidgetKind: String, CaseIterable, Identifiable {
         case .accessories: return "Мышь и клавиатура"
         case .system: return "Нагрузка Mac"
         case .sun: return "Восход и закат"
+        case .date: return "Дата"
+        case .moon: return "Фаза Луны"
+        case .sound: return "Звук"
+        case .storage: return "Место на диске"
+        case .uptime: return "Без перезагрузки"
+        case .nowPlaying: return "Сейчас играет"
         }
     }
 
@@ -40,6 +47,12 @@ enum LockWidgetKind: String, CaseIterable, Identifiable {
         case .accessories: return "Заряд Magic Mouse, Keyboard, Trackpad — когда подключены"
         case .system: return "Процессор и память, как в Мониторинге системы"
         case .sun: return "Ближайший восход или закат там, где ты"
+        case .date: return "День недели и число"
+        case .moon: return "Сегодняшняя фаза и сколько до полнолуния"
+        case .sound: return "Куда идёт звук и громкость"
+        case .storage: return "Сколько свободно на диске Mac"
+        case .uptime: return "Сколько Mac работает без перезагрузки"
+        case .nowPlaying: return "Песня и исполнитель — когда играет музыка"
         }
     }
 
@@ -55,6 +68,12 @@ enum LockWidgetKind: String, CaseIterable, Identifiable {
         case .accessories: return "computermouse.fill"
         case .system: return "cpu"
         case .sun: return "sunrise.fill"
+        case .date: return "calendar.day.timeline.left"
+        case .moon: return "moonphase.full.moon"
+        case .sound: return "speaker.wave.2.fill"
+        case .storage: return "internaldrive.fill"
+        case .uptime: return "clock.arrow.circlepath"
+        case .nowPlaying: return "music.note"
         }
     }
 }
@@ -421,6 +440,77 @@ enum LockWidgetBuilder {
                               value: SunFormat.time(next.time),
                               caption: next.dayLength.map(SunFormat.dayLength) ?? snapshot.place,
                               progress: nil, tint: Color(red: 1, green: 0.78, blue: 0.3))
+    }
+
+    // MARK: 4.18.0 — more widgets, all from the Mac itself (nothing online)
+
+    static func date(now: Date = Date()) -> LockWidgetItem {
+        let f = DateFormatter()
+        f.locale = Locale(identifier: "ru_RU")
+        f.dateFormat = "EEEE"
+        let weekday = f.string(from: now).capitalized
+        f.dateFormat = "d MMMM"
+        let day = f.string(from: now)
+        let week = Calendar(identifier: .iso8601).component(.weekOfYear, from: now)
+        return LockWidgetItem(kind: .date, heading: weekday, symbol: "calendar", value: day,
+                              caption: "Неделя \(week)", progress: nil, tint: .white)
+    }
+
+    static func moon(now: Date = Date()) -> LockWidgetItem {
+        let phase = MoonPhase.fraction(at: now)          // 0 new … 0.5 full … 1 new
+        let info = MoonPhase.describe(phase)
+        let toFull = MoonPhase.daysUntilFull(from: phase)
+        let caption = toFull == 0 ? "Полнолуние сегодня" : "До полнолуния \(toFull) дн."
+        return LockWidgetItem(kind: .moon, heading: "Луна", symbol: info.symbol, value: info.name,
+                              caption: caption, progress: MoonPhase.illumination(phase),
+                              tint: Color(red: 0.86, green: 0.88, blue: 1.0))
+    }
+
+    static func sound() -> LockWidgetItem? {
+        guard let device = SystemVolume.defaultOutputDeviceID() else { return nil }
+        let name = SystemVolume.name(of: device)
+        let symbol = SystemVolume.symbol(for: device, name: name)
+        let muted = SystemVolume.isMuted()
+        let level = SystemVolume.current().map { Int(($0 * 100).rounded()) }
+        return LockWidgetItem(kind: .sound, heading: name, symbol: muted ? "speaker.slash.fill" : symbol,
+                              value: muted ? "Без звука" : (level.map { "\($0) %" } ?? "—"), caption: "",
+                              progress: muted ? 0 : level.map { Double($0) / 100 }, tint: .white)
+    }
+
+    static func storage() -> LockWidgetItem? {
+        let root = URL(fileURLWithPath: "/")
+        guard let values = try? root.resourceValues(forKeys: [.volumeAvailableCapacityForImportantUsageKey,
+                                                              .volumeTotalCapacityKey]),
+              let free = values.volumeAvailableCapacityForImportantUsage,
+              let total = values.volumeTotalCapacity, total > 0 else { return nil }
+        let formatter = ByteCountFormatter()
+        formatter.countStyle = .file
+        formatter.allowedUnits = [.useGB, .useTB]
+        let freeText = formatter.string(fromByteCount: free)
+        let used = 1 - Double(free) / Double(total)
+        let low = Double(free) / Double(total) < 0.1
+        return LockWidgetItem(kind: .storage, heading: "Свободно", symbol: "internaldrive.fill", value: freeText,
+                              caption: "из \(formatter.string(fromByteCount: Int64(total)))", progress: used,
+                              tint: low ? Color(red: 1, green: 0.58, blue: 0) : .white)
+    }
+
+    static func uptime() -> LockWidgetItem {
+        let seconds = Int(ProcessInfo.processInfo.systemUptime)
+        let days = seconds / 86_400, hours = (seconds % 86_400) / 3600, minutes = (seconds % 3600) / 60
+        let value: String
+        if days > 0 { value = "\(days) д \(hours) ч" }
+        else if hours > 0 { value = "\(hours) ч \(minutes) мин" }
+        else { value = "\(minutes) мин" }
+        return LockWidgetItem(kind: .uptime, heading: "Без перезагрузки", symbol: "clock.arrow.circlepath",
+                              value: value, caption: days >= 14 ? "Пора перезагрузить" : "",
+                              progress: nil, tint: days >= 14 ? Color(red: 1, green: 0.8, blue: 0) : .white)
+    }
+
+    static func nowPlaying(title: String?, artist: String?, playing: Bool) -> LockWidgetItem? {
+        guard let title, !title.isEmpty else { return nil }
+        return LockWidgetItem(kind: .nowPlaying, heading: playing ? "Сейчас играет" : "На паузе",
+                              symbol: playing ? "music.note" : "pause.fill", value: title,
+                              caption: artist ?? "", progress: nil, tint: .white)
     }
 
     static func weather(_ snapshot: WeatherSnapshot?, now: Date = Date()) -> LockWidgetItem? {
@@ -798,5 +888,37 @@ struct LockWidgetsEditor: View {
             }
         }
         .controlSize(.small)
+    }
+}
+
+// 4.18.0: the Moon's phase, computed (synodic month from a known new moon).
+enum MoonPhase {
+    private static let synodic = 29.530588853
+    private static let knownNew = Date(timeIntervalSince1970: 947_182_440)   // 2000-01-06 18:14 UTC
+
+    static func fraction(at date: Date) -> Double {
+        let days = date.timeIntervalSince(knownNew) / 86_400
+        let f = days.truncatingRemainder(dividingBy: synodic) / synodic
+        return f < 0 ? f + 1 : f
+    }
+
+    static func illumination(_ f: Double) -> Double { (1 - cos(2 * Double.pi * f)) / 2 }
+
+    static func daysUntilFull(from f: Double) -> Int {
+        let remaining = (f <= 0.5 ? 0.5 - f : 1.5 - f) * synodic
+        return remaining < 0.75 || remaining > synodic - 0.75 ? 0 : Int(remaining.rounded())
+    }
+
+    static func describe(_ f: Double) -> (name: String, symbol: String) {
+        switch f {
+        case ..<0.033, 0.967...: return ("Новолуние", "moonphase.new.moon")
+        case ..<0.216: return ("Растущий серп", "moonphase.waxing.crescent")
+        case ..<0.283: return ("Первая четверть", "moonphase.first.quarter")
+        case ..<0.466: return ("Растущая Луна", "moonphase.waxing.gibbous")
+        case ..<0.533: return ("Полнолуние", "moonphase.full.moon")
+        case ..<0.716: return ("Убывающая Луна", "moonphase.waning.gibbous")
+        case ..<0.783: return ("Последняя четверть", "moonphase.last.quarter")
+        default: return ("Убывающий серп", "moonphase.waning.crescent")
+        }
     }
 }

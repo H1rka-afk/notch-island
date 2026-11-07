@@ -398,26 +398,21 @@ struct IslandView: View {
                 }
                 Spacer(minLength: 9)
                 HStack(spacing: 22) {
+                    // 4.18.0: iPhone-style buttons (PlayerButtons.swift).
                     Button { state.command(.previous) } label: {
-                        Image(systemName: "backward.fill")
-                            .font(.system(size: 22, weight: .medium))
-                            .symbolEffect(.bounce, value: state.previousPulse)
+                        SkipGlyph(forward: false, pulse: state.previousPulse, size: 22)
                             .frame(width: 40, height: 43)
                     }
                     Button { state.command(.toggle) } label: {
-                        Image(systemName: state.track?.isPlaying == true ? "pause.fill" : "play.fill")
-                            .font(.system(size: 27, weight: .semibold))
-                            .contentTransition(.symbolEffect(.replace))
+                        PlayPauseGlyph(playing: state.track?.isPlaying == true, size: 27)
                             .frame(width: 42, height: 43)
                     }
                     Button { state.command(.next) } label: {
-                        Image(systemName: "forward.fill")
-                            .font(.system(size: 22, weight: .medium))
-                            .symbolEffect(.bounce, value: state.nextPulse)
+                        SkipGlyph(forward: true, pulse: state.nextPulse, size: 22)
                             .frame(width: 40, height: 43)
                     }
                 }
-                .buttonStyle(DynamicIslandButtonStyle())
+                .buttonStyle(IPhoneControlStyle(diameter: 46))
                 Spacer(minLength: 9)
                 // 4.8.2: «where the sound goes», as in the new player.
                 // 4.8.3: larger in the classic player.
@@ -492,25 +487,19 @@ struct IslandView: View {
                 Spacer(minLength: 9)
                 HStack(spacing: 24) {
                     Button { state.command(.previous) } label: {
-                        Image(systemName: "backward.fill")
-                            .font(.system(size: 21, weight: .medium))
-                            .symbolEffect(.bounce, value: state.previousPulse)
+                        SkipGlyph(forward: false, pulse: state.previousPulse, size: 21)
                             .frame(width: 40, height: 40)
                     }
                     Button { state.command(.toggle) } label: {
-                        Image(systemName: state.track?.isPlaying == true ? "pause.fill" : "play.fill")
-                            .font(.system(size: 28, weight: .semibold))
-                            .contentTransition(.symbolEffect(.replace))
+                        PlayPauseGlyph(playing: state.track?.isPlaying == true, size: 28)
                             .frame(width: 44, height: 40)
                     }
                     Button { state.command(.next) } label: {
-                        Image(systemName: "forward.fill")
-                            .font(.system(size: 21, weight: .medium))
-                            .symbolEffect(.bounce, value: state.nextPulse)
+                        SkipGlyph(forward: true, pulse: state.nextPulse, size: 21)
                             .frame(width: 40, height: 40)
                     }
                 }
-                .buttonStyle(DynamicIslandButtonStyle())
+                .buttonStyle(IPhoneControlStyle(diameter: 46))
                 Spacer(minLength: 9)
                 OutputDeviceButton()
                     .frame(width: 30, height: 40)
@@ -890,7 +879,7 @@ private struct AnimatedFavoriteStar: View {
             .frame(width: 30, height: 43)
             .contentShape(Rectangle())
         }
-        .buttonStyle(DynamicIslandButtonStyle())
+        .buttonStyle(IPhoneControlStyle(diameter: 40))
         .disabled(state.favoriteIsUpdating)
         .accessibilityLabel(state.favoriteIsVerified
             ? (state.favoriteIsSaved ? "Убрать из избранного" : "Добавить в избранное")
@@ -906,7 +895,7 @@ private struct AnimatedFavoriteStar: View {
             motion.ringOpacity = 0.95
             motion.rotation = -10
             withAnimation(IslandMotion.press) {
-                motion.scale = 1.16
+                motion.scale = 1.32      // 4.18.0: a bigger pop, like on iPhone
                 motion.rotation = 0
             }
             withAnimation(.easeOut(duration: 0.32)) {
@@ -1843,23 +1832,17 @@ struct LockScreenMediaCard: View {
             .frame(width: 40)
             Spacer(minLength: 0)
             Button { state.command(.previous) } label: {
-                Image(systemName: "backward.fill")
-                    .font(.system(size: 26, weight: .medium))
-                    .symbolEffect(.bounce, value: state.previousPulse)
+                SkipGlyph(forward: false, pulse: state.previousPulse, size: 26)
                     .frame(width: 52, height: 40)
             }
             Spacer(minLength: 0)
             Button { state.command(.toggle) } label: {
-                Image(systemName: song.isPlaying ? "pause.fill" : "play.fill")
-                    .font(.system(size: 34, weight: .semibold))
-                    .contentTransition(.symbolEffect(.replace))
+                PlayPauseGlyph(playing: song.isPlaying, size: 34)
                     .frame(width: 52, height: 40)
             }
             Spacer(minLength: 0)
             Button { state.command(.next) } label: {
-                Image(systemName: "forward.fill")
-                    .font(.system(size: 26, weight: .medium))
-                    .symbolEffect(.bounce, value: state.nextPulse)
+                SkipGlyph(forward: true, pulse: state.nextPulse, size: 26)
                     .frame(width: 52, height: 40)
             }
             Spacer(minLength: 0)
@@ -1877,7 +1860,7 @@ struct LockScreenMediaCard: View {
             .help("Звук: \(outputRoute.name)")
             .accessibilityLabel("Звук: \(outputRoute.name). Выбрать устройство")
         }
-        .buttonStyle(DynamicIslandButtonStyle())
+        .buttonStyle(IPhoneControlStyle(diameter: 50))
         .foregroundStyle(.white)
     }
 
