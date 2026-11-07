@@ -1,44 +1,40 @@
 import SwiftUI
 
-// 4.17.1 — a padlock that really opens: the shackle slides up out of the
-// body, then turns around its right leg (with a small settle), instead of
-// a cross-fade from «lock.fill» to «lock.open.fill». Drawn from shapes so the
-// closed state is identical on the lock screen and on the desktop.
+// 4.17.1 — a padlock that really opens, instead of a cross-fade from
+// «lock.fill» to «lock.open.fill». 4.17.2: drawn in the proportions of the
+// system «lock.fill» (wide rounded body, no keyhole, thick shackle), and the
+// shackle now swings open on the point where its RIGHT leg enters the body —
+// the right leg never leaves the body, only the left leg comes out.
+// The closed state is the same drawing on the lock screen and the desktop.
 struct PadlockGlyph: View {
     let open: Bool
     var size: CGFloat = 18
     var color: Color = .white.opacity(0.94)
 
-    @State private var lift: CGFloat = 0     // 0…1 — shackle out of the body
-    @State private var swing: Double = 0     // degrees around the right leg
+    @State private var swing: Double = 0     // degrees, clockwise around the right leg's base
     @State private var token = UUID()
 
+    private static let openAngle: Double = 34
+
     var body: some View {
-        let bodyW = size * 0.78
-        let bodyH = size * 0.56
-        let shackleW = size * 0.52
-        let shackleH = size * 0.5
-        let line = size * 0.13
+        let bodyW = size * 0.82
+        let bodyH = size * 0.52
+        let line = size * 0.135
+        let outerW = size * 0.52                // shackle, outer edge to outer edge
+        let pathW = outerW - line               // centre line of the stroke
+        let sink = line * 0.9                   // how deep the legs go into the body
+        let pathH = size * 0.5 - line / 2 + sink
         ZStack(alignment: .bottom) {
             Shackle()
                 .stroke(color, style: StrokeStyle(lineWidth: line, lineCap: .butt))
-                .frame(width: shackleW, height: shackleH)
-                // Like a real padlock: the shackle turns around its long
-                // right leg, so the short leg swings out to the right.
-                .rotation3DEffect(.degrees(swing), axis: (x: 0, y: 1, z: 0),
-                                  anchor: UnitPoint(x: 1 - (line / 2) / shackleW, y: 0.5),
-                                  perspective: 0.45)
-                .offset(y: -(bodyH - line * 0.6) - lift * size * 0.2)
-            RoundedRectangle(cornerRadius: size * 0.14, style: .continuous)
+                .frame(width: pathW, height: pathH)
+                // Pivot: the right leg's centre, exactly at the top of the body.
+                .rotationEffect(.degrees(swing),
+                                anchor: UnitPoint(x: 1, y: 1 - sink / pathH))
+                .offset(y: -(bodyH - sink))
+            RoundedRectangle(cornerRadius: size * 0.15, style: .continuous)
                 .fill(color)
                 .frame(width: bodyW, height: bodyH)
-                .overlay(
-                    // keyhole
-                    Capsule()
-                        .fill(Color.black)
-                        .frame(width: size * 0.1, height: size * 0.2)
-                        .offset(y: size * 0.02)
-                )
         }
         .frame(width: size, height: size, alignment: .bottom)
         .onAppear { apply(open, animated: false) }
@@ -49,30 +45,23 @@ struct PadlockGlyph: View {
     private func apply(_ isOpen: Bool, animated: Bool) {
         let current = UUID()
         token = current
-        guard animated else {
-            lift = isOpen ? 1 : 0
-            swing = isOpen ? 180 : 0
-            return
-        }
+        let target = isOpen ? Self.openAngle : 0
+        guard animated else { swing = target; return }
         if isOpen {
-            // 1) the shackle pops up out of the body…
-            withAnimation(.easeOut(duration: 0.16)) { lift = 1 }
-            // 2) …then turns around its right leg and settles.
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.13) {
+            // A quick pull, then the left leg springs up and out, settling
+            // with a small bounce — the right leg stays in the body throughout.
+            withAnimation(.easeIn(duration: 0.07)) { swing = -3 }
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.07) {
                 guard token == current else { return }
-                withAnimation(.spring(response: 0.46, dampingFraction: 0.7)) { swing = 180 }
+                withAnimation(.spring(response: 0.42, dampingFraction: 0.55)) { swing = target }
             }
         } else {
-            withAnimation(.spring(response: 0.3, dampingFraction: 0.9)) { swing = 0 }
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.18) {
-                guard token == current else { return }
-                withAnimation(.easeIn(duration: 0.14)) { lift = 0 }
-            }
+            withAnimation(.spring(response: 0.32, dampingFraction: 0.85)) { swing = 0 }
         }
     }
 }
 
-// An upside-down U: two legs joined by a half circle.
+// An upside-down U: two legs joined by a half circle (stroke centre line).
 private struct Shackle: Shape {
     func path(in rect: CGRect) -> Path {
         let r = rect.width / 2
