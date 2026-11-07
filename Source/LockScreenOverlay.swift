@@ -149,15 +149,8 @@ private struct PadlockNotchView: View {
                 .frame(width: width + flare * 2, height: notch.mediaCompactHeight + padlockTopBleed)
 
             HStack(spacing: 0) {
-                ZStack {
-                    Image(systemName: "lock.fill")
-                        .opacity(appearance.unlocked ? 0 : 1)
-                    Image(systemName: "lock.open.fill")
-                        .opacity(appearance.unlocked ? 1 : 0)
-                }
-                .font(.system(size: 18, weight: .medium))
-                .symbolRenderingMode(.monochrome)
-                .foregroundStyle(.white.opacity(0.94))
+                // 4.17.1: the same drawn padlock as after the unlock.
+                PadlockGlyph(open: appearance.unlocked, size: 17)
                 .frame(width: 38, height: notch.mediaCompactHeight)
                 .offset(x: 2)
                 .opacity(appearance.notice == nil ? appearance.symbolOpacity : 0)

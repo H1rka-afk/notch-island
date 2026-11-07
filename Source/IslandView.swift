@@ -200,20 +200,8 @@ struct IslandView: View {
             // there is no extra desktop window to blink or replay an entrance.
             if state.unlockTransitionActive {
                 HStack(spacing: 0) {
-                    ZStack {
-                        Image(systemName: "lock.fill")
-                            .opacity(state.unlockSymbolOpen || state.unlockFacePhase > 0 ? 0 : 1)
-                        Image(systemName: "lock.open.fill")
-                            .opacity(state.unlockSymbolOpen && state.unlockFacePhase == 0 ? 1 : 0)
-                        // 4.17.0: Touch ID unlock → Face ID–style scan and check.
-                        if state.unlockFacePhase > 0 {
-                            FaceIDGlyph(success: state.unlockFacePhase == 2, size: 19)
-                                .transition(.scale(scale: 0.6).combined(with: .opacity))
-                        }
-                    }
-                    .font(.system(size: 18, weight: .medium))
-                    .symbolRenderingMode(.monochrome)
-                    .foregroundStyle(.white.opacity(0.94))
+                    // 4.17.1: the padlock really opens (shackle up, then turns).
+                    PadlockGlyph(open: state.unlockSymbolOpen, size: 17)
                     .frame(width: 38, height: state.notchHeight)
                     .offset(x: 2)
                     .opacity(state.unlockSymbolOpacity)
@@ -221,7 +209,6 @@ struct IslandView: View {
                 }
                 .frame(width: width, height: state.notchHeight)
                 .padding(.top, roof)
-                .animation(.easeInOut(duration: 0.26), value: state.unlockSymbolOpen)
                 .allowsHitTesting(false)
                 .accessibilityHidden(true)
             }
