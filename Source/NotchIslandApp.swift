@@ -615,7 +615,98 @@ final class IslandState: ObservableObject {
     }
     private var timerPreviewToken = UUID()
     private var timerPreviewDeadline = Date.distantPast
-    var timerPresented: Bool { timerActive || timerPreviewActive }
+    // The Clock timer itself (real or the test preview).
+    var clockTimerPresented: Bool { timerActive || timerPreviewActive }
+    // 5.0.0: the «timer place» — the right wing of a closed island without
+    // music, or the round satellite next to the music — also holds a live
+    // activity (taxi, food). The Clock timer wins when both are running.
+    var timerPresented: Bool { clockTimerPresented || liveActivity != nil }
+    var showsLiveActivity: Bool { liveActivity != nil && !clockTimerPresented }
+
+    @Published private(set) var liveActivity: LiveActivity? {
+        didSet {
+            guard (oldValue == nil) != (liveActivity == nil) else { return }
+            layoutChanged?()
+            let wasVisible = track != nil || clockTimerPresented || oldValue != nil
+            let nowVisible = track != nil || timerPresented
+            if wasVisible != nowVisible { updateCompactPresentation(isVisible: nowVisible) }
+        }
+    }
+    private var liveActivityTimer: Timer?
+    private var liveActivityEndToken = UUID()
+
+    static let liveActivitiesKey = "liveActivitiesV500"
+    static var liveActivitiesEnabled: Bool {
+        UserDefaults.standard.object(forKey: liveActivitiesKey) as? Bool ?? true
+    }
+
+    // A new notification of a taxi / order. Returns true when the banner
+    // should still be shown (a new activity, the end, or nowhere to show it).
+    @discardableResult
+    func updateLiveActivity(service: DeliveryService, line: String, icon: NSImage?) -> Bool {
+        guard Self.liveActivitiesEnabled, !isSessionLocked,
+              let kind = LiveActivityParser.kind(for: service.category) else { return true }
+        let read = LiveActivityParser.read(line, kind: kind)
+        let now = Date()
+        var activity: LiveActivity
+        var isNew = false
+        if var current = liveActivity, current.id == service.name, !current.finished {
+            if let stage = read.stage { current.stage = max(current.stage, stage) }
+            current.status = line
+            current.updated = now
+            if let icon { current.icon = icon }
+            activity = current
+        } else {
+            // Something else running already — a newer one takes over.
+            activity = LiveActivity(id: service.name, kind: kind, name: service.name,
+                                    symbol: service.symbol, tint: service.tint, icon: icon,
+                                    stage: read.stage ?? 0, status: line)
+            isNew = true
+        }
+        if let minutes = read.minutes { activity.etaDate = now.addingTimeInterval(Double(minutes) * 60) }
+        if read.finished { activity.finished = true; activity.etaDate = nil }
+        withAnimation(IslandMotion.surface) { liveActivity = activity }
+        scheduleLiveActivityChecks()
+        if activity.finished {
+            let token = UUID()
+            liveActivityEndToken = token
+            DispatchQueue.main.asyncAfter(deadline: .now() + 9) { [weak self] in
+                guard let self, self.liveActivityEndToken == token else { return }
+                self.endLiveActivity()
+            }
+        }
+        // Seen only as a banner when the timer place is taken by the Clock.
+        return isNew || activity.finished || clockTimerPresented
+    }
+
+    func endLiveActivity() {
+        guard liveActivity != nil else { return }
+        liveActivityTimer?.invalidate()
+        liveActivityTimer = nil
+        liveActivityEndToken = UUID()
+        if !clockTimerPresented {
+            if showsTimerSatellite { timerSatelliteExiting = true }
+            if timerExpanded {
+                withAnimation(IslandMotion.shrink) { resetTimerSatellite() }
+            } else {
+                resetTimerSatellite()
+            }
+        }
+        liveActivity = nil
+        if track == nil && !clockTimerPresented { collapsePlayer() }
+    }
+
+    // Old activities end by themselves: no news for 75 minutes (a ride or
+    // an order never takes that long between two notifications).
+    private func scheduleLiveActivityChecks() {
+        guard liveActivityTimer == nil else { return }
+        let timer = Timer(timeInterval: 30, repeats: true) { [weak self] _ in
+            guard let self, let activity = self.liveActivity else { return }
+            if Date().timeIntervalSince(activity.updated) > 75 * 60 { self.endLiveActivity() }
+        }
+        RunLoop.main.add(timer, forMode: .common)
+        liveActivityTimer = timer
+    }
 
     func previewTimerSatellite() {
         guard !isSessionLocked && !unlockTransitionActive else { return }
@@ -642,7 +733,7 @@ final class IslandState: ObservableObject {
         // Only detach when the main island is occupied. When the timer is the
         // only active content it lives inside the physical-notch island.
         // The diagnostic preview deliberately exercises the side window.
-        TimerRoutingPolicy.showsSatellite(timer: timerActive,
+        TimerRoutingPolicy.showsSatellite(timer: timerActive || liveActivity != nil,
                                           preview: timerPreviewActive,
                                           music: track != nil, event: event != nil,
                                           locked: isSessionLocked,
@@ -894,7 +985,8 @@ final class IslandState: ObservableObject {
         // that change re-lays out the music panel at once. Raised later
         // (from the satellite window), the music island had already left
         // its fixed canvas: it vanished and slid back in from the right.
-        if showsTimerSatellite {
+        // 5.0.0: a live activity stays in the satellite — no exit then.
+        if showsTimerSatellite && liveActivity == nil {
             timerExitRemaining = timerRemaining()
             timerSatelliteExiting = true
         }
@@ -3267,10 +3359,43 @@ final class IslandAppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     // 4.16.1: taxi / food / parcel banner with the service's own icon.
     private func presentDelivery(_ service: DeliveryService, line: String, appID: String) {
         DeliveryIcons.shared.icon(for: service, appID: appID) { [weak self] image in
-            self?.state.presentNotice(IslandNotice(
+            guard let self else { return }
+            // 5.0.0: taxis and orders also become a live activity; the
+            // banner is kept for the first and the last news only.
+            let banner = self.state.updateLiveActivity(service: service, line: line, icon: image)
+            guard banner else { return }
+            self.state.presentNotice(IslandNotice(
                 kind: .delivery, symbol: service.symbol, tint: service.tint,
                 text: line, thumbnail: image, duration: 5,
                 accessibility: "\(service.name): \(line)"))
+        }
+    }
+
+    // 5.0.0: a whole taxi ride in 20 seconds, through the real pipeline
+    // (nothing is read from the Mac). Pressing again stops it.
+    private var activityDemoToken: UUID?
+    private func previewLiveActivity() {
+        if activityDemoToken != nil {
+            activityDemoToken = nil
+            state.endLiveActivity()
+            return
+        }
+        let token = UUID()
+        activityDemoToken = token
+        guard let service = DeliveryCatalog.service(named: "Яндекс Go") else { return }
+        let steps: [(Double, String)] = [
+            (0, "Ищем машину поблизости"),
+            (4, "Водитель приедет через 4 мин"),
+            (9, "Водитель подъехал, ожидает"),
+            (14, "Поездка началась, приедем через 12 мин"),
+            (20, "Поездка завершена"),
+        ]
+        for (delay, line) in steps {
+            DispatchQueue.main.asyncAfter(deadline: .now() + delay) { [weak self] in
+                guard let self, self.activityDemoToken == token else { return }
+                self.presentDelivery(service, line: line, appID: "")
+                if line == steps.last?.1 { self.activityDemoToken = nil }
+            }
         }
     }
 
@@ -4297,6 +4422,7 @@ final class IslandAppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             setFocusIsland: { [weak self] value in self?.setFocusIslandEnabled(value) },
             previewFocus: { [weak self] in self?.previewFocusIsland() },
             previewDelivery: { [weak self] in self?.previewDeliveryIsland() },
+            previewLiveActivity: { [weak self] in self?.previewLiveActivity() },
             openFullDiskAccess: { [weak self] in self?.openFullDiskAccessSettings() },
             installUpdate: { [weak self] in self?.installAvailableUpdate() },
             setMediaGestures: { [weak self] value in self?.setMediaGesturesEnabled(value) },

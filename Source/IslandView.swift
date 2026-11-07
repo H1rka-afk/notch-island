@@ -333,14 +333,20 @@ struct IslandView: View {
                     }
                 }
                 .frame(width: state.rightWing, height: state.compactDisplayHeight)
-            } else if state.timerPresented {
+            } else if state.clockTimerPresented {
                 CompactTimer(state: state)
                     .frame(width: state.rightWing, height: state.compactDisplayHeight)
+            } else if let activity = state.liveActivity {
+                // 5.0.0: a live activity (taxi, food) — icon and minutes.
+                LiveActivityCompact(activity: activity)
+                    .frame(width: state.rightWing, height: state.compactDisplayHeight)
+                    .transition(.opacity.combined(with: .scale(scale: 0.85)))
             }
         }
         .frame(width: state.compactWidth, height: state.compactDisplayHeight)
         .onTapGesture { state.expandPlayer() }
-        .accessibilityLabel(state.track != nil ? "Открыть медиаплеер" : "Открыть таймер")
+        .accessibilityLabel(state.track != nil ? "Открыть медиаплеер"
+                            : (state.clockTimerPresented ? "Открыть таймер" : "Открыть активность"))
     }
 
     private var expandedContent: some View {
@@ -527,7 +533,18 @@ struct IslandView: View {
         }
     }
 
+    @ViewBuilder
     private var expandedTimerContent: some View {
+        if !state.clockTimerPresented, let activity = state.liveActivity {
+            LiveActivityExpanded(activity: activity)
+                .padding(.horizontal, 25)
+                .frame(width: state.expandedWidth)
+        } else {
+            expandedClockTimerContent
+        }
+    }
+
+    private var expandedClockTimerContent: some View {
         VStack(spacing: 16) {
             HStack(spacing: 10) {
                 Image(systemName: "timer")
@@ -1535,7 +1552,22 @@ struct TimerSatelliteView: View {
                            value: state.timerExpanded)
 
             Group {
-                if state.timerExpanded {
+                if state.timerExpanded, state.showsLiveActivity, let activity = state.liveActivity {
+                    // 5.0.0: the live activity in the open satellite.
+                    LiveActivityExpanded(activity: activity)
+                        .padding(.horizontal, 17)
+                        .frame(width: state.timerExpandedWidth,
+                               height: state.timerExpandedHeight)
+                        .padding(.top, state.timerTopBleed)
+                        .transition(.opacity.combined(with: .scale(scale: 0.94,
+                                                                   anchor: .topLeading)))
+                } else if !state.timerExpanded, state.showsLiveActivity, let activity = state.liveActivity {
+                    LiveActivityBadge(activity: activity, diameter: state.timerCompactDiameter)
+                        .padding(.top, state.timerTopBleed)
+                        .contentShape(Rectangle())
+                        .onTapGesture { state.expandTimerSatellite(force: true) }
+                        .transition(.opacity.combined(with: .scale(scale: 0.82)))
+                } else if state.timerExpanded {
                     expandedTimer
                         .frame(width: state.timerExpandedWidth,
                                height: state.timerExpandedHeight)
@@ -1566,7 +1598,8 @@ struct TimerSatelliteView: View {
         .padding(.leading, state.timerLeadInset)
         .frame(width: state.timerPanelSize.width + state.timerLeadInset + 13,
                height: state.timerPanelSize.height, alignment: .topLeading)
-        .accessibilityLabel(state.timerExpanded ? "Таймер, управление" : "Таймер, открыть")
+        .accessibilityLabel(state.showsLiveActivity ? (state.liveActivity?.name ?? "Активность")
+                            : (state.timerExpanded ? "Таймер, управление" : "Таймер, открыть"))
     }
 
     private var compactStopwatch: some View {
@@ -2476,6 +2509,9 @@ struct LockCoverWallpaper: View {
     @ObservedObject private var widgets = LockWidgetsModel.shared
     @ObservedObject private var display = SystemDisplayOptions.shared
     @AppStorage("lockCoverClockV372") private var showsClock = true
+    @AppStorage(LockClockStyle.key) private var clockStyle = LockClockStyle.classic.rawValue
+    @AppStorage(LockClockFont.key) private var clockFont = LockClockFont.rounded.rawValue
+    @AppStorage(LockClockColor.key) private var clockColour = LockClockColor.white.rawValue
     // 3.8.4: share of the screen height taken by the cover (Settings).
     @AppStorage("lockCoverScaleV384") private var coverScale = 0.55
     // 3.9.4: the locked user's own picture, read fresh on every lock.
@@ -2551,21 +2587,13 @@ struct LockCoverWallpaper: View {
 
                 if showsClock {
                     TimelineView(.everyMinute) { context in
-                        // 3.8.11: same places and sizes as the macOS 27 lock
-                        // screen (measured on this Mac's recording).
-                        ZStack {
-                            Text(Self.date(context.date))
-                                .font(.system(size: size.height * 0.025, weight: .semibold))
-                                .position(x: size.width / 2, y: size.height * 0.1056)
-                            Text(Self.time(context.date))
-                                // 3.8.14: −20% — the real clock is 600 px wide
-                                // on the recording, ours was 750 px.
-                                .font(.system(size: size.height * 0.119, weight: .medium, design: .rounded))
-                                .monospacedDigit()
-                                .position(x: size.width / 2, y: size.height * 0.187)
-                        }
-                        .foregroundStyle(.white.opacity(0.92))
-                        .shadow(color: .black.opacity(0.25), radius: 10, y: 3)
+                        // 3.8.11: same places and sizes as the macOS lock
+                        // screen. 5.0.0: style, font and colour from Settings.
+                        LockClockFace(date: context.date, width: size.width, height: size.height,
+                                      cover: state.musicArtworkTint,
+                                      style: LockClockStyle(rawValue: clockStyle) ?? .classic,
+                                      font: LockClockFont(rawValue: clockFont) ?? .rounded,
+                                      colour: LockClockColor(rawValue: clockColour) ?? .white)
                     }
                 }
             }

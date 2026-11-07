@@ -127,6 +127,7 @@ struct NotchSettingsActions {
     let setFocusIsland: (Bool) -> Void
     let previewFocus: () -> Void
     let previewDelivery: () -> Void
+    let previewLiveActivity: () -> Void
     let openFullDiskAccess: () -> Void
     let installUpdate: () -> Void
     let setMediaGestures: (Bool) -> Void
@@ -196,6 +197,10 @@ struct NotchSettingsWindowView: View {
     @Namespace private var sidebarSelection
     @AppStorage("lockScreenMediaV360") private var lockScreenMedia = true
     @AppStorage("lockCoverClockV372") private var lockCoverClock = true
+    @AppStorage(IslandState.liveActivitiesKey) private var liveActivities = true
+    @AppStorage(LockClockStyle.key) private var lockClockStyle = LockClockStyle.classic.rawValue
+    @AppStorage(LockClockFont.key) private var lockClockFont = LockClockFont.rounded.rawValue
+    @AppStorage(LockClockColor.key) private var lockClockColour = LockClockColor.white.rawValue
     @AppStorage("lockCoverScaleV384") private var lockCoverScale = 0.55
     @AppStorage("lockCoverAnimatedV395") private var lockCoverAnimated = true
     // 3.13.0: flowing colours behind the settings window.
@@ -1084,11 +1089,16 @@ struct NotchSettingsWindowView: View {
                 if snapshot.searchQuery.trimmingCharacters(in: .whitespaces).isEmpty {
                     VStack(alignment: .leading, spacing: 2) {
                         ForEach(Section.allCases, id: \.self) { section in
-                            if section != Section.allCases.first && section.group != previousGroup(of: section) {
-                                Capsule().fill(Color.primary.opacity(0.08))
-                                    .frame(height: 1)
-                                    .padding(.horizontal, 12)
-                                    .padding(.vertical, 6)
+                            // 5.0.0: named groups instead of thin lines.
+                            if section == Section.allCases.first || section.group != previousGroup(of: section) {
+                                Text(Self.groupTitle(section.group))
+                                    .font(.system(size: 10.5, weight: .semibold))
+                                    .foregroundStyle(.secondary)
+                                    .textCase(.uppercase)
+                                    .kerning(0.4)
+                                    .padding(.horizontal, 10)
+                                    .padding(.top, section == Section.allCases.first ? 2 : 12)
+                                    .padding(.bottom, 4)
                             }
                             sidebarItem(section)
                         }
@@ -1104,6 +1114,14 @@ struct NotchSettingsWindowView: View {
         }
         .frame(maxHeight: .infinity, alignment: .top)
         .settingsGlass(cornerRadius: 22, prominent: true)
+    }
+
+    private static func groupTitle(_ group: Int) -> String {
+        switch group {
+        case 0: return "Ovira"
+        case 1: return "Островок и экран"
+        default: return "Устройства и таймер"
+        }
     }
 
     private func previousGroup(of section: Section) -> Int {
@@ -1195,6 +1213,8 @@ struct NotchSettingsWindowView: View {
             }
             .shadow(color: .black.opacity(0.18), radius: 4, y: 1)
             Spacer(minLength: 12)
+            // 5.0.0: a live preview of the section — the island acting it out.
+            heroPreview
         }
         .padding(.horizontal, 22)
         .padding(.vertical, 20)
@@ -1212,6 +1232,43 @@ struct NotchSettingsWindowView: View {
         .overlay(shape.strokeBorder(Color.white.opacity(0.35), lineWidth: 1))
         .shadow(color: color.opacity(0.35), radius: 18, y: 8)
         .padding(.bottom, 4)
+    }
+
+    private var heroDemo: IslandDemo? {
+        switch currentSection {
+        case .media: return .music
+        case .lock: return .lock
+        case .notifications: return .taxi
+        case .helpers: return .eyes
+        case .shelf: return .airdrop
+        case .devices: return .airpods
+        case .timer: return .timer
+        case .profiles: return .profile
+        case .island: return nil          // cycles through everything
+        default: return nil
+        }
+    }
+
+    @ViewBuilder
+    private var heroPreview: some View {
+        if currentSection == .island || heroDemo != nil {
+            TimelineView(.periodic(from: .now, by: 2.6)) { context in
+                let cycle = IslandDemo.cycle.filter { !$0.expanded }
+                let index = Int(context.date.timeIntervalSinceReferenceDate / 2.6) % max(1, cycle.count)
+                let demo = heroDemo ?? cycle[index]
+                ZStack(alignment: .top) {
+                    LinearGradient(colors: [Color.black.opacity(0.32), Color.black.opacity(0.12)],
+                                   startPoint: .top, endPoint: .bottom)
+                    IslandDemoView(island: island, demo: demo, scale: demo.expanded ? 0.5 : 0.62)
+                }
+                .frame(width: 236, height: 96)
+                .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
+                .overlay(RoundedRectangle(cornerRadius: 18, style: .continuous)
+                    .strokeBorder(Color.white.opacity(0.22), lineWidth: 1))
+            }
+            .allowsHitTesting(false)
+            .transition(.opacity)
+        }
     }
 
     private func scrollToHighlight(_ proxy: ScrollViewProxy) {
@@ -2199,6 +2256,57 @@ struct NotchSettingsWindowView: View {
                     Button("Показать") { actions.previewLockMedia() }
                 }
             }
+            // 5.0.0: the clock on the cover lock screen.
+            group("Часы", footer: "Часы Ovira на экране блокировки с обложкой. Все стили не меньше системных часов — системные никогда не выглядывают из-под них. Поле пароля и Touch ID внизу не меняются.") {
+                LockClockPreview(style: LockClockStyle(rawValue: lockClockStyle) ?? .classic,
+                                 font: LockClockFont(rawValue: lockClockFont) ?? .rounded,
+                                 colour: LockClockColor(rawValue: lockClockColour) ?? .white)
+                    .padding(.horizontal, 14)
+                    .padding(.vertical, 10)
+                rowDivider
+                VStack(alignment: .leading, spacing: 8) {
+                    Text("Стиль").font(.system(size: 13))
+                    HStack(spacing: 8) {
+                        ForEach(LockClockStyle.allCases) { style in
+                            LockClockChip(style: style,
+                                          font: LockClockFont(rawValue: lockClockFont) ?? .rounded,
+                                          selected: lockClockStyle == style.rawValue) {
+                                withAnimation(IslandMotion.surface) { lockClockStyle = style.rawValue }
+                            }
+                        }
+                    }
+                }
+                .padding(.horizontal, 14)
+                .padding(.vertical, 11)
+                rowDivider
+                VStack(alignment: .leading, spacing: 8) {
+                    Text("Шрифт").font(.system(size: 13))
+                    SmoothSegmented(selection: $lockClockFont,
+                                    options: LockClockFont.allCases.map { ($0.rawValue, $0.title) })
+                        .frame(height: 28)
+                }
+                .padding(.horizontal, 14)
+                .padding(.vertical, 11)
+                rowDivider
+                row("Цвет") {
+                    HStack(spacing: 7) {
+                        ForEach(LockClockColor.allCases) { colour in
+                            Button {
+                                withAnimation(IslandMotion.surface) { lockClockColour = colour.rawValue }
+                            } label: {
+                                Circle()
+                                    .fill(colour.swatch)
+                                    .frame(width: 20, height: 20)
+                                    .overlay(Circle().strokeBorder(Color.primary.opacity(lockClockColour == colour.rawValue ? 0.9 : 0.15),
+                                                                   lineWidth: lockClockColour == colour.rawValue ? 2 : 1))
+                                    .padding(2)
+                            }
+                            .buttonStyle(.plain)
+                            .help(colour.title)
+                        }
+                    }
+                }
+            }
             }
             if snapshot.lockPage == "standby" {
             group("StandBy", footer: "Как iPhone на зарядке: Mac заблокирован, подключён к питанию и его не трогают 20 секунд — весь экран становится большими часами с зарядом и музыкой или погодой. Нажатие в любом месте (кроме раскрытого островка с музыкой) или любая клавиша возвращают обычный экран входа — пароль никогда не вводится вслепую.") {
@@ -2408,6 +2516,15 @@ struct NotchSettingsWindowView: View {
                 rowDivider
                 row("Демонстрация") {
                     Button("Показать") { actions.previewDelivery() }
+                }
+                rowDivider
+                // 5.0.0
+                toggleRow("Живые активности",
+                          subtitle: "Такси и заказ еды остаются в островке до конца: этап, полоска и минуты. С музыкой — кружок рядом с островком",
+                          isOn: $liveActivities)
+                rowDivider
+                row("Поездка на такси", subtitle: "Вся поездка за 20 секунд — как это выглядит") {
+                    Button("Показать") { actions.previewLiveActivity() }
                 }
             }
             group("Приватность и сеть") {

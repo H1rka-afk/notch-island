@@ -623,17 +623,8 @@ struct LockWidgetsEditor: View {
 
     private func clock(_ size: CGSize) -> some View {
         TimelineView(.everyMinute) { context in
-            ZStack {
-                Text(LockCoverWallpaper.date(context.date))
-                    .font(.system(size: size.height * 0.025, weight: .semibold))
-                    .position(x: size.width / 2, y: size.height * 0.1056)
-                Text(LockCoverWallpaper.time(context.date))
-                    .font(.system(size: size.height * 0.119, weight: .medium, design: .rounded))
-                    .monospacedDigit()
-                    .position(x: size.width / 2, y: size.height * 0.187)
-            }
-            .foregroundStyle(.white.opacity(0.9))
-            .shadow(color: .black.opacity(0.25), radius: 10, y: 3)
+            // 5.0.0: the chosen clock style, as on the lock screen.
+            LockClockFace(date: context.date, width: size.width, height: size.height)
         }
     }
 

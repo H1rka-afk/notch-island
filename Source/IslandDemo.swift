@@ -6,9 +6,9 @@ import SwiftUI
 // island. Where real data exists (the song, the cover, the battery,
 // AirPods) it is used; otherwise a neat sample.
 enum IslandDemo: String, CaseIterable, Equatable {
-    case music, charging, airpods, focus, timer, airdrop, lock, meeting, volume, profile, eyes
+    case music, charging, airpods, focus, timer, airdrop, lock, meeting, volume, profile, eyes, taxi
 
-    static let cycle: [IslandDemo] = [.music, .charging, .airpods, .airdrop, .eyes, .timer, .focus]
+    static let cycle: [IslandDemo] = [.music, .charging, .airpods, .taxi, .airdrop, .eyes, .timer, .focus]
 
     var caption: String {
         switch self {
@@ -23,6 +23,7 @@ enum IslandDemo: String, CaseIterable, Equatable {
         case .volume: return "Громкость, вывод звука и другие системные баннеры"
         case .profile: return "Профиль включает нужный набор функций одним нажатием"
         case .eyes: return "Правило 20-20-20 — каждые 20 минут 20 секунд смотри вдаль"
+        case .taxi: return "Живая активность — такси или заказ до самого конца"
         }
     }
 
@@ -44,6 +45,7 @@ enum IslandDemo: String, CaseIterable, Equatable {
         case .volume: return 52
         case .profile: return 86
         case .eyes: return 52
+        case .taxi: return 52
         }
     }
 }
@@ -109,6 +111,9 @@ struct IslandDemoView: View {
         case .eyes:
             compact(left: Image(systemName: "eye.fill"), leftColor: Color(red: 0.25, green: 0.8, blue: 0.85),
                     right: Text("20 с"), rightColor: Color(red: 0.25, green: 0.8, blue: 0.85))
+        case .taxi:
+            compact(left: Image(systemName: "car.fill"), leftColor: Color(red: 1, green: 0.82, blue: 0),
+                    right: Text("4 мин"), rightColor: Color(red: 1, green: 0.82, blue: 0))
         }
     }
 

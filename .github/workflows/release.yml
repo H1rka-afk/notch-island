@@ -11,6 +11,9 @@ on:
       runner:
         description: 'Runner label (fallback when macos-26 has no capacity)'
         default: 'macos-26'
+      check:
+        description: 'yes = only test and build (compile check), never publish'
+        default: 'no'
 
 permissions:
   contents: write
@@ -55,7 +58,7 @@ jobs:
           fi
 
       - name: Newest Xcode
-        if: steps.exists.outputs.skip != '1'
+        if: steps.exists.outputs.skip != '1' || inputs.check == 'yes'
         run: |
           ls -d /Applications/Xcode*.app || true
           XC="$(ls -d /Applications/Xcode_*.app 2>/dev/null | sort -V | tail -1)"
@@ -64,15 +67,15 @@ jobs:
           xcrun --sdk macosx --show-sdk-version
 
       - name: Tests
-        if: steps.exists.outputs.skip != '1'
+        if: steps.exists.outputs.skip != '1' || inputs.check == 'yes'
         run: bash scripts/run-tests.sh
 
       - name: Build
-        if: steps.exists.outputs.skip != '1'
+        if: steps.exists.outputs.skip != '1' || inputs.check == 'yes'
         run: bash scripts/ci-build.sh
 
       - name: Publish release
-        if: steps.exists.outputs.skip != '1'
+        if: steps.exists.outputs.skip != '1' && inputs.check != 'yes'
         env:
           GH_TOKEN: ${{ secrets.RELEASES_TOKEN || github.token }}
         run: |
