@@ -146,6 +146,7 @@ struct NotchSettingsActions {
     let checkForUpdates: () -> Void
     let openUpdateLog: () -> Void
     let previewLock: () -> Void
+    let previewFaceUnlock: () -> Void
     let previewTimer: () -> Void
     let retryAudio: () -> Void
     let reloadArtwork: () -> Void
@@ -201,6 +202,7 @@ struct NotchSettingsWindowView: View {
     // 3.13.0: flowing colours behind the settings window.
     @AppStorage("settingsAnimatedBackgroundV3130") private var settingsAnimatedBackground = true
     @AppStorage("energySaverModeV3164") private var energySaverMode = "battery"
+    @AppStorage(FaceUnlockStyle.key) private var faceUnlockStyle = true
     @AppStorage("waveArtworkV3180") private var waveArtwork = true
     @AppStorage(WaveLook.styleKey) private var waveStyle = WaveLook.legacyStyle
     @AppStorage(WaveLook.colorKey) private var waveColor = ""
@@ -2090,8 +2092,12 @@ struct NotchSettingsWindowView: View {
         VStack(alignment: .leading, spacing: 20) {
             pagePicker(selection: $snapshot.lockPage, pages: SettingsPages.lock, section: .lock)
             if snapshot.lockPage == "player" {
-            group(nil, footer: "Экспериментальное отображение поверх экрана блокировки.") {
+            group(nil, footer: "Экспериментальное отображение поверх экрана блокировки. Анимация Face ID — только украшение: разблокирует сам macOS, Ovira смотрит лишь, нажимались ли клавиши (не какие), чтобы отличить пароль от Touch ID.") {
                 toggleRow("Замочек на экране блокировки", isOn: lockBinding)
+                rowDivider
+                toggleRow("Анимация Face ID при входе по Touch ID",
+                          subtitle: "Вместо открывающегося замка — лицо сканируется и превращается в галочку. После ввода пароля — обычный замок",
+                          isOn: $faceUnlockStyle)
             }
             group("Медиаплеер", footer: "Как на экране блокировки iPhone: обложка, название, прогресс и кнопки внизу по центру, над полем пароля. Появляется, только когда играет или стоит на паузе музыка. Кнопки управляют музыкой без разблокировки; если macOS не пропустит нажатия, карточка останется для просмотра.") {
                 toggleRow("Медиаплеер на экране блокировки", isOn: $lockScreenMedia)
@@ -2280,6 +2286,10 @@ struct NotchSettingsWindowView: View {
                 group("Проверка") {
                     row("Анимация замка") {
                         Button("Показать") { actions.previewLock() }
+                    }
+                    rowDivider
+                    row("Анимация Face ID") {
+                        Button("Показать") { actions.previewFaceUnlock() }
                     }
                     rowDivider
                     row("Журнал замочка") {
@@ -3588,7 +3598,7 @@ enum SettingsPages {
         case "lock":
             if lockStandBy.contains(entry.title) { return "standby" }
             if lockWidgets.contains(entry.title) { return "widgets" }
-            if ["Анимация замка", "Журнал замочка"].contains(entry.title) { return nil }
+            if ["Анимация замка", "Анимация Face ID", "Журнал замочка"].contains(entry.title) { return nil }
             return "player"
         default:
             return nil

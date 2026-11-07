@@ -418,6 +418,10 @@ final class IslandState: ObservableObject {
     @Published private(set) var unlockSymbolOpen = false
     @Published private(set) var unlockSymbolOpacity: Double = 0
     @Published private(set) var unlockMediaOpacity: Double = 1
+    // 4.17.0: Face ID–style glyph instead of the padlock after a Touch ID
+    // unlock. 0 = padlock, 1 = scanning face, 2 = check mark.
+    @Published private(set) var unlockFacePhase = 0
+    private var unlockFaceStyle = false
     private var unlockTransitionToken = UUID()
     private var unlockSequenceStarted = false
     // Delegate's post-unlock callback must survive until the SkyLight handoff
@@ -1528,6 +1532,8 @@ final class IslandState: ObservableObject {
         unlockSymbolOpacity = 0
         unlockSymbolOpen = false
         unlockMediaOpacity = 1
+        unlockFacePhase = 0
+        unlockFaceStyle = false
         pointerInsideIsland = false
         // All pending media/event transitions belong to the old desktop
         // session. Cancel their callbacks before SkyLight takes over.
@@ -1574,7 +1580,7 @@ final class IslandState: ObservableObject {
         static let completionDelay = retractDelay + retractDuration + 0.14
     }
 
-    func animateRealScreenUnlock(completion: @escaping () -> Void) {
+    func animateRealScreenUnlock(faceStyle: Bool = false, completion: @escaping () -> Void) {
         // First publish the fully reserved lock-sized canvas; only then reveal
         // the already-existing media NSPanel in the app delegate. Never create
         // a second desktop lock panel or run the normal compact entrance.
@@ -1598,6 +1604,8 @@ final class IslandState: ObservableObject {
             unlockSurfaceProgress = 1
             unlockSymbolOpacity = 1
             unlockSymbolOpen = false
+            unlockFacePhase = 0
+            unlockFaceStyle = faceStyle
             unlockMediaOpacity = 0
             unlockTransitionActive = true
             isSessionLocked = false
@@ -1620,6 +1628,18 @@ final class IslandState: ObservableObject {
         DispatchQueue.main.asyncAfter(deadline: .now() + UnlockTiming.openDelay) { [weak self] in
             guard let self, self.unlockTransitionToken == token,
                   self.unlockTransitionActive && !self.isSessionLocked else { return }
+            if self.unlockFaceStyle {
+                // Padlock → scanning face → check mark, within the same hold.
+                withAnimation(.easeInOut(duration: 0.2)) { self.unlockFacePhase = 1 }
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.55) { [weak self] in
+                    guard let self, self.unlockTransitionToken == token,
+                          self.unlockTransitionActive && !self.isSessionLocked else { return }
+                    self.unlockFacePhase = 2
+                    NSHapticFeedbackManager.defaultPerformer.perform(.levelChange, performanceTime: .now)
+                }
+                LockScreenOverlay.logSessionEvent("unlock: Face ID–style glyph (no password typed)")
+                return
+            }
             withAnimation(.easeInOut(duration: UnlockTiming.openDuration)) {
                 self.unlockSymbolOpen = true
             }
@@ -1654,6 +1674,8 @@ final class IslandState: ObservableObject {
             self.unlockSequenceStarted = false
             self.unlockSymbolOpacity = 0
             self.unlockSymbolOpen = false
+            self.unlockFacePhase = 0
+            self.unlockFaceStyle = false
             self.unlockMediaOpacity = 1
             self.unlockSurfaceProgress = 0
             LockScreenOverlay.logSessionEvent("unlock: one-panel animation completed after open-lock hold")
@@ -3962,6 +3984,7 @@ final class IslandAppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         }
         LockScreenOverlay.logSessionEvent("session locked: source=\(notification.name.rawValue), bit=\(String(describing: screenLockFlag))")
         isScreenLocked = true
+        PasswordEntryProbe.shared.start()
         standby.update(locked: true, onPower: state.power?.onACPower ?? false)
         // 4.1.1: StandBy shows the temperature — have it ready.
         if StandBySettings.isEnabled { WeatherService.shared.refreshIfNeeded(allowPrompt: false) {} }
@@ -4023,6 +4046,9 @@ final class IslandAppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         LockScreenOverlay.logSessionEvent("session unlocked: source=\(notification.name.rawValue), bit=\(String(describing: screenLockFlag))")
         lockStatusItem?.title = "Замочек: " + (lockOverlay?.diagnosticSummary ?? "Не проверено")
         isScreenLocked = false
+        // 4.17.0: no password typed → Touch ID / Apple Watch → Face ID–style glyph.
+        let faceStyle = FaceUnlockStyle.isEnabled && !PasswordEntryProbe.shared.typedPassword
+        PasswordEntryProbe.shared.stop()
         standby.update(locked: false, onPower: false)
         stopLockWidgets()
         desktopLockFadeToken = UUID()
@@ -4038,7 +4064,7 @@ final class IslandAppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         // desktop NSWindow for this real-session unlock.
         lockOverlay?.animateUnlock(beginMediaTransition: { [weak self] in
             guard let self, !self.isScreenLocked else { return }
-            self.state.animateRealScreenUnlock { [weak self] in
+            self.state.animateRealScreenUnlock(faceStyle: faceStyle) { [weak self] in
                 guard let self, !self.isScreenLocked else { return }
                 self.unlockHandoffInProgress = false
                 self.pollMedia()
@@ -4247,6 +4273,15 @@ final class IslandAppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             })
         }
     }
+    // 4.17.0: the Face ID–style unlock glyph on the desktop, for settings.
+    private func demoFaceUnlock() {
+        guard !isScreenLocked, !state.unlockTransitionActive else { return }
+        state.animateRealScreenUnlock(faceStyle: true) { [weak self] in self?.pollMedia() }
+        commitDesktopUnlockIsland()
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.25) { [weak self] in
+            self?.state.playRealScreenUnlockPhases()
+        }
+    }
     @objc private func openClockTimers() {
         clockTimers.openClock()
     }
@@ -4340,6 +4375,7 @@ final class IslandAppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
                 }
             },
             previewLock: { [weak self] in self?.demoUnlock() },
+            previewFaceUnlock: { [weak self] in self?.demoFaceUnlock() },
             previewTimer: { [weak self] in self?.showTimerSatellitePreview() },
             retryAudio: { [weak self] in self?.retryAudio() },
             reloadArtwork: { [weak self] in self?.reloadArtwork() },

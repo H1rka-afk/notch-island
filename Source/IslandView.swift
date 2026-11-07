@@ -202,9 +202,14 @@ struct IslandView: View {
                 HStack(spacing: 0) {
                     ZStack {
                         Image(systemName: "lock.fill")
-                            .opacity(state.unlockSymbolOpen ? 0 : 1)
+                            .opacity(state.unlockSymbolOpen || state.unlockFacePhase > 0 ? 0 : 1)
                         Image(systemName: "lock.open.fill")
-                            .opacity(state.unlockSymbolOpen ? 1 : 0)
+                            .opacity(state.unlockSymbolOpen && state.unlockFacePhase == 0 ? 1 : 0)
+                        // 4.17.0: Touch ID unlock → Face ID–style scan and check.
+                        if state.unlockFacePhase > 0 {
+                            FaceIDGlyph(success: state.unlockFacePhase == 2, size: 19)
+                                .transition(.scale(scale: 0.6).combined(with: .opacity))
+                        }
                     }
                     .font(.system(size: 18, weight: .medium))
                     .symbolRenderingMode(.monochrome)
