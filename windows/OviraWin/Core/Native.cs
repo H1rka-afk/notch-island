@@ -78,6 +78,23 @@ namespace Ovira.Core
             DwmSetWindowAttribute(hwnd, 33, ref round, sizeof(int));
         }
 
+        // 0.4.3: Ovira is a window app and never opens a console; if one was
+        // attached anyway (started from a script), it is closed at once.
+        [DllImport("kernel32.dll")] private static extern IntPtr GetConsoleWindow();
+        [DllImport("kernel32.dll")] private static extern bool FreeConsole();
+        [DllImport("user32.dll")] private static extern bool ShowWindow(IntPtr hWnd, int cmd);
+
+        public static void DropConsole()
+        {
+            try
+            {
+                var console = GetConsoleWindow();
+                if (console == IntPtr.Zero) return;
+                FreeConsole();
+            }
+            catch { }
+        }
+
         public static bool IsWindows11 => Environment.OSVersion.Version.Build >= 22000;
     }
 
@@ -86,6 +103,30 @@ namespace Ovira.Core
     {
         private const string RunKey = @"Software\Microsoft\Windows\CurrentVersion\Run";
         private const string Name = "Ovira";
+
+        // Task Manager → «Автозагрузка» keeps its own on/off next to the Run key.
+        private const string ApprovedKey = @"Software\Microsoft\Windows\CurrentVersion\Explorer\StartupApproved\Run";
+
+        // Switched off by hand in Task Manager?
+        public static bool DisabledInTaskManager()
+        {
+            try
+            {
+                using var key = Registry.CurrentUser.OpenSubKey(ApprovedKey);
+                return key?.GetValue(Name) is byte[] flags && flags.Length > 0 && (flags[0] & 1) == 1;
+            }
+            catch { return false; }
+        }
+
+        public static bool IsOn()
+        {
+            try
+            {
+                using var key = Registry.CurrentUser.OpenSubKey(RunKey);
+                return key?.GetValue(Name) is string && !DisabledInTaskManager();
+            }
+            catch { return false; }
+        }
 
         public static void Apply(bool on)
         {
@@ -97,10 +138,15 @@ namespace Ovira.Core
                 {
                     var exe = Environment.ProcessPath;
                     if (!string.IsNullOrEmpty(exe)) key.SetValue(Name, "\"" + exe + "\"");
+                    // Turned on in Ovira's settings = also on in Task Manager.
+                    using var approved = Registry.CurrentUser.CreateSubKey(ApprovedKey);
+                    approved?.SetValue(Name, new byte[12] { 2, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0 }, RegistryValueKind.Binary);
                 }
                 else
                 {
                     key.DeleteValue(Name, throwOnMissingValue: false);
+                    using var approved = Registry.CurrentUser.OpenSubKey(ApprovedKey, writable: true);
+                    approved?.DeleteValue(Name, throwOnMissingValue: false);
                 }
             }
             catch { }

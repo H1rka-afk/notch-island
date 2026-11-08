@@ -99,7 +99,8 @@ namespace Ovira.Island
             if (hide != _hiddenForFullscreen)
             {
                 _hiddenForFullscreen = hide;
-                Root.BeginAnimation(OpacityProperty, new DoubleAnimation(hide ? 0 : 1, TimeSpan.FromSeconds(0.25)));
+                if (!(hide && _overGame && _mode == Mode.Banner))
+                    Root.BeginAnimation(OpacityProperty, new DoubleAnimation(hide ? 0 : 1, TimeSpan.FromSeconds(0.25)));
                 Root.IsHitTestVisible = !hide;
                 UpdateBarsActivity();
             }
@@ -621,9 +622,24 @@ namespace Ovira.Island
         // ---- banners ----
 
         private Action? _bannerTap;
+        private bool _overGame;
 
-        private void ShowBanner(string icon, string text, Color colour, double? level, double seconds, Action? tap = null)
+        // 0.4.3: over a game or a full-screen video the island is hidden, but
+        // the banners chosen in Settings («Поверх игр») still come out for a
+        // moment and go away again. Clicks pass through to the game.
+        private void ShowBanner(string icon, string text, Color colour, double? level, double seconds, Action? tap = null, bool inGame = false)
         {
+            if (_hiddenForFullscreen)
+            {
+                if (!inGame) return;
+                _overGame = true;
+                Root.BeginAnimation(OpacityProperty, new DoubleAnimation(1, TimeSpan.FromSeconds(0.15)));
+                var hwnd = new WindowInteropHelper(this).Handle;
+                if (hwnd != IntPtr.Zero)
+                    Native.SetWindowPos(hwnd, Native.HWND_TOPMOST, 0, 0, 0, 0,
+                                        Native.SWP_NOMOVE | Native.SWP_NOSIZE | Native.SWP_NOACTIVATE | Native.SWP_SHOWWINDOW);
+            }
+            else _overGame = false;
             BannerIcon.Icon = icon;
             BannerIcon.Fill = new SolidColorBrush(colour);
             BannerText.Text = text;
@@ -661,6 +677,9 @@ namespace Ovira.Island
         {
             if (_mode != Mode.Banner) return;
             Island.Cursor = null;
+            if (_overGame && _hiddenForFullscreen)
+                Root.BeginAnimation(OpacityProperty, new DoubleAnimation(0, TimeSpan.FromSeconds(0.3)));
+            _overGame = false;
             SetMode(_pointerInside && HasTrack && S.OpenOnHover ? Mode.Expanded : RestingMode);
         }
 
@@ -670,14 +689,14 @@ namespace Ovira.Island
             if (!S.VolumeBanner) return;
             var percent = (int)Math.Round(level * 100);
             ShowBanner(muted ? "speaker.slash" : "speaker.wave", muted ? "Без звука" : $"Громкость {percent} %",
-                       Colors.White, muted ? 0 : level, 1.6);
+                       Colors.White, muted ? 0 : level, 1.6, inGame: S.GameVolume);
         }
 
         private void OnOutputChanged(OutputDevice device)
         {
             OutputIcon.Icon = device.Glyph;
             if (!S.OutputBanner) return;
-            ShowBanner(device.Glyph, device.Name, Color.FromRgb(0x4C, 0x8D, 0xFF), null, 2.4);
+            ShowBanner(device.Glyph, device.Name, Color.FromRgb(0x4C, 0x8D, 0xFF), null, 2.4, inGame: S.GameOutput);
         }
 
         private void OnPower(PowerEvent e, int percent)
@@ -685,16 +704,16 @@ namespace Ovira.Island
             switch (e)
             {
                 case PowerEvent.Plugged when S.ChargingBanner:
-                    ShowBanner("bolt", $"Зарядка · {percent} %", Color.FromRgb(0x34, 0xC7, 0x59), percent / 100.0, 2.6);
+                    ShowBanner("bolt", $"Зарядка · {percent} %", Color.FromRgb(0x34, 0xC7, 0x59), percent / 100.0, 2.6, inGame: S.GameBattery);
                     break;
                 case PowerEvent.Unplugged when S.ChargingBanner:
-                    ShowBanner("battery", $"От батареи · {percent} %", Colors.White, percent / 100.0, 2.2);
+                    ShowBanner("battery", $"От батареи · {percent} %", Colors.White, percent / 100.0, 2.2, inGame: S.GameBattery);
                     break;
                 case PowerEvent.Low when S.LowBatteryBanner:
-                    ShowBanner("battery", $"Низкий заряд · {percent} %", Color.FromRgb(0xFF, 0x9F, 0x0A), percent / 100.0, 4);
+                    ShowBanner("battery", $"Низкий заряд · {percent} %", Color.FromRgb(0xFF, 0x9F, 0x0A), percent / 100.0, 4, inGame: S.GameBattery);
                     break;
                 case PowerEvent.Critical when S.LowBatteryBanner:
-                    ShowBanner("battery", $"Почти разряжен · {percent} %", Color.FromRgb(0xFF, 0x45, 0x3A), percent / 100.0, 5);
+                    ShowBanner("battery", $"Почти разряжен · {percent} %", Color.FromRgb(0xFF, 0x45, 0x3A), percent / 100.0, 5, inGame: S.GameBattery);
                     break;
             }
         }

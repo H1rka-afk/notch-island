@@ -25,7 +25,7 @@ namespace Ovira
 
         // 0.4.2: no global 240 fps for every animation any more — it kept the
         // processor busy. The island's springs follow the screen by themselves.
-        public static string Version => "0.4.2";
+        public static string Version => "0.4.3";
 
         public UpdateService Updates { get; } = new UpdateService();
         public EyeBreakService EyeBreak { get; } = new EyeBreakService();
@@ -67,9 +67,16 @@ namespace Ovira
                 args.Handled = true;
             };
 
+            Native.DropConsole();
             Settings.Load();
             var firstRun = !System.IO.File.Exists(System.IO.Path.Combine(Settings.Folder, "settings.json"));
-            if (Settings.Current.StartWithWindows) Autostart.Apply(true);
+            // Turned off in Task Manager → off in Ovira too; otherwise keep the
+            // Run entry pointing at this very Ovira.exe.
+            if (Settings.Current.StartWithWindows)
+            {
+                if (Autostart.DisabledInTaskManager()) Settings.Current.StartWithWindows = false;
+                else Autostart.Apply(true);
+            }
 
             Audio.Start();
             Power.Start();
@@ -107,6 +114,13 @@ namespace Ovira
             var menu = new System.Windows.Forms.ContextMenuStrip();
             menu.Items.Add("Настройки Ovira", null, (_, _) => OpenSettings());
             menu.Items.Add("Открыть плеер", null, (_, _) => _island?.DemoOpen());
+            var autostart = new System.Windows.Forms.ToolStripMenuItem("Запускать вместе с Windows") { CheckOnClick = true, Checked = Settings.Current.StartWithWindows };
+            autostart.Click += (_, _) => Settings.Current.StartWithWindows = autostart.Checked;
+            Settings.Current.PropertyChanged += (_, args) =>
+            {
+                if (args.PropertyName == nameof(Settings.StartWithWindows)) autostart.Checked = Settings.Current.StartWithWindows;
+            };
+            menu.Items.Add(autostart);
             menu.Items.Add(new System.Windows.Forms.ToolStripSeparator());
             menu.Items.Add("Выйти", null, (_, _) => Quit());
 

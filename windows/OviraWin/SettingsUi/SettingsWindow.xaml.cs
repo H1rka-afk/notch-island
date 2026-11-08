@@ -499,6 +499,8 @@ namespace Ovira.SettingsUi
             switch (section.Key)
             {
                 case "general":
+                    page.Children.Add(Group("Запуск", "Ovira добавляется в автозагрузку только для твоей учётной записи — права администратора не нужны. Это же переключатель есть в меню значка Ovira в области уведомлений и в Диспетчере задач → «Автозагрузка».",
+                        ToggleRow("Запускать вместе с Windows", "Островок появляется сразу после входа в систему", nameof(Settings.StartWithWindows), "автозапуск автозагрузка старт вход запуск windows")));
                     page.Children.Add(Group("Оформление", "Темы те же, что у Ovira на Mac. «Обложка» берёт цвета играющей музыки. Своя тема — название, светлая или тёмная и 2–4 цвета.",
                         ThemeGroupContent(),
                         ToggleRow("Живой фон", "Цвета плавно перетекают друг в друга, как на Mac", nameof(Settings.AnimatedBackground), "фон живой анимация переливы цвета")));
@@ -508,8 +510,6 @@ namespace Ovira.SettingsUi
                                    nameof(Settings.UpdateIntervalHours), "интервал обновления часто проверка"),
                         ToggleRow("Устанавливать сами", "Скачанное обновление ставится без вопроса, когда островок свободен", nameof(Settings.AutoInstallUpdates), "автоматически установка обновления"),
                         UpdateStatusRow()));
-                    page.Children.Add(Group("Запуск", null,
-                        ToggleRow("Запускать вместе с Windows", "Островок появляется сразу после входа", nameof(Settings.StartWithWindows), "автозапуск старт вход")));
                     page.Children.Add(Group("Обслуживание", "Ovira для Windows " + App.Version + ". Всё работает на самом компьютере и никуда не отправляется.",
                         ButtonRow("Папка настроек", "settings.json и журнал ошибок errors.log", "Открыть", OpenFolder, "папка журнал лог ошибки"),
                         ButtonRow("Сбросить все настройки", "Вернуть всё как после установки", "Сбросить", ResetAll, "сброс по умолчанию"),
@@ -571,6 +571,10 @@ namespace Ovira.SettingsUi
                                   () => App.Current.IslandWindow?.DemoVolume()),
                         ToggleRow("Устройство вывода звука", "Когда звук переключился на наушники или динамики", nameof(Settings.OutputBanner), "наушники динамики вывод",
                                   () => App.Current.IslandWindow?.DemoOutput())));
+                    page.Children.Add(Group("Поверх игр", "В игре или видео на весь экран островок прячется, но отмеченные уведомления всё равно появятся на пару секунд и исчезнут; клики проходят в игру. Если игра в эксклюзивном полноэкранном режиме, Windows не даёт ничему показаться поверх — выбери в игре «Оконный без рамки» (Borderless).",
+                        ToggleRow("Уровень громкости", "Видно, сколько сейчас", nameof(Settings.GameVolume), "игра полноэкранный поверх громкость"),
+                        ToggleRow("Зарядка и низкий заряд", "Чтобы не пропустить, что ноутбук садится", nameof(Settings.GameBattery), "игра полноэкранный поверх батарея зарядка"),
+                        ToggleRow("Смена устройства звука", "Наушники или динамики", nameof(Settings.GameOutput), "игра полноэкранный поверх наушники вывод")));
                     break;
 
                 case "devices":

@@ -114,6 +114,16 @@ namespace Ovira.Core
         private bool _animatedBackground = true;
         public bool AnimatedBackground { get => _animatedBackground; set => Set(ref _animatedBackground, value); }
 
+        // 0.4.3: banners that still appear over games and full-screen video.
+        private bool _gameVolume = true;
+        public bool GameVolume { get => _gameVolume; set => Set(ref _gameVolume, value); }
+
+        private bool _gameBattery = true;
+        public bool GameBattery { get => _gameBattery; set => Set(ref _gameBattery, value); }
+
+        private bool _gameOutput;
+        public bool GameOutput { get => _gameOutput; set => Set(ref _gameOutput, value); }
+
         // Banners
         private bool _volumeBanner = true;
         public bool VolumeBanner { get => _volumeBanner; set => Set(ref _volumeBanner, value); }
