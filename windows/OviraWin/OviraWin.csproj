@@ -16,7 +16,7 @@
     <AssemblyName>Ovira</AssemblyName>
     <ApplicationIcon>Assets\Ovira.ico</ApplicationIcon>
     <ApplicationManifest>app.manifest</ApplicationManifest>
-    <Version>0.3.0</Version>
+    <Version>0.4.0</Version>
     <Product>Ovira</Product>
     <Company>Ovira</Company>
     <Copyright>Ovira</Copyright>

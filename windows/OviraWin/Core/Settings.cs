@@ -69,6 +69,24 @@ namespace Ovira.Core
         private bool _volumeRow = true;
         public bool VolumeRow { get => _volumeRow; set => Set(ref _volumeRow, value); }
 
+        // 0.4.0: the expanded player — new (as on the Mac today) or classic.
+        private bool _playerNew = true;
+        public bool PlayerNew { get => _playerNew; set => Set(ref _playerNew, value); }
+
+        // 0.4.0: settings theme (Mac themes) and the user's own themes.
+        private string _theme = "system";
+        public string Theme { get => _theme; set => Set(ref _theme, string.IsNullOrEmpty(value) ? "system" : value); }
+
+        private System.Collections.Generic.List<CustomTheme> _customThemes = new();
+        public System.Collections.Generic.List<CustomTheme> CustomThemes { get => _customThemes; set => Set(ref _customThemes, value ?? new()); }
+
+        // 0.4.0: profiles — the remembered «Свой» and the user's own.
+        private System.Collections.Generic.Dictionary<string, bool>? _customProfile;
+        public System.Collections.Generic.Dictionary<string, bool>? CustomProfile { get => _customProfile; set => Set(ref _customProfile, value); }
+
+        private System.Collections.Generic.List<UserProfile> _userProfiles = new();
+        public System.Collections.Generic.List<UserProfile> UserProfiles { get => _userProfiles; set => Set(ref _userProfiles, value ?? new()); }
+
         // Banners
         private bool _volumeBanner = true;
         public bool VolumeBanner { get => _volumeBanner; set => Set(ref _volumeBanner, value); }
@@ -146,7 +164,8 @@ namespace Ovira.Core
             var fresh = new Settings();
             foreach (var p in typeof(Settings).GetProperties())
             {
-                if (p.CanWrite && p.CanRead && p.Name != nameof(Section) && p.Name != nameof(OpenOnHover))
+                if (p.CanWrite && p.CanRead && p.Name != nameof(Section) && p.Name != nameof(OpenOnHover) &&
+                    p.Name != nameof(CustomThemes) && p.Name != nameof(UserProfiles) && p.Name != nameof(CustomProfile))
                     p.SetValue(this, p.GetValue(fresh));
             }
         }

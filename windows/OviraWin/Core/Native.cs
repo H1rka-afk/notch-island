@@ -70,9 +70,9 @@ namespace Ovira.Core
             DwmExtendFrameIntoClientArea(hwnd, ref margins);
         }
 
-        public static void DarkTitleBar(IntPtr hwnd)
+        public static void DarkTitleBar(IntPtr hwnd, bool dark = true)
         {
-            int on = 1;
+            int on = dark ? 1 : 0;
             DwmSetWindowAttribute(hwnd, 20, ref on, sizeof(int));
             int round = 2;
             DwmSetWindowAttribute(hwnd, 33, ref round, sizeof(int));

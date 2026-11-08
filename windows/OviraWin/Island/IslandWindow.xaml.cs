@@ -113,7 +113,7 @@ namespace Ovira.Island
         private const double CompactH = 35;
         private double BannerW => (Middle + 150) * Scale;
         private double ExpandedW => 353 * Scale;
-        private double ExpandedH => S.VolumeRow ? 206 : 186;
+        private double ExpandedH => !S.PlayerNew ? 168 : (S.VolumeRow ? 206 : 186);
         private double IdleW => Middle * 0.8 * Scale;
         private const double IdleH = 30;
 
@@ -376,9 +376,25 @@ namespace Ovira.Island
             var output = _audio.Current;
             if (output != null) OutputIcon.Icon = output.Glyph;
             OutputButton.Visibility = S.OutputPicker ? Visibility.Visible : Visibility.Hidden;
-            VolumeRow.Visibility = S.VolumeRow ? Visibility.Visible : Visibility.Collapsed;
+            ApplyPlayerStyle();
             UpdateProgress();
             UpdateVolume();
+        }
+
+        // 0.4.0: the new player (Mac today) or the classic one (Mac before 4.0).
+        private void ApplyPlayerStyle()
+        {
+            bool modern = S.PlayerNew;
+            ExpandedArt.Width = ExpandedArt.Height = modern ? 72 : 55;
+            ExpandedArt.CornerRadius = new CornerRadius(modern ? 13 : 12);
+            ExpandedArt.Effect = modern ? ArtGlow : null;
+            SongTitle.FontSize = modern ? 15 : 14;
+            SongTitle.FontWeight = modern ? FontWeights.Bold : FontWeights.SemiBold;
+            SongTitle.FontFamily = (FontFamily)FindResource(modern ? "DisplayFont" : "UiFont");
+            SongArtist.FontSize = modern ? 12.5 : 12;
+            Glow.Visibility = modern ? Visibility.Visible : Visibility.Collapsed;
+            VolumeRow.Visibility = modern && S.VolumeRow ? Visibility.Visible : Visibility.Collapsed;
+            ApplySpectrumSize();
         }
 
         private void UpdateBarsActivity()
@@ -391,7 +407,8 @@ namespace Ovira.Island
         {
             var k = S.SpectrumSize;
             CompactBars.BarWidth = 2.2 * k; CompactBars.BarSpacing = 1.7 * k; CompactBars.BarMaxHeight = 16 * k;
-            ExpandedBars.BarWidth = 2.8 * k; ExpandedBars.BarSpacing = 2.1 * k; ExpandedBars.BarMaxHeight = 26 * k;
+            if (S.PlayerNew) { ExpandedBars.BarWidth = 2.8 * k; ExpandedBars.BarSpacing = 2.1 * k; ExpandedBars.BarMaxHeight = 26 * k; }
+            else { ExpandedBars.BarWidth = 2.9 * k; ExpandedBars.BarSpacing = 2.3 * k; ExpandedBars.BarMaxHeight = 32 * k; }
             CompactBars.InvalidateMeasure(); ExpandedBars.InvalidateMeasure();
             var t = _media.Track;
             CompactBars.SetCover(t?.Artwork, t?.Tint ?? Color.FromRgb(0xFF, 0x5A, 0x7A));
@@ -655,6 +672,7 @@ namespace Ovira.Island
             {
                 case nameof(Settings.IslandScale):
                 case nameof(Settings.VolumeRow):
+                case nameof(Settings.PlayerNew):
                     FillExpanded();
                     Relayout(animated: true);
                     break;

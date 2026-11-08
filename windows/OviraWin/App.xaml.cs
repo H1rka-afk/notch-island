@@ -35,7 +35,7 @@ namespace Ovira
             }
             catch { }
         }
-        public static string Version => "0.3.0";
+        public static string Version => "0.4.0";
 
         protected override async void OnStartup(StartupEventArgs e)
         {
