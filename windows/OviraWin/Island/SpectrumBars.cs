@@ -39,6 +39,7 @@ namespace Ovira.Island
             _artwork = artwork;
             _tint = tint;
             _brushKey = "";
+            try { CurrentBrush(); } catch { _brush = null; }
             InvalidateVisual();
         }
 
@@ -52,7 +53,8 @@ namespace Ovira.Island
             if (!Active || !IsVisible) return false;
             bool wasSettled = _physics.Settled;
             _physics.Step(time, levels, Playing, live);
-            if (wasSettled && _physics.Settled && !Playing) return false;
+            if (wasSettled && _physics.Settled && !Playing && _brush != null) return false;
+            try { CurrentBrush(); } catch { _brush = null; }   // outside OnRender: may render the blurred cover
             InvalidateVisual();
             return true;
         }
@@ -116,7 +118,7 @@ namespace Ovira.Island
 
         protected override void OnRender(DrawingContext dc)
         {
-            var brush = CurrentBrush();
+            var brush = _brush ?? new SolidColorBrush(Color.FromArgb(0xE6, _tint.R, _tint.G, _tint.B));
             double w = BarWidth, maxH = BarMaxHeight;
             for (int i = 0; i < WaveformPhysics.BarCount; i++)
             {

@@ -22,6 +22,19 @@ namespace Ovira
         public IslandWindow? IslandWindow => _island;
 
         public static new App Current => (App)Application.Current;
+
+        // Animations may run faster than 60 fps on high-refresh screens. Must
+        // happen before any XAML (styles hold storyboards), hence here.
+        static App()
+        {
+            try
+            {
+                System.Windows.Media.Animation.Timeline.DesiredFrameRateProperty.OverrideMetadata(
+                    typeof(System.Windows.Media.Animation.Timeline),
+                    new FrameworkPropertyMetadata { DefaultValue = 240 });
+            }
+            catch { }
+        }
         public static string Version => "0.3.0";
 
         protected override async void OnStartup(StartupEventArgs e)
@@ -52,12 +65,6 @@ namespace Ovira
             Settings.Load();
             var firstRun = !System.IO.File.Exists(System.IO.Path.Combine(Settings.Folder, "settings.json"));
             if (Settings.Current.StartWithWindows) Autostart.Apply(true);
-
-            // Animations and the spectrogram may run faster than 60 fps on
-            // high-refresh screens (the spectrogram's own rate is in Settings).
-            System.Windows.Media.Animation.Timeline.DesiredFrameRateProperty.OverrideMetadata(
-                typeof(System.Windows.Media.Animation.Timeline),
-                new FrameworkPropertyMetadata { DefaultValue = 240 });
 
             Audio.Start();
             Power.Start();
