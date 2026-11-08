@@ -13,7 +13,7 @@ namespace Ovira.Services
         public string Id = "";
         public string Name = "";
         public bool IsDefault;
-        public string Glyph = "";        // speaker
+        public string Glyph = "speaker.wave";   // icon name (Core/Icons)
     }
 
     // Volume, mute, the default output device and its live level (for the
@@ -110,13 +110,13 @@ namespace Ovira.Services
             string name;
             try { name = d.FriendlyName; } catch { name = "Устройство"; }
             var lower = name.ToLowerInvariant();
-            string glyph = "";                                            // speaker
+            string glyph = "speaker.wave";
             if (lower.Contains("airpods") || lower.Contains("buds") || lower.Contains("наушник") ||
                 lower.Contains("headphone") || lower.Contains("headset") || lower.Contains("гарнитур") ||
                 lower.Contains("wh-") || lower.Contains("wf-"))
-                glyph = "";                                               // headphones
+                glyph = "headphones";
             else if (lower.Contains("hdmi") || lower.Contains("display") || lower.Contains("монитор") || lower.Contains("tv"))
-                glyph = "";                                               // TV / monitor
+                glyph = "display";
             return new OutputDevice { Id = d.ID, Name = ShortName(name), IsDefault = isDefault, Glyph = glyph };
         }
 

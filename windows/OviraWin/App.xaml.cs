@@ -18,10 +18,11 @@ namespace Ovira
         public MediaService Media { get; } = new MediaService();
         public AudioService Audio { get; } = new AudioService();
         public PowerService Power { get; } = new PowerService();
+        public SpectrumService Spectrum { get; } = new SpectrumService();
         public IslandWindow? IslandWindow => _island;
 
         public static new App Current => (App)Application.Current;
-        public static string Version => "0.2.0";
+        public static string Version => "0.3.0";
 
         protected override async void OnStartup(StartupEventArgs e)
         {
@@ -52,8 +53,16 @@ namespace Ovira
             var firstRun = !System.IO.File.Exists(System.IO.Path.Combine(Settings.Folder, "settings.json"));
             if (Settings.Current.StartWithWindows) Autostart.Apply(true);
 
+            // Animations and the spectrogram may run faster than 60 fps on
+            // high-refresh screens (the spectrogram's own rate is in Settings).
+            System.Windows.Media.Animation.Timeline.DesiredFrameRateProperty.OverrideMetadata(
+                typeof(System.Windows.Media.Animation.Timeline),
+                new FrameworkPropertyMetadata { DefaultValue = 240 });
+
             Audio.Start();
             Power.Start();
+            Spectrum.Start();
+            SpectrumClock.Source = Spectrum;
             _island = new IslandWindow(Media, Audio, Power);
             _island.Show();
             _island.Begin();
@@ -113,6 +122,7 @@ namespace Ovira
             Settings.Current.Save();
             if (_tray != null) { _tray.Visible = false; _tray.Dispose(); }
             Audio.Dispose();
+            Spectrum.Dispose();
             Shutdown();
         }
 

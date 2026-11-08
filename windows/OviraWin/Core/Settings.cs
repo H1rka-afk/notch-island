@@ -53,6 +53,22 @@ namespace Ovira.Core
         private bool _outputPicker = true;
         public bool OutputPicker { get => _outputPicker; set => Set(ref _outputPicker, value); }
 
+        // Spectrogram (0.3.0): the cover inside the bars, the blurred cover or its colour.
+        private string _spectrumStyle = "blurred";
+        public string SpectrumStyle { get => _spectrumStyle; set => Set(ref _spectrumStyle, value is "artwork" or "blurred" or "tint" ? value : "blurred"); }
+
+        private double _spectrumBlur = 0.4;
+        public double SpectrumBlur { get => _spectrumBlur; set => Set(ref _spectrumBlur, Math.Clamp(value, 0, 1)); }
+
+        private int _spectrumFps = 60;
+        public int SpectrumFps { get => _spectrumFps; set => Set(ref _spectrumFps, Math.Clamp(value, 15, 240)); }
+
+        private double _spectrumSize = 1.0;
+        public double SpectrumSize { get => _spectrumSize; set => Set(ref _spectrumSize, Math.Clamp(value, 0.7, 1.3)); }
+
+        private bool _volumeRow = true;
+        public bool VolumeRow { get => _volumeRow; set => Set(ref _volumeRow, value); }
+
         // Banners
         private bool _volumeBanner = true;
         public bool VolumeBanner { get => _volumeBanner; set => Set(ref _volumeBanner, value); }

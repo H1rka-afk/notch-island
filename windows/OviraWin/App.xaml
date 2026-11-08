@@ -27,7 +27,7 @@
                     <Setter.Value>
                         <ControlTemplate TargetType="Button">
                             <Grid Background="Transparent">
-                                <Ellipse x:Name="Circle" Width="42" Height="42" Fill="#26FFFFFF" Opacity="0"
+                                <Ellipse x:Name="Circle" Width="44" Height="44" Fill="#26FFFFFF" Opacity="0"
                                          RenderTransformOrigin="0.5,0.5">
                                     <Ellipse.RenderTransform>
                                         <ScaleTransform ScaleX="0.7" ScaleY="0.7" />
