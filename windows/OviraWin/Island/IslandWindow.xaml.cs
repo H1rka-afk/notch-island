@@ -46,9 +46,12 @@ namespace Ovira.Island
         private readonly DispatcherTimer _progressTimer = new DispatcherTimer { Interval = TimeSpan.FromSeconds(0.5) };
         private readonly DispatcherTimer _housekeeping = new DispatcherTimer { Interval = TimeSpan.FromSeconds(1.5) };
 
-        private readonly Rectangle[] _bars = new Rectangle[4];
-        private readonly Rectangle[] _bigBars = new Rectangle[4];
-        private readonly double[] _barLevels = new double[4];
+        // Six bars, like the Mac spectrogram.
+        private const int BarCount = 6;
+        private static readonly double[] BarShape = { 0.55, 0.85, 1.0, 0.9, 0.72, 0.5 };
+        private readonly Rectangle[] _bars = new Rectangle[BarCount];
+        private readonly Rectangle[] _bigBars = new Rectangle[BarCount];
+        private readonly double[] _barLevels = new double[BarCount];
         private readonly Random _random = new Random();
         private bool _lastPlaying;
         private bool _glyphReady;
@@ -62,11 +65,11 @@ namespace Ovira.Island
             _power = power;
             InitializeComponent();
 
-            for (int i = 0; i < 4; i++)
+            for (int i = 0; i < BarCount; i++)
             {
-                _bars[i] = new Rectangle { Width = 3, Height = 4, RadiusX = 1.5, RadiusY = 1.5, Margin = new Thickness(1.2, 0, 1.2, 0), VerticalAlignment = VerticalAlignment.Center };
+                _bars[i] = new Rectangle { Width = 2.2, Height = 3, RadiusX = 1.1, RadiusY = 1.1, Margin = new Thickness(0.85, 0, 0.85, 0), VerticalAlignment = VerticalAlignment.Center };
                 Bars.Children.Add(_bars[i]);
-                _bigBars[i] = new Rectangle { Width = 3.5, Height = 4, RadiusX = 1.75, RadiusY = 1.75, Margin = new Thickness(1.5, 0, 1.5, 0), VerticalAlignment = VerticalAlignment.Center };
+                _bigBars[i] = new Rectangle { Width = 3, Height = 4, RadiusX = 1.5, RadiusY = 1.5, Margin = new Thickness(1.1, 0, 1.1, 0), VerticalAlignment = VerticalAlignment.Center };
                 ExpandedBars.Children.Add(_bigBars[i]);
             }
 
@@ -234,7 +237,10 @@ namespace Ovira.Island
                 Shape.Data = g;
             }
 
-            Canvas.SetLeft(ContentHost, cx - w / 2);
+            // ContentHost lives in a Grid, so it is placed by its margin
+            // (Canvas.Left only works inside a Canvas — 0.1.0 put the
+            // contents at the left edge, away from the black shape).
+            ContentHost.Margin = new Thickness(cx - w / 2, 0, 0, 0);
             ContentHost.Width = w;
             ContentHost.Height = h;
             ContentHost.Clip = new RectangleGeometry(new Rect(0, 0, w, h), r, r);
@@ -437,21 +443,23 @@ namespace Ovira.Island
         private void UpdateBars()
         {
             var playing = _media.Track?.Playing == true;
-            var peak = S.LiveBars ? Math.Min(1.0, _audio.Peak * 1.6) : 0.55;
+            var peak = S.LiveBars ? Math.Min(1.0, _audio.Peak * 1.7) : 0.6;
             var time = _clock.Elapsed.TotalSeconds;
-            for (int i = 0; i < 4; i++)
+            for (int i = 0; i < BarCount; i++)
             {
                 double target;
-                if (!playing) target = 0.15;
+                if (!playing) target = 0.12;
                 else
                 {
-                    var wobble = 0.55 + 0.45 * Math.Sin(time * (6.5 + i * 1.7) + i * 1.3);
-                    var jitter = 0.75 + _random.NextDouble() * 0.5;
-                    target = Math.Clamp((S.LiveBars ? peak : 0.55) * wobble * jitter + 0.12, 0.12, 1);
+                    var wobble = 0.6 + 0.4 * Math.Sin(time * (7.1 + i * 1.9) + i * 1.7);
+                    var jitter = 0.8 + _random.NextDouble() * 0.4;
+                    target = Math.Clamp(peak * BarShape[i] * wobble * jitter + 0.1, 0.1, 1);
                 }
-                _barLevels[i] += (target - _barLevels[i]) * 0.35;
-                _bars[i].Height = 3 + 13 * _barLevels[i];
-                _bigBars[i].Height = 4 + 16 * _barLevels[i];
+                // Up fast, down softly — like the Mac bars.
+                var k = target > _barLevels[i] ? 0.55 : 0.22;
+                _barLevels[i] += (target - _barLevels[i]) * k;
+                _bars[i].Height = 2.5 + 13.5 * _barLevels[i];
+                _bigBars[i].Height = 3 + 17 * _barLevels[i];
             }
         }
 

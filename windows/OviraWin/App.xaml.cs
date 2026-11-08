@@ -21,7 +21,7 @@ namespace Ovira
         public IslandWindow? IslandWindow => _island;
 
         public static new App Current => (App)Application.Current;
-        public static string Version => "0.1.0";
+        public static string Version => "0.2.0";
 
         protected override async void OnStartup(StartupEventArgs e)
         {
