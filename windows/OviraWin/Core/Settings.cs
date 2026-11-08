@@ -92,7 +92,7 @@ namespace Ovira.Core
 
         [JsonIgnore] public bool IsLoading => s_loading;
 
-        private string _section = "island";
+        private string _section = "home";
         public string Section { get => _section; set => Set(ref _section, value); }
 
         private bool Set<T>(ref T field, T value, string? alsoChanged = null, [CallerMemberName] string? name = null)

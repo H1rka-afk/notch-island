@@ -11,20 +11,21 @@ using System.Windows.Interop;
 using System.Windows.Media;
 using System.Windows.Media.Animation;
 using System.Windows.Media.Effects;
-using System.Windows.Shapes;
+using System.Windows.Media.Imaging;
 using System.Windows.Threading;
 using Ovira.Core;
 using Ovira.Services;
 
 namespace Ovira.SettingsUi
 {
-    // 0.2.0 — the settings window drawn like the Mac one: a living colour
-    // background, a floating glass sidebar with coloured tiles and a glossy
-    // selection pill, a big banner per section with the island acting it
-    // out, UPPERCASE groups on glass cards, and search.
+    // 0.3.0 — Settings ported from the Mac (NotchSettingsWindow.swift):
+    // a top bar (Ovira or «‹ Все настройки», search, the live island), a home
+    // screen with a stage where the island acts out the tile under the
+    // pointer and a bento grid of bright tiles, and per section a glossy
+    // banner with UPPERCASE groups on glass cards. Living colour background.
     public partial class SettingsWindow : Window
     {
-        private sealed record Section(string Key, string Title, string Subtitle, string Glyph, Color Colour, int Group)
+        private sealed record Section(string Key, string Title, string Subtitle, string Status, string Icon, Color Colour, string Demo)
         {
             public Color Accent => Key == "general" ? Color.FromRgb(0x3D, 0x85, 0xFF) : Colour;
         }
@@ -33,19 +34,18 @@ namespace Ovira.SettingsUi
 
         private static readonly Section[] Sections =
         {
-            new("general", "Основные", "Запуск, обслуживание и сброс", "", Color.FromRgb(0x8C, 0x8F, 0x99), 0),
-            new("island", "Островок", "Вид, размер и поведение островка", "", Color.FromRgb(0x33, 0x7A, 0xFF), 1),
-            new("media", "Медиаплеер", "Плеер, спектрограмма, звук и обложки", "", Color.FromRgb(0xFF, 0x45, 0x66), 1),
-            new("notifications", "Уведомления", "Громкость и звук — короткие баннеры в островке", "", Color.FromRgb(0xFF, 0x45, 0x3A), 1),
-            new("devices", "Устройства", "Батарея и зарядка ноутбука", "", Color.FromRgb(0x33, 0xBF, 0x59), 2),
+            new("general", "Основные", "Запуск, обслуживание и сброс", "Запуск и обслуживание", "gear", Color.FromRgb(0x8C, 0x8F, 0x99), "ovira"),
+            new("island", "Островок", "Вид, размер и поведение островка", "Открытие и размер", "laptop", Color.FromRgb(0x33, 0x7A, 0xFF), "music"),
+            new("media", "Медиаплеер", "Плеер, звук и обложки", "Любая музыка в Windows", "play", Color.FromRgb(0xFF, 0x45, 0x66), "music"),
+            new("spectrum", "Спектрограмма", "Шесть полосок по настоящему звуку: вид, размытие и плавность", "Обложка, размытие, кадры", "waveform", Color.FromRgb(0xA8, 0x5C, 0xF2), "music"),
+            new("notifications", "Уведомления", "Громкость и звук — короткие баннеры в островке", "Громкость и вывод звука", "bell", Color.FromRgb(0xFF, 0x45, 0x3A), "volume"),
+            new("devices", "Устройства", "Батарея и зарядка ноутбука", "Зарядка и низкий заряд", "bolt", Color.FromRgb(0x33, 0xBF, 0x59), "charging"),
         };
 
-        private static string GroupTitle(int g) => g switch { 0 => "OVIRA", 1 => "ОСТРОВОК И ЭКРАН", _ => "УСТРОЙСТВА" };
-
-        private readonly Dictionary<string, Border> _navItems = new();
         private readonly List<Entry> _entries = new();
         private readonly Dictionary<string, FrameworkElement> _rows = new();
-        private Section _current = Sections[1];
+        private Section? _current;              // null = home
+        private Section? _hovered;
         private Settings S => Settings.Current;
 
         public SettingsWindow()
@@ -56,180 +56,349 @@ namespace Ovira.SettingsUi
             {
                 try { Native.DarkTitleBar(new WindowInteropHelper(this).Handle); } catch { }
             };
-            BuildSidebar();
+            foreach (var section in Sections) BuildPage(section, collectOnly: true);
+            BuildTiles();
             StartAurora();
-            BuildPreviewBars();
 
             var app = App.Current;
-            Action<TrackInfo?> onTrack = _ => Dispatcher.BeginInvoke(new Action(() => { UpdatePreview(); TintAurora(); }));
+            Action<TrackInfo?> onTrack = _ => Dispatcher.BeginInvoke(new Action(() => { ShowTrack(); TintAurora(); }));
             app.Media.Changed += onTrack;
-            Closed += (_, _) => { app.Media.Changed -= onTrack; _previewTimer.Stop(); };
+            Closed += (_, _) => { app.Media.Changed -= onTrack; _stageTimer.Stop(); };
+            KeyDown += (_, e) => { if (e.Key == Key.Escape && _current != null) GoHome(); };
 
-            var start = Sections.FirstOrDefault(s => s.Key == S.Section) ?? Sections[1];
-            Open(start, animated: false);
-            _previewTimer.Tick += (_, _) => PreviewTick();
-            _previewTimer.Start();
+            ShowTrack();
+            _stageTimer.Tick += (_, _) => StageTick();
+            _stageTimer.Start();
+            var start = Sections.FirstOrDefault(s => s.Key == S.Section);
+            if (start != null && S.Section != "home") Open(start, animated: false); else GoHome(animated: false);
         }
 
-        // ---------------------------------------------------------- sidebar
+        // ================================================================ navigation
 
-        private void BuildSidebar()
+        private void GoHome(bool animated = true)
         {
-            int lastGroup = -1;
-            foreach (var section in Sections)
-            {
-                if (section.Group != lastGroup)
-                {
-                    NavList.Children.Add(new TextBlock { Text = GroupTitle(section.Group), Style = (Style)FindResource("SideHeader") });
-                    lastGroup = section.Group;
-                }
-                var item = NavItem(section);
-                _navItems[section.Key] = item;
-                NavList.Children.Add(item);
-            }
-            // Every row of every page, for the search.
-            foreach (var section in Sections) BuildPage(section, collectOnly: true);
+            _current = null;
+            S.Section = "home";
+            HomeHeader.Visibility = Visibility.Visible;
+            BackButton.Visibility = Visibility.Collapsed;
+            DetailView.Visibility = Visibility.Collapsed;
+            HomeView.Visibility = Visibility.Visible;
+            if (animated) Appear(HomeView, 1.03);
+            TintAurora();
+            UpdateStage();
         }
 
-        private Border NavItem(Section section)
-        {
-            var tile = IconTile(section.Glyph, section.Colour, 24);
-            var title = new TextBlock { Text = section.Title, FontSize = 13, VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(10, 0, 0, 0) };
-            var row = new StackPanel { Orientation = Orientation.Horizontal };
-            row.Children.Add(tile);
-            row.Children.Add(title);
-            var pill = new Border
-            {
-                CornerRadius = new CornerRadius(15),
-                Padding = new Thickness(7, 5, 7, 5),
-                Margin = new Thickness(0, 1, 0, 1),
-                Background = Brushes.Transparent,
-                BorderThickness = new Thickness(0.8),
-                BorderBrush = Brushes.Transparent,
-                Child = row,
-                Cursor = Cursors.Hand,
-                Tag = title
-            };
-            pill.MouseEnter += (_, _) => { if (_current.Key != section.Key) pill.Background = new SolidColorBrush(Color.FromArgb(0x10, 0xFF, 0xFF, 0xFF)); };
-            pill.MouseLeave += (_, _) => { if (_current.Key != section.Key) pill.Background = Brushes.Transparent; };
-            pill.MouseLeftButtonUp += (_, _) => Open(section, animated: true);
-            return pill;
-        }
-
-        private void PaintNav()
-        {
-            foreach (var section in Sections)
-            {
-                var pill = _navItems[section.Key];
-                var title = (TextBlock)pill.Tag;
-                if (section.Key == _current.Key)
-                {
-                    // A bright glossy pill in the section's colour.
-                    var a = section.Accent;
-                    var fill = new LinearGradientBrush(Color.FromArgb(0xF2, a.R, a.G, a.B), Color.FromArgb(0xB8, a.R, a.G, a.B), 90);
-                    var visual = new DrawingBrush(new DrawingGroup
-                    {
-                        Children =
-                        {
-                            new GeometryDrawing(fill, null, new RectangleGeometry(new Rect(0, 0, 1, 1))),
-                            new GeometryDrawing(new LinearGradientBrush(Color.FromArgb(0x47, 0xFF, 0xFF, 0xFF), Color.FromArgb(0, 0xFF, 0xFF, 0xFF), 90),
-                                                null, new RectangleGeometry(new Rect(0, 0, 1, 0.5)))
-                        }
-                    }) { Stretch = Stretch.Fill };
-                    pill.Background = visual;
-                    pill.BorderBrush = new SolidColorBrush(Color.FromArgb(0x59, 0xFF, 0xFF, 0xFF));
-                    pill.Effect = new DropShadowEffect { Color = a, BlurRadius = 14, ShadowDepth = 3, Direction = 270, Opacity = 0.5 };
-                    title.FontWeight = FontWeights.SemiBold;
-                }
-                else
-                {
-                    pill.Background = Brushes.Transparent;
-                    pill.BorderBrush = Brushes.Transparent;
-                    pill.Effect = null;
-                    title.FontWeight = FontWeights.Normal;
-                }
-            }
-        }
-
-        // Rounded colour tile with a glossy top — the section icons.
-        private static FrameworkElement IconTile(string glyph, Color colour, double size)
-        {
-            var radius = new CornerRadius(size * 0.28);
-            var lighter = Color.FromRgb((byte)Math.Min(255, colour.R + 30), (byte)Math.Min(255, colour.G + 30), (byte)Math.Min(255, colour.B + 30));
-            var grid = new Grid { Width = size, Height = size };
-            grid.Children.Add(new Border { CornerRadius = radius, Background = new LinearGradientBrush(lighter, colour, 90) });
-            grid.Children.Add(new Border
-            {
-                CornerRadius = radius,
-                Background = new LinearGradientBrush(new GradientStopCollection
-                {
-                    new GradientStop(Color.FromArgb(0x59, 0xFF, 0xFF, 0xFF), 0),
-                    new GradientStop(Color.FromArgb(0, 0xFF, 0xFF, 0xFF), 0.5)
-                }, 90),
-                BorderBrush = new SolidColorBrush(Color.FromArgb(0x40, 0xFF, 0xFF, 0xFF)),
-                BorderThickness = new Thickness(0.8)
-            });
-            grid.Children.Add(new TextBlock
-            {
-                Text = glyph,
-                FontFamily = (FontFamily)Application.Current.FindResource("IconFont"),
-                FontSize = size * 0.46,
-                Foreground = Brushes.White,
-                HorizontalAlignment = HorizontalAlignment.Center,
-                VerticalAlignment = VerticalAlignment.Center
-            });
-            grid.Effect = new DropShadowEffect { Color = colour, BlurRadius = size * 0.3, ShadowDepth = size * 0.05, Direction = 270, Opacity = 0.35 };
-            return grid;
-        }
-
-        // ---------------------------------------------------------- sections
+        private void OnBack(object sender, MouseButtonEventArgs e) => GoHome();
 
         private void Open(Section section, bool animated)
         {
             _current = section;
             S.Section = section.Key;
+            SearchBox.Text = "";
             Resources["SectionAccent"] = new SolidColorBrush(section.Accent);
-            PaintNav();
+            HomeHeader.Visibility = Visibility.Collapsed;
+            BackButton.Visibility = Visibility.Visible;
+            var a = section.Accent;
+            BackA.Color = Lighter(a, 25);
+            BackB.Color = a;
+            BackGlow.Color = a;
 
             HeroTitle.Text = section.Title;
             HeroSubtitle.Text = section.Subtitle;
-            HeroIcon.Text = section.Glyph;
-            var a = section.Accent;
-            var colours = new (GradientStop stop, Color colour)[]
-            {
-                (HeroA, Color.FromArgb(0xEB, a.R, a.G, a.B)),
-                (HeroB, Color.FromArgb(0x8C, a.R, a.G, a.B)),
-            };
-            foreach (var (stop, colour) in colours)
-            {
-                if (animated) stop.BeginAnimation(GradientStop.ColorProperty, new ColorAnimation(colour, TimeSpan.FromSeconds(0.35)));
-                else { stop.BeginAnimation(GradientStop.ColorProperty, null); stop.Color = colour; }
-            }
-            HeroTileFill.Background = new LinearGradientBrush(
-                Color.FromRgb((byte)Math.Min(255, section.Colour.R + 30), (byte)Math.Min(255, section.Colour.G + 30), (byte)Math.Min(255, section.Colour.B + 30)),
-                section.Colour, 90);
+            HeroTileHost.Child = IconTile(section.Icon, section.Colour, 60);
+            HeroA.Color = Color.FromArgb(0xEB, a.R, a.G, a.B);
+            HeroB.Color = Color.FromArgb(0x8C, a.R, a.G, a.B);
             HeroGlow.Color = a;
-            HeroTileGlow.Color = a;
-            TintAurora();
 
             PageHost.Children.Clear();
             _rows.Clear();
             PageHost.Children.Add(BuildPage(section, collectOnly: false)!);
-            DetailScroll.ScrollToTop();
-            if (animated)
-            {
-                Detail.Opacity = 0;
-                Detail.RenderTransform = new ScaleTransform(0.97, 0.97);
-                Detail.RenderTransformOrigin = new Point(0.5, 0);
-                var d = TimeSpan.FromSeconds(0.32);
-                var ease = new CubicEase { EasingMode = EasingMode.EaseOut };
-                Detail.BeginAnimation(OpacityProperty, new DoubleAnimation(1, d) { EasingFunction = ease });
-                ((ScaleTransform)Detail.RenderTransform).BeginAnimation(ScaleTransform.ScaleXProperty, new DoubleAnimation(1, d) { EasingFunction = ease });
-                ((ScaleTransform)Detail.RenderTransform).BeginAnimation(ScaleTransform.ScaleYProperty, new DoubleAnimation(1, d) { EasingFunction = ease });
-            }
-            _previewStep = 0;
-            UpdatePreview();
+            HomeView.Visibility = Visibility.Collapsed;
+            DetailView.Visibility = Visibility.Visible;
+            DetailView.ScrollToTop();
+            if (animated) Appear(DetailView, 0.94);
+            TintAurora();
         }
+
+        private static void Appear(FrameworkElement view, double fromScale)
+        {
+            view.Opacity = 0;
+            var scale = new ScaleTransform(fromScale, fromScale);
+            view.RenderTransform = scale;
+            view.RenderTransformOrigin = new Point(0.5, 0.1);
+            var d = TimeSpan.FromSeconds(0.42);
+            var spring = new ElasticEase { Oscillations = 1, Springiness = 9, EasingMode = EasingMode.EaseOut };
+            view.BeginAnimation(OpacityProperty, new DoubleAnimation(1, TimeSpan.FromSeconds(0.28)));
+            scale.BeginAnimation(ScaleTransform.ScaleXProperty, new DoubleAnimation(1, d) { EasingFunction = spring });
+            scale.BeginAnimation(ScaleTransform.ScaleYProperty, new DoubleAnimation(1, d) { EasingFunction = spring });
+        }
+
+        // ================================================================ home tiles
+
+        private void BuildTiles()
+        {
+            Tiles.Children.Clear();
+            var nowPlaying = NowPlayingTile();
+            Grid.SetColumnSpan(nowPlaying, 2);
+            Tiles.Children.Add(nowPlaying);
+            Place(Tile(Sections[0]), 0, 2);
+            Place(Tile(Sections[1]), 0, 3);
+            Place(Tile(Sections[2]), 1, 0);
+            Place(Tile(Sections[3]), 1, 1);
+            Place(Tile(Sections[4]), 1, 2);
+            Place(Tile(Sections[5]), 1, 3);
+        }
+
+        private void Place(FrameworkElement tile, int row, int column)
+        {
+            Grid.SetRow(tile, row);
+            Grid.SetColumn(tile, column);
+            Tiles.Children.Add(tile);
+        }
+
+        // A bright tile: circle icon, title, status. Light follows the pointer,
+        // the tile lifts a little and glows in its colour.
+        private FrameworkElement Tile(Section section)
+        {
+            var c = section.Accent;
+            var shape = new CornerRadius(22);
+            var light = new RadialGradientBrush(Color.FromArgb(0x33, 0xFF, 0xFF, 0xFF), Color.FromArgb(0, 0xFF, 0xFF, 0xFF))
+            {
+                Center = new Point(0.15, 0.1), GradientOrigin = new Point(0.15, 0.1), RadiusX = 0.8, RadiusY = 0.9
+            };
+            var content = new Grid();
+            content.Children.Add(new Border { CornerRadius = shape, Background = new LinearGradientBrush(Color.FromArgb(0xFA, c.R, c.G, c.B), Color.FromArgb(0xA8, c.R, c.G, c.B), 45) });
+            content.Children.Add(new Border { CornerRadius = shape, Background = Gloss(0x2E) });
+            content.Children.Add(new Border { CornerRadius = shape, Background = light });
+
+            var stack = new StackPanel { Margin = new Thickness(14) };
+            var circle = new Grid { Width = 38, Height = 38, HorizontalAlignment = HorizontalAlignment.Left };
+            circle.Children.Add(new Border { CornerRadius = new CornerRadius(19), Background = new SolidColorBrush(Color.FromArgb(0x38, 0xFF, 0xFF, 0xFF)) });
+            circle.Children.Add(new IconView { Icon = section.Icon, Width = 18, Height = 18 });
+            stack.Children.Add(circle);
+            stack.Children.Add(new TextBlock { Text = section.Title, FontSize = 15, FontWeight = FontWeights.Black, FontFamily = DisplayFont, Margin = new Thickness(0, 22, 0, 0), TextTrimming = TextTrimming.CharacterEllipsis });
+            stack.Children.Add(new TextBlock { Text = section.Status, FontSize = 11, FontWeight = FontWeights.Medium, Foreground = new SolidColorBrush(Color.FromArgb(0xD6, 0xFF, 0xFF, 0xFF)), Margin = new Thickness(0, 3, 0, 0), TextWrapping = TextWrapping.Wrap });
+            content.Children.Add(stack);
+
+            var tile = new Border
+            {
+                CornerRadius = shape,
+                Margin = new Thickness(7),
+                Child = content,
+                Cursor = Cursors.Hand,
+                BorderThickness = new Thickness(1),
+                BorderBrush = new LinearGradientBrush(Color.FromArgb(0x59, 0xFF, 0xFF, 0xFF), Color.FromArgb(0x1A, 0xFF, 0xFF, 0xFF), 90),
+                RenderTransformOrigin = new Point(0.5, 0.5),
+                RenderTransform = new ScaleTransform(1, 1),
+                Effect = new DropShadowEffect { Color = c, BlurRadius = 10, ShadowDepth = 4, Direction = 270, Opacity = 0.3 }
+            };
+            content.Clip = null;
+            Hover(tile, light, c, () => { _hovered = section; UpdateStage(); }, () => { if (_hovered == section) { _hovered = null; UpdateStage(); } });
+            tile.MouseLeftButtonUp += (_, _) => Open(section, animated: true);
+            return tile;
+        }
+
+        private static void Hover(Border tile, RadialGradientBrush light, Color c, Action enter, Action leave)
+        {
+            var scale = (ScaleTransform)tile.RenderTransform;
+            var shadow = (DropShadowEffect)tile.Effect;
+            void To(double s, double glow, double blur)
+            {
+                var d = TimeSpan.FromSeconds(0.28);
+                var ease = new BackEase { Amplitude = 0.4, EasingMode = EasingMode.EaseOut };
+                scale.BeginAnimation(ScaleTransform.ScaleXProperty, new DoubleAnimation(s, d) { EasingFunction = ease });
+                scale.BeginAnimation(ScaleTransform.ScaleYProperty, new DoubleAnimation(s, d) { EasingFunction = ease });
+                shadow.BeginAnimation(DropShadowEffect.OpacityProperty, new DoubleAnimation(glow, d));
+                shadow.BeginAnimation(DropShadowEffect.BlurRadiusProperty, new DoubleAnimation(blur, d));
+            }
+            tile.MouseEnter += (_, _) => { To(1.035, 0.55, 18); enter(); };
+            tile.MouseLeave += (_, _) =>
+            {
+                To(1, 0.3, 10);
+                light.Center = light.GradientOrigin = new Point(0.15, 0.1);
+                light.GradientStops[0].Color = Color.FromArgb(0x33, 0xFF, 0xFF, 0xFF);
+                leave();
+            };
+            tile.MouseMove += (_, e) =>
+            {
+                var p = e.GetPosition(tile);
+                if (tile.ActualWidth <= 0 || tile.ActualHeight <= 0) return;
+                var u = new Point(Math.Clamp(p.X / tile.ActualWidth, 0, 1), Math.Clamp(p.Y / tile.ActualHeight, 0, 1));
+                light.Center = light.GradientOrigin = u;
+                light.GradientStops[0].Color = Color.FromArgb(0x61, 0xFF, 0xFF, 0xFF);
+            };
+        }
+
+        private Border? _npArt;
+        private TextBlock? _npLabel, _npTitle, _npArtist;
+        private Border? _npBack, _npBlur;
+        private DropShadowEffect? _npShadow;
+
+        // Wide tile: what plays right now, on its own blurred cover.
+        private FrameworkElement NowPlayingTile()
+        {
+            var shape = new CornerRadius(24);
+            _npBack = new Border { CornerRadius = shape };
+            _npBlur = new Border { CornerRadius = shape, Opacity = 0.55, Effect = new BlurEffect { Radius = 30 } };
+            var grid = new Grid();
+            grid.Children.Add(_npBack);
+            grid.Children.Add(_npBlur);
+            grid.Children.Add(new Border { CornerRadius = shape, Background = Gloss(0x2E) });
+            var row = new StackPanel { Orientation = Orientation.Horizontal, Margin = new Thickness(16), VerticalAlignment = VerticalAlignment.Center };
+            _npArt = new Border { Width = 84, Height = 84, CornerRadius = new CornerRadius(16), Background = new SolidColorBrush(Color.FromArgb(0x2E, 0xFF, 0xFF, 0xFF)),
+                                  Effect = new DropShadowEffect { BlurRadius = 18, ShadowDepth = 4, Direction = 270, Opacity = 0.3 } };
+            row.Children.Add(_npArt);
+            var text = new StackPanel { Margin = new Thickness(14, 0, 0, 0), VerticalAlignment = VerticalAlignment.Center, MaxWidth = 230 };
+            _npLabel = new TextBlock { FontSize = 10, FontWeight = FontWeights.Black, Foreground = new SolidColorBrush(Color.FromArgb(0xB3, 0xFF, 0xFF, 0xFF)) };
+            _npTitle = new TextBlock { FontSize = 19, FontWeight = FontWeights.Black, FontFamily = DisplayFont, Margin = new Thickness(0, 4, 0, 0), TextTrimming = TextTrimming.CharacterEllipsis };
+            _npArtist = new TextBlock { FontSize = 12, FontWeight = FontWeights.Medium, Foreground = new SolidColorBrush(Color.FromArgb(0xCC, 0xFF, 0xFF, 0xFF)), Margin = new Thickness(0, 4, 0, 0), TextTrimming = TextTrimming.CharacterEllipsis };
+            text.Children.Add(_npLabel); text.Children.Add(_npTitle); text.Children.Add(_npArtist);
+            row.Children.Add(text);
+            grid.Children.Add(row);
+            _npShadow = new DropShadowEffect { BlurRadius = 12, ShadowDepth = 5, Direction = 270, Opacity = 0.4 };
+            var tile = new Border
+            {
+                CornerRadius = shape, Margin = new Thickness(7), Child = grid, Cursor = Cursors.Hand, ClipToBounds = true,
+                BorderThickness = new Thickness(1), BorderBrush = new SolidColorBrush(Color.FromArgb(0x47, 0xFF, 0xFF, 0xFF)),
+                RenderTransformOrigin = new Point(0.5, 0.5), RenderTransform = new ScaleTransform(1, 1), Effect = _npShadow
+            };
+            var light = new RadialGradientBrush(Color.FromArgb(0, 0xFF, 0xFF, 0xFF), Color.FromArgb(0, 0xFF, 0xFF, 0xFF));
+            Hover(tile, light, Colors.White, () => { _hovered = Sections[2]; UpdateStage(); }, () => { _hovered = null; UpdateStage(); });
+            tile.MouseLeftButtonUp += (_, _) => Open(Sections[2], animated: true);
+            return tile;
+        }
+
+        // The track everywhere: the wide tile, the island in the top bar, the stage.
+        private void ShowTrack()
+        {
+            var t = App.Current.Media.Track;
+            var tint = t?.Tint ?? Color.FromRgb(0x5C, 0x59, 0xE6);
+            if (_npArt != null && _npLabel != null && _npTitle != null && _npArtist != null && _npBack != null && _npBlur != null && _npShadow != null)
+            {
+                _npArt.Background = t?.Artwork != null ? new ImageBrush(t.Artwork) { Stretch = Stretch.UniformToFill } : new SolidColorBrush(Color.FromArgb(0x2E, 0xFF, 0xFF, 0xFF));
+                _npLabel.Text = t == null ? "ТИШИНА" : (t.Playing ? "СЕЙЧАС ИГРАЕТ" : "НА ПАУЗЕ");
+                _npTitle.Text = t?.Title ?? "Островок ждёт музыку";
+                _npArtist.Text = t?.Artist ?? "Включи что-нибудь — плеер появится вверху экрана";
+                _npBack.Background = new LinearGradientBrush(Color.FromArgb(0xF2, tint.R, tint.G, tint.B), Color.FromArgb(0xBF, 0, 0, 0), 45);
+                _npBlur.Background = t?.Artwork != null ? new ImageBrush(t.Artwork) { Stretch = Stretch.UniformToFill } : null;
+                _npShadow.Color = tint;
+            }
+            TopArt.Background = t?.Artwork != null ? new ImageBrush(t.Artwork) { Stretch = Stretch.UniformToFill } : new SolidColorBrush(Color.FromArgb(0x99, tint.R, tint.G, tint.B));
+            TopTitle.Text = t?.Title ?? "Островок ждёт";
+            TopArtist.Text = t?.Artist ?? "";
+            TopArtist.Visibility = t == null ? Visibility.Collapsed : Visibility.Visible;
+            TopBars.Visibility = t == null ? Visibility.Collapsed : Visibility.Visible;
+            TopBars.Playing = t?.Playing == true;
+            TopBars.SetCover(t?.Artwork, tint);
+            StageBars.Playing = t?.Playing == true;
+            StageBars.SetCover(t?.Artwork, tint);
+            UpdateStage();
+        }
+
+        // ================================================================ the stage
+
+        private readonly DispatcherTimer _stageTimer = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(16) };
+        private readonly Spring _sw = new Spring(255);
+        private int _stageStep;
+        private double _stageClock;
+
+        private static readonly string[] Cycle = { "music", "volume", "charging", "output" };
+
+        private string StageScene() => _hovered?.Demo ?? Cycle[_stageStep % Cycle.Length];
+
+        private void UpdateStage()
+        {
+            if (StageText == null) return;
+            var scene = StageScene();
+            var t = App.Current.Media.Track;
+            StageArt.Visibility = scene == "music" ? Visibility.Visible : Visibility.Collapsed;
+            StageIcon.Visibility = scene == "music" ? Visibility.Collapsed : Visibility.Visible;
+            StageBars.Visibility = scene == "music" ? Visibility.Visible : Visibility.Collapsed;
+            string caption;
+            double width;
+            switch (scene)
+            {
+                case "music":
+                    StageArt.Background = t?.Artwork != null ? new ImageBrush(t.Artwork) { Stretch = Stretch.UniformToFill } : new SolidColorBrush(Color.FromRgb(0x2A, 0x2A, 0x2A));
+                    StageText.Text = "";
+                    caption = "Сейчас играет — обложка и полоски в такт музыке";
+                    width = 255;
+                    break;
+                case "volume":
+                    StageIcon.Icon = "speaker.wave"; StageIcon.Fill = Brushes.White;
+                    StageText.Text = "Громкость 60 %";
+                    caption = "Громкость и вывод звука — короткие баннеры";
+                    width = 300;
+                    break;
+                case "charging":
+                    StageIcon.Icon = "bolt"; StageIcon.Fill = new SolidColorBrush(Color.FromRgb(0x34, 0xC7, 0x59));
+                    StageText.Text = "Зарядка · 76 %";
+                    caption = "Зарядка — молния и процент прямо в островке";
+                    width = 300;
+                    break;
+                case "output":
+                    StageIcon.Icon = "headphones"; StageIcon.Fill = new SolidColorBrush(Color.FromRgb(0x4C, 0x8D, 0xFF));
+                    StageText.Text = "Наушники";
+                    caption = "Звук переключился — островок покажет куда";
+                    width = 280;
+                    break;
+                default:
+                    StageIcon.Icon = "sparkles"; StageIcon.Fill = Brushes.White;
+                    StageText.Text = "Ovira " + App.Version;
+                    caption = "Островок вверху экрана — как на Mac";
+                    width = 260;
+                    break;
+            }
+            StageCaption.Text = caption;
+            _sw.To(width * S.IslandScale, Motion.GrowResponse, Motion.GrowDamping);
+            var accent = _hovered?.Accent ?? Color.FromRgb(0x5C, 0x59, 0xE6);
+            var d = TimeSpan.FromSeconds(0.5);
+            StageA.BeginAnimation(GradientStop.ColorProperty, new ColorAnimation(Color.FromArgb(0xD9, accent.R, accent.G, accent.B), d));
+            StageGlow.BeginAnimation(DropShadowEffect.ColorProperty, new ColorAnimation(accent, d));
+            var tint = t?.Tint ?? Color.FromRgb(0xFF, 0x45, 0x66);
+            StageTintColor.BeginAnimation(GradientStop.ColorProperty, new ColorAnimation(Color.FromArgb(0x99, tint.R, tint.G, tint.B), d));
+        }
+
+        private void StageTick()
+        {
+            const double dt = 0.016;
+            if (HomeView.Visibility != Visibility.Visible) return;
+            _sw.Step(dt);
+            _stageClock += dt;
+            if (_hovered == null && _stageClock > 3.2)
+            {
+                _stageClock = 0;
+                _stageStep++;
+                UpdateStage();
+            }
+            DrawStage();
+        }
+
+        private void DrawStage()
+        {
+            double width = Stage.ActualWidth;
+            if (width <= 0) return;
+            double w = _sw.Value, h = 35, r = 13, flare = 7, cx = width / 2;
+            double l = cx - w / 2, rt = cx + w / 2;
+            var g = new StreamGeometry();
+            using (var ctx = g.Open())
+            {
+                ctx.BeginFigure(new Point(l - flare, 0), true, true);
+                ctx.QuadraticBezierTo(new Point(l, 0), new Point(l, flare), true, true);
+                ctx.LineTo(new Point(l, h - r), true, true);
+                ctx.ArcTo(new Point(l + r, h), new Size(r, r), 0, false, SweepDirection.Counterclockwise, true, true);
+                ctx.LineTo(new Point(rt - r, h), true, true);
+                ctx.ArcTo(new Point(rt, h - r), new Size(r, r), 0, false, SweepDirection.Counterclockwise, true, true);
+                ctx.LineTo(new Point(rt, flare), true, true);
+                ctx.QuadraticBezierTo(new Point(rt, 0), new Point(rt + flare, 0), true, true);
+            }
+            g.Freeze();
+            StageShape.Data = g;
+            StageContent.Width = Math.Max(0, w);
+            Canvas.SetLeft(StageContent, l);
+        }
+
+        // ================================================================ pages
 
         private FrameworkElement? BuildPage(Section section, bool collectOnly)
         {
@@ -246,14 +415,14 @@ namespace Ovira.SettingsUi
                         ButtonRow("Сбросить все настройки", "Вернуть всё как после установки", "Сбросить", ResetAll, "сброс по умолчанию"),
                         ButtonRow("Выйти из Ovira", "Островок исчезнет до следующего запуска", "Выйти", () => App.Current.Quit(), "закрыть выход")));
                     page.Children.Add(Group("Версия для Windows", null,
-                        TextRow("Что уже есть", "Островок с пружинными анимациями, медиаплеер для любой музыки и видео, громкость, вывод звука и зарядка."),
+                        TextRow("Что уже есть", "Островок с пружинными анимациями, медиаплеер для любой музыки, настоящая спектрограмма, громкость, вывод звука и зарядка."),
                         TextRow("Чего на Windows не будет", "Свой экран блокировки (Windows не пускает программы на экран входа) и отклик трекпада."),
                         TextRow("Дальше", "Такси и доставка с живыми активностями, таймер, отдых для глаз, исправление раскладки, полка файлов.")));
                     break;
 
                 case "island":
                     page.Children.Add(Group("Открытие", "При наведении островок раскрывается сам; по нажатию — только когда нажмёшь, а при наведении лишь чуть увеличивается.",
-                        SegmentRow("Открывать плеер", null, "По нажатию", nameof(Settings.OpenOnClick), "При наведении", nameof(Settings.OpenOnHover), "открытие клик наведение нажатие"),
+                        SegmentRow("Открывать плеер", null, new (string, object)[] { ("По нажатию", true), ("При наведении", false) }, nameof(Settings.OpenOnClick), "открытие клик наведение нажатие"),
                         ToggleRow("Откликаться на курсор", "Островок чуть увеличивается, когда наводишь на него", nameof(Settings.HoverPeek), "отклик курсор увеличение")));
                     page.Children.Add(Group("Вид", null,
                         SliderRow("Размер островка", nameof(Settings.IslandScale), 0.85, 1.15, 0.05, "размер ширина больше меньше"),
@@ -262,13 +431,23 @@ namespace Ovira.SettingsUi
                     break;
 
                 case "media":
-                    page.Children.Add(Group("Плеер", "Spotify, Яндекс Музыка, браузер — всё, что показывает Windows в окне громкости.",
+                    page.Children.Add(Group("Плеер", "Spotify, Яндекс Музыка, браузер — всё, что Windows показывает в окне громкости.",
                         ToggleRow("Показывать медиаплеер", null, nameof(Settings.ShowMedia), "музыка плеер spotify яндекс"),
-                        ToggleRow("Название трека в свёрнутом островке", "Между обложкой и спектрограммой", nameof(Settings.CompactTitle), "название трек песня"),
+                        ToggleRow("Громкость в плеере", "Ползунок громкости под кнопками, как на Mac", nameof(Settings.VolumeRow), "громкость ползунок"),
                         ToggleRow("Выбор устройства вывода звука", "Кнопка в плеере: динамики, наушники, монитор", nameof(Settings.OutputPicker), "вывод звук наушники динамики устройство"),
                         ButtonRow("Открыть плеер", "Показать, как он выглядит прямо сейчас", "Показать", () => App.Current.IslandWindow?.DemoOpen(), "показать открыть плеер")));
-                    page.Children.Add(Group("Спектрограмма", null,
-                        ToggleRow("Полоски в такт музыке", "Шесть полосок по настоящей громкости, в цвет обложки", nameof(Settings.LiveBars), "спектрограмма полоски эквалайзер волна")));
+                    break;
+
+                case "spectrum":
+                    page.Children.Add(Group("Вид полос", null,
+                        SegmentRow("Внутри полос", null, new (string, object)[] { ("Обложка", "artwork"), ("Размытая обложка", "blurred"), ("Цвет обложки", "tint") },
+                                   nameof(Settings.SpectrumStyle), "обложка размытая цвет вид полос спектрограмма"),
+                        SliderRow("Размытие обложки", nameof(Settings.SpectrumBlur), 0, 1, 0.05, "размытие блюр обложка"),
+                        SliderRow("Размер спектрограммы", nameof(Settings.SpectrumSize), 0.7, 1.3, 0.05, "размер полосок спектрограмма")));
+                    page.Children.Add(Group("Плавность", "Полоски двигаются по настоящему звуку Windows: шесть полос частот, как на Mac. Звук только анализируется и сразу забывается — ничего не записывается.",
+                        SegmentRow("Кадров в секунду", "Больше 60 — для экранов 120–144 Гц; нагрузка чуть выше",
+                                   new (string, object)[] { ("30", 30), ("60", 60), ("90", 90), ("120", 120), ("144", 144) },
+                                   nameof(Settings.SpectrumFps), "кадры fps плавность частота герцы")));
                     break;
 
                 case "notifications":
@@ -300,7 +479,7 @@ namespace Ovira.SettingsUi
             else _rows[title] = row;
         }
 
-        // ---------------------------------------------------------- builders
+        // ================================================================ builders
 
         private FrameworkElement Group(string title, string? footer, params FrameworkElement[] rows)
         {
@@ -362,24 +541,32 @@ namespace Ovira.SettingsUi
             return row;
         }
 
-        private FrameworkElement TextRow(string title, string text)
-        {
-            var row = Row(title, text, new Border());
-            return row;
-        }
+        private FrameworkElement TextRow(string title, string text) => Row(title, text, new Border());
 
-        private FrameworkElement SegmentRow(string title, string? subtitle, string a, string aProperty, string b, string bProperty, string keywords)
+        // Segments bound to one setting: each option has its value.
+        private FrameworkElement SegmentRow(string title, string? subtitle, (string label, object value)[] options, string property, string keywords)
         {
             var box = new Border { CornerRadius = new CornerRadius(9), Padding = new Thickness(2), Background = new SolidColorBrush(Color.FromArgb(0x1A, 0xFF, 0xFF, 0xFF)) };
             var stack = new StackPanel { Orientation = Orientation.Horizontal };
-            var group = "seg" + aProperty;
-            var ra = new RadioButton { Content = a, GroupName = group, Style = (Style)FindResource("MacSegment") };
-            ra.SetBinding(ToggleButton.IsCheckedProperty, Bind(aProperty));
-            var rb = new RadioButton { Content = b, GroupName = group, Style = (Style)FindResource("MacSegment") };
-            rb.SetBinding(ToggleButton.IsCheckedProperty, Bind(bProperty));
-            stack.Children.Add(ra);
-            stack.Children.Add(rb);
+            var prop = typeof(Settings).GetProperty(property)!;
+            var buttons = new List<(RadioButton b, object v)>();
+            void Refresh()
+            {
+                var current = prop.GetValue(S);
+                foreach (var (b, v) in buttons) b.IsChecked = Equals(current, v);
+            }
+            foreach (var (label, value) in options)
+            {
+                var rb = new RadioButton { Content = label, GroupName = "seg" + property + GetHashCode(), Style = (Style)FindResource("MacSegment") };
+                rb.Checked += (_, _) => { if (!Equals(prop.GetValue(S), value)) prop.SetValue(S, value); };
+                buttons.Add((rb, value));
+                stack.Children.Add(rb);
+            }
+            Refresh();
             box.Child = stack;
+            System.ComponentModel.PropertyChangedEventHandler handler = (_, e) => { if (e.PropertyName == property) Refresh(); };
+            S.PropertyChanged += handler;
+            box.Unloaded += (_, _) => S.PropertyChanged -= handler;
             var row = Row(title, subtitle, box);
             Remember(title, keywords, row);
             return row;
@@ -391,7 +578,7 @@ namespace Ovira.SettingsUi
             var slider = new Slider { Width = 200, Minimum = min, Maximum = max, TickFrequency = step, IsSnapToTickEnabled = true, Style = (Style)FindResource("MacSlider"), VerticalAlignment = VerticalAlignment.Center };
             slider.SetBinding(RangeBase.ValueProperty, Bind(property));
             void Show() => value.Text = $"{Math.Round(slider.Value * 100)} %";
-            slider.ValueChanged += (_, _) => { Show(); UpdatePreview(); };
+            slider.ValueChanged += (_, _) => { Show(); UpdateStage(); };
             Show();
             var both = new StackPanel { Orientation = Orientation.Horizontal };
             both.Children.Add(slider);
@@ -401,37 +588,62 @@ namespace Ovira.SettingsUi
             return row;
         }
 
-        // ---------------------------------------------------------- search
+        // Rounded colour tile with a glossy top — the section icons.
+        private static FrameworkElement IconTile(string icon, Color colour, double size)
+        {
+            var radius = new CornerRadius(size * 0.28);
+            var grid = new Grid { Width = size, Height = size };
+            grid.Children.Add(new Border { CornerRadius = radius, Background = new LinearGradientBrush(Lighter(colour, 30), colour, 90) });
+            grid.Children.Add(new Border
+            {
+                CornerRadius = radius,
+                Background = Gloss(0x59),
+                BorderBrush = new SolidColorBrush(Color.FromArgb(0x40, 0xFF, 0xFF, 0xFF)),
+                BorderThickness = new Thickness(0.8)
+            });
+            grid.Children.Add(new IconView { Icon = icon, Width = size * 0.5, Height = size * 0.5 });
+            grid.Effect = new DropShadowEffect { Color = colour, BlurRadius = size * 0.3, ShadowDepth = size * 0.06, Direction = 270, Opacity = 0.45 };
+            return grid;
+        }
+
+        private static Brush Gloss(byte alpha) => new LinearGradientBrush(new GradientStopCollection
+        {
+            new GradientStop(Color.FromArgb(alpha, 0xFF, 0xFF, 0xFF), 0),
+            new GradientStop(Color.FromArgb(0, 0xFF, 0xFF, 0xFF), 0.5)
+        }, 90);
+
+        private static Color Lighter(Color c, int by) =>
+            Color.FromRgb((byte)Math.Min(255, c.R + by), (byte)Math.Min(255, c.G + by), (byte)Math.Min(255, c.B + by));
+
+        private static FontFamily DisplayFont => (FontFamily)Application.Current.FindResource("DisplayFont");
+
+        // ================================================================ search (on the home screen, like the Mac)
 
         private void OnSearch(object sender, TextChangedEventArgs e)
         {
             var q = SearchBox.Text.Trim().ToLowerInvariant();
             SearchPlaceholder.Visibility = q.Length == 0 ? Visibility.Visible : Visibility.Collapsed;
-            if (q.Length == 0)
-            {
-                SearchResults.Visibility = Visibility.Collapsed;
-                NavList.Visibility = Visibility.Visible;
-                return;
-            }
-            NavList.Visibility = Visibility.Collapsed;
-            SearchResults.Visibility = Visibility.Visible;
+            if (q.Length > 0 && _current != null) GoHome();
+            SearchPanel.Visibility = q.Length == 0 ? Visibility.Collapsed : Visibility.Visible;
+            HomeContent.Visibility = q.Length == 0 ? Visibility.Visible : Visibility.Collapsed;
             SearchResults.Children.Clear();
+            if (q.Length == 0) return;
             var hits = _entries.Where(x => x.Title.ToLowerInvariant().Contains(q) || x.Keywords.Contains(q)).ToList();
             if (hits.Count == 0)
             {
-                SearchResults.Children.Add(new TextBlock { Text = "Ничего не нашлось", FontSize = 12, Foreground = new SolidColorBrush(Color.FromArgb(0x8C, 0xFF, 0xFF, 0xFF)), Margin = new Thickness(10, 6, 0, 0) });
+                SearchResults.Children.Add(new TextBlock { Text = "Ничего не нашлось", FontSize = 12.5, Foreground = new SolidColorBrush(Color.FromArgb(0x8C, 0xFF, 0xFF, 0xFF)), Margin = new Thickness(8) });
                 return;
             }
             foreach (var hit in hits)
             {
                 var section = Sections.First(s => s.Key == hit.Section);
                 var row = new StackPanel { Orientation = Orientation.Horizontal };
-                row.Children.Add(IconTile(section.Glyph, section.Colour, 22));
-                var text = new StackPanel { Margin = new Thickness(9, 0, 0, 0), VerticalAlignment = VerticalAlignment.Center };
-                text.Children.Add(new TextBlock { Text = hit.Title, FontSize = 12.5, TextTrimming = TextTrimming.CharacterEllipsis, MaxWidth = 170 });
+                row.Children.Add(IconTile(section.Icon, section.Colour, 24));
+                var text = new StackPanel { Margin = new Thickness(10, 0, 0, 0), VerticalAlignment = VerticalAlignment.Center };
+                text.Children.Add(new TextBlock { Text = hit.Title, FontSize = 13 });
                 text.Children.Add(new TextBlock { Text = section.Title, FontSize = 10.5, Foreground = new SolidColorBrush(Color.FromArgb(0x8C, 0xFF, 0xFF, 0xFF)) });
                 row.Children.Add(text);
-                var item = new Border { Child = row, Padding = new Thickness(7, 5, 7, 5), CornerRadius = new CornerRadius(10), Background = Brushes.Transparent, Cursor = Cursors.Hand };
+                var item = new Border { Child = row, Padding = new Thickness(8, 6, 8, 6), CornerRadius = new CornerRadius(12), Background = Brushes.Transparent, Cursor = Cursors.Hand };
                 item.MouseEnter += (_, _) => item.Background = new SolidColorBrush(Color.FromArgb(0x14, 0xFF, 0xFF, 0xFF));
                 item.MouseLeave += (_, _) => item.Background = Brushes.Transparent;
                 var title = hit.Title;
@@ -446,39 +658,37 @@ namespace Ovira.SettingsUi
 
         private void Highlight(string title)
         {
-            if (!_rows.TryGetValue(title, out var row)) return;
+            if (!_rows.TryGetValue(title, out var row) || _current == null) return;
             row.BringIntoView();
             if (row is Panel panel)
             {
                 var a = _current.Accent;
                 var brush = new SolidColorBrush(Color.FromArgb(0, a.R, a.G, a.B));
                 panel.Background = brush;
-                var anim = new ColorAnimation(Color.FromArgb(0x40, a.R, a.G, a.B), TimeSpan.FromSeconds(0.25))
+                brush.BeginAnimation(SolidColorBrush.ColorProperty, new ColorAnimation(Color.FromArgb(0x40, a.R, a.G, a.B), TimeSpan.FromSeconds(0.25))
                 {
                     AutoReverse = true,
                     RepeatBehavior = new RepeatBehavior(2)
-                };
-                brush.BeginAnimation(SolidColorBrush.ColorProperty, anim);
+                });
             }
         }
 
-        // ---------------------------------------------------------- living background
+        // ================================================================ living background
 
         private void StartAurora()
         {
             Loaded += (_, _) =>
             {
-                Drift(BlobA, -160, 420, -200, 260, 17);
-                Drift(BlobB, 380, 760, 220, 420, 21);
-                Drift(BlobC, 120, 560, -120, 380, 26);
+                Drift(BlobA, -180, 440, -220, 260, 17);
+                Drift(BlobB, 380, 780, 220, 440, 21);
+                Drift(BlobC, 120, 580, -140, 400, 26);
+                TintAurora();
             };
         }
 
         private static void Drift(UIElement blob, double x1, double x2, double y1, double y2, double seconds)
         {
             var ease = new SineEase { EasingMode = EasingMode.EaseInOut };
-            Canvas.SetLeft(blob, x1);
-            Canvas.SetTop(blob, y1);
             blob.BeginAnimation(Canvas.LeftProperty, new DoubleAnimation(x1, x2, TimeSpan.FromSeconds(seconds))
             { AutoReverse = true, RepeatBehavior = RepeatBehavior.Forever, EasingFunction = ease });
             blob.BeginAnimation(Canvas.TopProperty, new DoubleAnimation(y1, y2, TimeSpan.FromSeconds(seconds * 0.77))
@@ -487,138 +697,16 @@ namespace Ovira.SettingsUi
 
         private void TintAurora()
         {
-            var a = _current.Accent;
+            var a = _current?.Accent ?? Color.FromRgb(0x5C, 0x59, 0xE6);
             var cover = App.Current.Media.Track?.Tint ?? Color.FromRgb(0xFF, 0x45, 0x66);
             var d = TimeSpan.FromSeconds(0.8);
             BlobAColor.BeginAnimation(GradientStop.ColorProperty, new ColorAnimation(a, d));
             BlobBColor.BeginAnimation(GradientStop.ColorProperty, new ColorAnimation(cover, d));
             BlobCColor.BeginAnimation(GradientStop.ColorProperty,
-                new ColorAnimation(Color.FromRgb((byte)((a.R + cover.R) / 2), (byte)((a.G + cover.G) / 2), (byte)((a.B + 255) / 2)), d));
+                new ColorAnimation(Color.FromRgb((byte)((a.R + cover.R) / 2), (byte)((a.G + cover.G) / 2), (byte)Math.Min(255, (a.B + 255) / 2)), d));
         }
 
-        // ---------------------------------------------------------- the island in the banner
-
-        private readonly DispatcherTimer _previewTimer = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(33) };
-        private readonly Spring _pw = new Spring(170);
-        private readonly Rectangle[] _pbars = new Rectangle[6];
-        private readonly double[] _plevels = new double[6];
-        private readonly Random _random = new Random();
-        private int _previewStep;
-        private double _previewClock;
-
-        private void BuildPreviewBars()
-        {
-            for (int i = 0; i < 6; i++)
-            {
-                _pbars[i] = new Rectangle { Width = 1.8, Height = 3, RadiusX = 0.9, RadiusY = 0.9, Margin = new Thickness(0.7, 0, 0.7, 0), VerticalAlignment = VerticalAlignment.Center };
-                PreviewBars.Children.Add(_pbars[i]);
-            }
-        }
-
-        // Which little scene the banner plays.
-        private string Scene()
-        {
-            switch (_current.Key)
-            {
-                case "media": return "music";
-                case "notifications": return _previewStep % 2 == 0 ? "volume" : "output";
-                case "devices": return "charging";
-                case "general": return "ovira";
-                default:
-                    var cycle = new[] { "music", "volume", "charging", "output" };
-                    return cycle[_previewStep % cycle.Length];
-            }
-        }
-
-        private void UpdatePreview()
-        {
-            if (PreviewText == null) return;
-            var scene = Scene();
-            var track = App.Current.Media.Track;
-            PreviewArtBox.Visibility = scene == "music" ? Visibility.Visible : Visibility.Collapsed;
-            PreviewIcon.Visibility = scene == "music" ? Visibility.Collapsed : Visibility.Visible;
-            PreviewBars.Visibility = scene == "music" ? Visibility.Visible : Visibility.Collapsed;
-            double width;
-            switch (scene)
-            {
-                case "music":
-                    PreviewArt.Source = track?.Artwork;
-                    PreviewText.Text = track?.Title ?? "Ничего не играет";
-                    var tint = new SolidColorBrush(track?.Tint ?? Color.FromRgb(0xFF, 0x5A, 0x7A));
-                    foreach (var b in _pbars) b.Fill = tint;
-                    width = 176;
-                    break;
-                case "volume":
-                    PreviewIcon.Text = ""; PreviewIcon.Foreground = Brushes.White;
-                    PreviewText.Text = "Громкость 60 %";
-                    width = 190;
-                    break;
-                case "output":
-                    PreviewIcon.Text = ""; PreviewIcon.Foreground = new SolidColorBrush(Color.FromRgb(0x4C, 0x8D, 0xFF));
-                    PreviewText.Text = "Наушники";
-                    width = 160;
-                    break;
-                case "charging":
-                    PreviewIcon.Text = ""; PreviewIcon.Foreground = new SolidColorBrush(Color.FromRgb(0x34, 0xC7, 0x59));
-                    PreviewText.Text = "Зарядка · 76 %";
-                    width = 186;
-                    break;
-                default:
-                    PreviewIcon.Text = ""; PreviewIcon.Foreground = Brushes.White;
-                    PreviewText.Text = "Ovira " + App.Version;
-                    width = 150;
-                    break;
-            }
-            _pw.To(width * S.IslandScale * 0.9, Motion.GrowResponse, Motion.GrowDamping);
-        }
-
-        private void PreviewTick()
-        {
-            const double dt = 0.033;
-            _pw.Step(dt);
-            _previewClock += dt;
-            // The island section and notifications play their scenes in turn.
-            if ((_current.Key == "island" || _current.Key == "notifications") && _previewClock > 2.6)
-            {
-                _previewClock = 0;
-                _previewStep++;
-                UpdatePreview();
-            }
-            DrawPreview();
-            var playing = App.Current.Media.Track?.Playing == true;
-            var t = Environment.TickCount64 / 1000.0;
-            double[] shape = { 0.55, 0.85, 1.0, 0.9, 0.72, 0.5 };
-            for (int i = 0; i < 6; i++)
-            {
-                var target = playing ? Math.Clamp(shape[i] * (0.6 + 0.4 * Math.Sin(t * (7 + i * 1.8) + i)) * (0.8 + _random.NextDouble() * 0.4), 0.15, 1) : 0.15;
-                _plevels[i] += (target - _plevels[i]) * (target > _plevels[i] ? 0.5 : 0.2);
-                _pbars[i].Height = 2 + 10 * _plevels[i];
-            }
-        }
-
-        private void DrawPreview()
-        {
-            double w = _pw.Value, h = 26, r = 11, flare = 6, cx = 118;
-            double l = cx - w / 2, rt = cx + w / 2;
-            var g = new StreamGeometry();
-            using (var ctx = g.Open())
-            {
-                ctx.BeginFigure(new Point(l - flare, 0), true, true);
-                ctx.QuadraticBezierTo(new Point(l, 0), new Point(l, flare), true, true);
-                ctx.LineTo(new Point(l, h - r), true, true);
-                ctx.ArcTo(new Point(l + r, h), new Size(r, r), 0, false, SweepDirection.Counterclockwise, true, true);
-                ctx.LineTo(new Point(rt - r, h), true, true);
-                ctx.ArcTo(new Point(rt, h - r), new Size(r, r), 0, false, SweepDirection.Counterclockwise, true, true);
-                ctx.LineTo(new Point(rt, flare), true, true);
-                ctx.QuadraticBezierTo(new Point(rt, 0), new Point(rt + flare, 0), true, true);
-            }
-            g.Freeze();
-            PreviewShape.Data = g;
-            PreviewContent.Width = Math.Max(0, w);
-            Canvas.SetLeft(PreviewContent, l);
-        }
-
-        // ---------------------------------------------------------- actions
+        // ================================================================ actions
 
         private void OpenFolder()
         {
