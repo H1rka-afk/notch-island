@@ -84,7 +84,7 @@ namespace Ovira.SettingsUi
             if (e.PropertyName == nameof(Settings.Section)) return;
             if (e.PropertyName is nameof(Settings.Theme) or nameof(Settings.CustomThemes))
             {
-                ApplyTheme();
+                CrossFade(ApplyTheme);
                 return;
             }
             if (_current?.Key == "profiles") ScheduleProfiles();

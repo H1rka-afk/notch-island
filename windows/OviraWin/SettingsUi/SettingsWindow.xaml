@@ -548,6 +548,8 @@
                     </ScrollViewer>
                 </Grid>
             </DockPanel>
+            <!-- 0.4.1: a snapshot of the old theme that fades out over the new one -->
+            <Image x:Name="ThemeFade" Stretch="Fill" IsHitTestVisible="False" Visibility="Collapsed" />
         </Grid>
     </Border>
 </Window>

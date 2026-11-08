@@ -102,7 +102,45 @@ namespace Ovira.SettingsUi
             if (S.Theme != "cover") return;
             var tint = CoverTint;
             if (tint == _lastTint) return;
-            ApplyTheme();
+            CrossFade(ApplyTheme);
+        }
+
+        // A theme never switches abruptly: the window as it looked a moment
+        // ago is laid over the new theme and slowly fades away.
+        private void CrossFade(Action change)
+        {
+            if (!IsLoaded || Frame.ActualWidth < 1 || Frame.ActualHeight < 1) { change(); return; }
+            try
+            {
+                var dpi = VisualTreeHelper.GetDpi(this);
+                var shot = new System.Windows.Media.Imaging.RenderTargetBitmap(
+                    (int)Math.Ceiling(Frame.ActualWidth * dpi.DpiScaleX), (int)Math.Ceiling(Frame.ActualHeight * dpi.DpiScaleY),
+                    dpi.PixelsPerInchX, dpi.PixelsPerInchY, PixelFormats.Pbgra32);
+                ThemeFade.BeginAnimation(OpacityProperty, null);
+                ThemeFade.Opacity = 0;            // keep the previous snapshot out of the new one
+                shot.Render(Frame);
+                shot.Freeze();
+                ThemeFade.Source = shot;
+                ThemeFade.Opacity = 1;
+                ThemeFade.Visibility = Visibility.Visible;
+            }
+            catch
+            {
+                change();
+                return;
+            }
+            change();
+            var fade = new System.Windows.Media.Animation.DoubleAnimation(1, 0, TimeSpan.FromSeconds(0.55))
+            {
+                EasingFunction = new System.Windows.Media.Animation.CubicEase { EasingMode = System.Windows.Media.Animation.EasingMode.EaseInOut }
+            };
+            fade.Completed += (_, _) =>
+            {
+                if (ThemeFade.Opacity > 0.01) return;   // a newer fade has started
+                ThemeFade.Visibility = Visibility.Collapsed;
+                ThemeFade.Source = null;
+            };
+            ThemeFade.BeginAnimation(OpacityProperty, fade);
         }
 
         private static bool IsLight(Color c) => 0.299 * c.R + 0.587 * c.G + 0.114 * c.B > 165;
