@@ -66,8 +66,9 @@ namespace Ovira.Core
             "trash" => Parse("M9.5,2.5 H14.5 L15.3,4 H19.5 V6 H4.5 V4 H8.7 Z M6,7.3 H18 L17.1,19.8 C17,21 16,21.8 14.9,21.8 H9.1 C8,21.8 7,21 6.9,19.8 Z"),
             "share" => Parse("M12,2.5 L16.7,7.2 L15.3,8.6 L13,6.3 V14.5 H11 V6.3 L8.7,8.6 L7.3,7.2 Z M5,10 H9 V12 H6.8 V19.5 H17.2 V12 H15 V10 H19 V21.5 H5 Z"),
             "folder" => Parse("M3.5,5 H9.5 L11.5,7 H20.5 C21.3,7 22,7.7 22,8.5 V18.5 C22,19.3 21.3,20 20.5,20 H3.5 C2.7,20 2,19.3 2,18.5 V6.5 C2,5.7 2.7,5 3.5,5 Z"),
-            "eye" => Parse("M12,4.8 C7.2,4.8 3.4,8 1.6,12 C3.4,16 7.2,19.2 12,19.2 C16.8,19.2 20.6,16 22.4,12 C20.6,8 16.8,4.8 12,4.8 Z " +
-                           "M12,7.1 A4.9,4.9 0 1 0 12,16.9 A4.9,4.9 0 1 0 12,7.1 Z M12,9.3 A2.7,2.7 0 1 0 12,14.7 A2.7,2.7 0 1 0 12,9.3 Z"),
+            // SF «eye.fill»: a solid almond, the iris cut out as a ring around a solid pupil.
+            "eye" => Parse("M1.2,12 C3.6,7 7.5,3.8 12,3.8 C16.5,3.8 20.4,7 22.8,12 C20.4,17 16.5,20.2 12,20.2 C7.5,20.2 3.6,17 1.2,12 Z " +
+                           "M12,6.8 A5.2,5.2 0 1 0 12,17.2 A5.2,5.2 0 1 0 12,6.8 Z M12,9.1 A2.9,2.9 0 1 0 12,14.9 A2.9,2.9 0 1 0 12,9.1 Z"),
             "arrow.down" => Parse("M11,3.5 H13 V15.6 L17.6,11 L19,12.4 L12,19.4 L5,12.4 L6.4,11 L11,15.6 Z"),
             _ => Parse("M12,6 C15.3,6 18,8.7 18,12 C18,15.3 15.3,18 12,18 C8.7,18 6,15.3 6,12 C6,8.7 8.7,6 12,6 Z")
         };
@@ -133,7 +134,9 @@ namespace Ovira.Core
             double k = size / 24.0;
             dc.PushTransform(new TranslateTransform((ActualWidth - size) / 2, (ActualHeight - size) / 2));
             dc.PushTransform(new ScaleTransform(k, k));
-            var pen = new Pen(Fill, 0.9) { LineJoin = PenLineJoin.Round };
+            // Icons with fine cut-outs (the eye) are drawn without the soft
+            // outline — it would fill the gaps at small sizes.
+            var pen = Icon == "eye" ? null : new Pen(Fill, 0.9) { LineJoin = PenLineJoin.Round };
             dc.DrawGeometry(Fill, pen, geometry);
             dc.Pop();
             dc.Pop();

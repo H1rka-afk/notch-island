@@ -349,6 +349,7 @@ namespace Ovira.Island
 
         private void OnTrack()
         {
+            if (S.Theme == "cover") ApplyIslandTheme();
             var t = _media.Track;
             if (t != null)
             {
@@ -627,7 +628,8 @@ namespace Ovira.Island
         // 0.4.3: over a game or a full-screen video the island is hidden, but
         // the banners chosen in Settings («Поверх игр») still come out for a
         // moment and go away again. Clicks pass through to the game.
-        private void ShowBanner(string icon, string text, Color colour, double? level, double seconds, Action? tap = null, bool inGame = false)
+        private void ShowBanner(string icon, string text, Color colour, double? level, double seconds, Action? tap = null, bool inGame = false,
+                                int? countdown = null, int countdownTotal = 20)
         {
             if (_hiddenForFullscreen)
             {
@@ -640,10 +642,23 @@ namespace Ovira.Island
                                         Native.SWP_NOMOVE | Native.SWP_NOSIZE | Native.SWP_NOACTIVATE | Native.SWP_SHOWWINDOW);
             }
             else _overGame = false;
+            colour = Tone(icon, colour);
             BannerIcon.Icon = icon;
             BannerIcon.Fill = new SolidColorBrush(colour);
             BannerText.Text = text;
-            BannerLevel.Visibility = level.HasValue ? Visibility.Visible : Visibility.Collapsed;
+            BannerLevel.Visibility = level.HasValue && countdown == null ? Visibility.Visible : Visibility.Collapsed;
+            BannerTimer.Visibility = countdown.HasValue ? Visibility.Visible : Visibility.Collapsed;
+            if (countdown.HasValue)
+            {
+                // The bar runs out smoothly: one second of travel per tick.
+                int left = countdown.Value;
+                BannerSeconds.Text = left.ToString();
+                BannerTimerFill.Background = new SolidColorBrush(colour);
+                double full = 34;
+                if (left >= countdownTotal) { BannerTimerFill.BeginAnimation(WidthProperty, null); BannerTimerFill.Width = full; }
+                BannerTimerFill.BeginAnimation(WidthProperty,
+                    new DoubleAnimation(full * Math.Max(0, left - 1) / countdownTotal, TimeSpan.FromSeconds(1)));
+            }
             if (level.HasValue)
             {
                 BannerLevelFill.Background = new SolidColorBrush(colour);
@@ -662,7 +677,54 @@ namespace Ovira.Island
 
         private static readonly Color EyeColour = Color.FromRgb(0x40, 0xCC, 0xD9);
 
-        public void ShowEyeBreak(string text, double level, Action skip) => ShowBanner("eye", text, EyeColour, level, 2.5, skip);
+        public void ShowEyeBreak(string text, int secondsLeft, int total, Action skip) =>
+            ShowBanner("eye", text, EyeColour, null, 2.5, skip, countdown: secondsLeft, countdownTotal: total);
+
+        // ---- colours from the settings theme (0.4.4) ----
+        // Icons, bars and buttons take the theme's colours; text stays white.
+        // Themes without colours (Системная, Светлая, Тёмная) keep the usual
+        // ones, and warnings (low battery) stay orange and red.
+
+        private Color[] ThemePalette => Themes.Find(S.Theme, _media.Track?.Tint ?? Color.FromRgb(0xFF, 0x45, 0x66)).Palette;
+
+        private static readonly Color Orange = Color.FromRgb(0xFF, 0x9F, 0x0A), Red = Color.FromRgb(0xFF, 0x45, 0x3A);
+
+        private Color Tone(string icon, Color fallback)
+        {
+            if (fallback == Orange || fallback == Red) return fallback;
+            var p = ThemePalette;
+            if (p.Length == 0) return fallback;
+            int role = icon switch
+            {
+                "speaker" or "speaker.wave" or "speaker.slash" => 0,
+                "headphones" or "display" or "laptop" => 1,
+                "bolt" or "battery" => 2,
+                "eye" => 3,
+                _ => 0
+            };
+            return Readable(p[role % p.Length]);
+        }
+
+        // Bright enough on black.
+        private static Color Readable(Color c)
+        {
+            double l = 0.299 * c.R + 0.587 * c.G + 0.114 * c.B;
+            return l >= 110 ? c : Themes.MixWhite(c, Math.Min(0.6, (110 - l) / 160 + 0.15));
+        }
+
+        private void ApplyIslandTheme()
+        {
+            var p = ThemePalette;
+            Brush main = p.Length == 0 ? Brushes.White : new SolidColorBrush(Readable(p[0]));
+            Brush second = p.Length == 0 ? new SolidColorBrush(Color.FromArgb(0xD6, 0xFF, 0xFF, 0xFF)) : new SolidColorBrush(Readable(p[1 % p.Length]));
+            Brush volume = p.Length == 0 ? new SolidColorBrush(Color.FromArgb(0xE6, 0xFF, 0xFF, 0xFF)) : new SolidColorBrush(Readable(p[Math.Min(2, p.Length - 1)]));
+            ProgressFill.Background = main;
+            VolumeFill.Background = volume;
+            OutputIcon.Fill = second;
+            PrevGlyph.GlyphFill = main;
+            NextGlyph.GlyphFill = main;
+            PlayGlyph.GlyphFill = main;
+        }
         public void ShowEyeBreakDone() => ShowBanner("checkmark", "Готово — можно продолжать", Color.FromRgb(0x34, 0xC7, 0x59), null, 1.8);
         public void ShowEyeBreakSkipped() => ShowBanner("xmark", "Перерыв пропущен", Color.FromRgb(0x8E, 0x8E, 0x93), null, 1.3);
 
@@ -748,6 +810,10 @@ namespace Ovira.Island
                     if (_mode != Mode.Banner && _mode != Mode.Expanded) SetMode(RestingMode);
                     else if (_mode == Mode.Expanded && !HasTrack) SetMode(RestingMode);
                     break;
+                case nameof(Settings.Theme):
+                case nameof(Settings.CustomThemes):
+                    ApplyIslandTheme();
+                    break;
                 case nameof(Settings.OutputPicker):
                     OutputButton.Visibility = S.OutputPicker ? Visibility.Visible : Visibility.Hidden;
                     break;
@@ -759,6 +825,10 @@ namespace Ovira.Island
             }
         }
 
-        public void Begin() => SetMode(RestingMode, animated: true);
+        public void Begin()
+        {
+            ApplyIslandTheme();
+            SetMode(RestingMode, animated: true);
+        }
     }
 }

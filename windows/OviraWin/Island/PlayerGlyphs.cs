@@ -41,6 +41,10 @@ namespace Ovira.Island
             InvalidateVisual();
         }
 
+        private Brush _fill = Brushes.White;
+        // 0.4.4: the colour follows the settings theme.
+        public Brush GlyphFill { get => _fill; set { _fill = value; InvalidateVisual(); } }
+
         protected override Size MeasureOverride(Size availableSize) =>
             new Size(GlyphSize * 1.2, GlyphSize * 0.7);
 
@@ -52,7 +56,7 @@ namespace Ovira.Island
             {
                 dc.PushTransform(new ScaleTransform(-1, 1, ActualWidth / 2, 0));
             }
-            var fill = Brushes.White;
+            var fill = GlyphFill;
             // the new one, growing in at the back (anchored on its right edge)
             Triangle(dc, fill, ox, oy, w, h, _step, anchorRight: true, opacity: _step);
             // the back one slides into the front place
@@ -106,6 +110,8 @@ namespace Ovira.Island
             };
             Set(false, animated: false);
         }
+
+        public Brush GlyphFill { set { _pause.Fill = value; _play.Fill = value; } }
 
         public void Set(bool playing, bool animated = true)
         {

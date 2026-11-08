@@ -23,7 +23,11 @@ namespace Ovira.Services
     {
         public enum UpdateState { Idle, Checking, Downloading, Ready, Installing, UpToDate, Failed }
 
-        private const string ReleasesApi = "https://api.github.com/repos/H1rka-afk/notch-island-releases/releases?per_page=30";
+        // 0.4.4: the Windows builds are found by their tags («win-v…») — the
+        // plain list of releases starts with the many Mac versions, and the
+        // Windows ones did not fit on its first page («последняя версия»).
+        private const string Repo = "https://api.github.com/repos/H1rka-afk/notch-island-releases";
+        private const string TagsApi = Repo + "/git/matching-refs/tags/win-v";
         public const string ReleasesPage = "https://github.com/H1rka-afk/notch-island-releases/releases";
 
         public UpdateState State { get; private set; } = UpdateState.Idle;
@@ -80,28 +84,32 @@ namespace Ovira.Services
             S.LastUpdateCheck = DateTime.Now;
             try
             {
-                var json = await Http.GetStringAsync(ReleasesApi);
-                using var doc = JsonDocument.Parse(json);
                 Version? best = null;
-                JsonElement bestAsset = default;
-                foreach (var release in doc.RootElement.EnumerateArray())
+                using (var tags = JsonDocument.Parse(await Http.GetStringAsync(TagsApi)))
                 {
-                    if (release.TryGetProperty("draft", out var draft) && draft.GetBoolean()) continue;
-                    var tag = release.GetProperty("tag_name").GetString() ?? "";
-                    if (!tag.StartsWith("win-v", StringComparison.Ordinal)) continue;
-                    if (!Version.TryParse(tag.Substring(5), out var v)) continue;
-                    if (best != null && v <= best) continue;
-                    foreach (var asset in release.GetProperty("assets").EnumerateArray())
+                    foreach (var tag in tags.RootElement.EnumerateArray())
+                    {
+                        var name = (tag.GetProperty("ref").GetString() ?? "").Replace("refs/tags/win-v", "");
+                        if (Version.TryParse(name, out var v) && (best == null || v > best)) best = v;
+                    }
+                }
+                JsonElement bestAsset = default;
+                bool found = false;
+                if (best != null)
+                {
+                    using var release = JsonDocument.Parse(await Http.GetStringAsync(Repo + "/releases/tags/win-v" + best.ToString(3)));
+                    foreach (var asset in release.RootElement.GetProperty("assets").EnumerateArray())
                     {
                         var name = asset.GetProperty("name").GetString() ?? "";
                         if (name.StartsWith("Ovira-Windows", StringComparison.Ordinal) && name.EndsWith(".zip", StringComparison.OrdinalIgnoreCase))
                         {
-                            best = v;
                             bestAsset = asset.Clone();
+                            found = true;
                             break;
                         }
                     }
                 }
+                if (!found) best = null;
                 var current = Version.Parse(App.Version);
                 if (best == null || best <= current)
                 {

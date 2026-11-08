@@ -49,6 +49,15 @@
                         <Border CornerRadius="2.5" Background="#38FFFFFF" />
                         <Border x:Name="BannerLevelFill" CornerRadius="2.5" Background="White" HorizontalAlignment="Left" Width="0" />
                     </Grid>
+                    <!-- 0.4.4: a countdown on the right — seconds on top, a bar that runs out below -->
+                    <StackPanel x:Name="BannerTimer" Grid.Column="2" Width="34" Margin="8,0,16,0" VerticalAlignment="Center" Visibility="Collapsed">
+                        <TextBlock x:Name="BannerSeconds" Foreground="White" FontSize="13" FontWeight="Bold" HorizontalAlignment="Center"
+                                   Margin="0,-2,0,2" />
+                        <Grid Height="3.5">
+                            <Border CornerRadius="1.75" Background="#38FFFFFF" />
+                            <Border x:Name="BannerTimerFill" CornerRadius="1.75" Background="White" HorizontalAlignment="Left" Width="34" />
+                        </Grid>
+                    </StackPanel>
                 </Grid>
 
                 <!-- Open: the media player, laid out like the Mac one -->
