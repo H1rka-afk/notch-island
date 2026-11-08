@@ -6,6 +6,8 @@ name: Build and release
 on:
   push:
     branches: [main]
+    # Ovira for Windows has its own workflow (windows.yml).
+    paths-ignore: ['windows/**', '.github/workflows/windows.yml']
   workflow_dispatch:
     inputs:
       runner:

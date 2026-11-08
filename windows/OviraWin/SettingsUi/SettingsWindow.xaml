@@ -1,0 +1,406 @@
+<Window x:Class="Ovira.SettingsUi.SettingsWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="Настройки Ovira" Width="900" Height="640" MinWidth="760" MinHeight="520"
+        WindowStartupLocation="CenterScreen" Background="#FF1C1C1E"
+        FontFamily="{StaticResource UiFont}" Foreground="White" UseLayoutRounding="True"
+        Icon="pack://application:,,,/Assets/Ovira.ico">
+    <Window.Resources>
+        <!-- Sidebar entry: coloured icon tile + title. -->
+        <Style x:Key="NavItem" TargetType="RadioButton">
+            <Setter Property="Foreground" Value="White" />
+            <Setter Property="Cursor" Value="Hand" />
+            <Setter Property="FocusVisualStyle" Value="{x:Null}" />
+            <Setter Property="GroupName" Value="Nav" />
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="RadioButton">
+                        <Border x:Name="Bg" CornerRadius="8" Padding="8,6" Margin="0,1" Background="Transparent">
+                            <Grid>
+                                <Border x:Name="Pill" Width="3" Height="16" CornerRadius="1.5" HorizontalAlignment="Left"
+                                        Margin="-8,0,0,0" Background="{StaticResource Accent}" Opacity="0" />
+                                <StackPanel Orientation="Horizontal">
+                                    <Border Width="26" Height="26" CornerRadius="7" Background="{TemplateBinding Background}">
+                                        <TextBlock Text="{Binding Tag, RelativeSource={RelativeSource TemplatedParent}}" FontFamily="{StaticResource IconFont}" FontSize="13"
+                                                   HorizontalAlignment="Center" VerticalAlignment="Center" Foreground="White" />
+                                    </Border>
+                                    <ContentPresenter Margin="11,0,0,0" VerticalAlignment="Center" />
+                                </StackPanel>
+                            </Grid>
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="Bg" Property="Background" Value="#0FFFFFFF" />
+                            </Trigger>
+                            <Trigger Property="IsChecked" Value="True">
+                                <Setter TargetName="Bg" Property="Background" Value="#1FFFFFFF" />
+                                <Setter TargetName="Pill" Property="Opacity" Value="1" />
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
+        <Style x:Key="Card" TargetType="Border">
+            <Setter Property="Background" Value="{StaticResource CardBrush}" />
+            <Setter Property="BorderBrush" Value="{StaticResource CardBorder}" />
+            <Setter Property="BorderThickness" Value="1" />
+            <Setter Property="CornerRadius" Value="10" />
+            <Setter Property="Margin" Value="0,0,0,14" />
+        </Style>
+        <Style x:Key="CardTitle" TargetType="TextBlock">
+            <Setter Property="FontSize" Value="13" />
+            <Setter Property="FontWeight" Value="SemiBold" />
+            <Setter Property="Margin" Value="2,6,0,8" />
+        </Style>
+        <Style x:Key="RowTitle" TargetType="TextBlock">
+            <Setter Property="FontSize" Value="13.5" />
+            <Setter Property="TextWrapping" Value="Wrap" />
+        </Style>
+        <Style x:Key="RowSub" TargetType="TextBlock">
+            <Setter Property="FontSize" Value="11.5" />
+            <Setter Property="Foreground" Value="{StaticResource TextSecondary}" />
+            <Setter Property="TextWrapping" Value="Wrap" />
+            <Setter Property="Margin" Value="0,2,0,0" />
+        </Style>
+        <Style x:Key="Divider" TargetType="Border">
+            <Setter Property="Height" Value="1" />
+            <Setter Property="Background" Value="{StaticResource DividerBrush}" />
+            <Setter Property="Margin" Value="16,0" />
+        </Style>
+        <Style x:Key="Row" TargetType="Grid">
+            <Setter Property="Margin" Value="16,12" />
+            <Setter Property="MinHeight" Value="26" />
+        </Style>
+    </Window.Resources>
+
+    <Grid>
+        <Grid.ColumnDefinitions>
+            <ColumnDefinition Width="232" />
+            <ColumnDefinition Width="*" />
+        </Grid.ColumnDefinitions>
+
+        <!-- Sidebar -->
+        <Border Background="#0AFFFFFF" BorderBrush="#12FFFFFF" BorderThickness="0,0,1,0">
+            <DockPanel Margin="12,16,12,12">
+                <StackPanel DockPanel.Dock="Top" Orientation="Horizontal" Margin="6,0,0,18">
+                    <Image Source="pack://application:,,,/Assets/Ovira.ico" Width="34" Height="34" />
+                    <StackPanel Margin="10,0,0,0" VerticalAlignment="Center">
+                        <TextBlock Text="Ovira" FontSize="15" FontWeight="Bold" FontFamily="{StaticResource DisplayFont}" />
+                        <TextBlock x:Name="VersionText" FontSize="11" Foreground="{StaticResource TextSecondary}" />
+                    </StackPanel>
+                </StackPanel>
+
+                <TextBlock DockPanel.Dock="Top" Text="OVIRA" FontSize="10.5" FontWeight="SemiBold" Margin="8,0,0,4"
+                           Foreground="{StaticResource TextSecondary}" />
+                <StackPanel DockPanel.Dock="Top">
+                    <RadioButton x:Name="NavGeneral" Style="{StaticResource NavItem}" Content="Основные" Tag="&#xE713;"
+                                 Background="#FF8E8E93" Checked="OnNav" />
+                </StackPanel>
+                <TextBlock DockPanel.Dock="Top" Text="ОСТРОВОК" FontSize="10.5" FontWeight="SemiBold" Margin="8,12,0,4"
+                           Foreground="{StaticResource TextSecondary}" />
+                <StackPanel DockPanel.Dock="Top">
+                    <RadioButton x:Name="NavIsland" Style="{StaticResource NavItem}" Content="Островок" Tag="&#xE7F4;"
+                                 Background="#FF3478F6" Checked="OnNav" />
+                    <RadioButton x:Name="NavMedia" Style="{StaticResource NavItem}" Content="Медиаплеер" Tag="&#xE768;"
+                                 Background="#FFFF4566" Checked="OnNav" />
+                    <RadioButton x:Name="NavBanners" Style="{StaticResource NavItem}" Content="Уведомления" Tag="&#xEA8F;"
+                                 Background="#FFFF453A" Checked="OnNav" />
+                </StackPanel>
+                <TextBlock DockPanel.Dock="Top" Text="ЕЩЁ" FontSize="10.5" FontWeight="SemiBold" Margin="8,12,0,4"
+                           Foreground="{StaticResource TextSecondary}" />
+                <StackPanel DockPanel.Dock="Top">
+                    <RadioButton x:Name="NavAbout" Style="{StaticResource NavItem}" Content="О программе" Tag="&#xE946;"
+                                 Background="#FF30B0C7" Checked="OnNav" />
+                </StackPanel>
+                <Grid />
+            </DockPanel>
+        </Border>
+
+        <!-- Content -->
+        <ScrollViewer Grid.Column="1" VerticalScrollBarVisibility="Auto">
+            <StackPanel Margin="28,22,28,28">
+
+                <!-- Header with a live preview of the island -->
+                <Border x:Name="Hero" CornerRadius="16" Padding="22,18" Margin="0,0,0,20">
+                    <Border.Background>
+                        <LinearGradientBrush StartPoint="0,0" EndPoint="1,1">
+                            <GradientStop x:Name="HeroColorA" Color="#FF3478F6" Offset="0" />
+                            <GradientStop x:Name="HeroColorB" Color="#993478F6" Offset="1" />
+                        </LinearGradientBrush>
+                    </Border.Background>
+                    <Grid>
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="Auto" />
+                        </Grid.ColumnDefinitions>
+                        <StackPanel VerticalAlignment="Center">
+                            <TextBlock x:Name="HeroTitle" FontSize="26" FontWeight="Bold" FontFamily="{StaticResource DisplayFont}" />
+                            <TextBlock x:Name="HeroSubtitle" FontSize="12.5" Foreground="#D9FFFFFF" Margin="0,4,0,0" TextWrapping="Wrap" />
+                        </StackPanel>
+                        <Border Grid.Column="1" Width="230" Height="84" CornerRadius="14" Background="#40000000" Margin="16,0,0,0"
+                                ClipToBounds="True">
+                            <Border x:Name="PreviewPill" Height="30" CornerRadius="0,0,14,14" Background="Black"
+                                    VerticalAlignment="Top" HorizontalAlignment="Center" Width="190">
+                                <Grid Margin="8,0">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="Auto" />
+                                        <ColumnDefinition Width="*" />
+                                        <ColumnDefinition Width="Auto" />
+                                    </Grid.ColumnDefinitions>
+                                    <Border x:Name="PreviewArtBox" Width="20" Height="20" CornerRadius="5" Background="#FF2A2A2A" ClipToBounds="True">
+                                        <Image x:Name="PreviewArt" Stretch="UniformToFill" />
+                                    </Border>
+                                    <TextBlock x:Name="PreviewIcon" FontFamily="{StaticResource IconFont}" FontSize="13"
+                                               VerticalAlignment="Center" Visibility="Collapsed" />
+                                    <TextBlock x:Name="PreviewText" Grid.Column="1" FontSize="11" FontWeight="SemiBold" Margin="8,0"
+                                               VerticalAlignment="Center" HorizontalAlignment="Center" TextTrimming="CharacterEllipsis" />
+                                    <TextBlock x:Name="PreviewRight" Grid.Column="2" FontSize="11" FontWeight="SemiBold"
+                                               VerticalAlignment="Center" />
+                                </Grid>
+                            </Border>
+                        </Border>
+                    </Grid>
+                </Border>
+
+                <!-- ===== Основные ===== -->
+                <StackPanel x:Name="PageGeneral">
+                    <TextBlock Style="{StaticResource CardTitle}" Text="Запуск" />
+                    <Border Style="{StaticResource Card}">
+                        <StackPanel>
+                            <Grid Style="{StaticResource Row}">
+                                <StackPanel Margin="0,0,60,0">
+                                    <TextBlock Style="{StaticResource RowTitle}" Text="Запускать вместе с Windows" />
+                                    <TextBlock Style="{StaticResource RowSub}" Text="Островок появляется сразу после входа" />
+                                </StackPanel>
+                                <CheckBox Style="{StaticResource ToggleSwitch}" HorizontalAlignment="Right" VerticalAlignment="Center"
+                                          IsChecked="{Binding StartWithWindows}" />
+                            </Grid>
+                        </StackPanel>
+                    </Border>
+                    <TextBlock Style="{StaticResource CardTitle}" Text="Обслуживание" />
+                    <Border Style="{StaticResource Card}">
+                        <StackPanel>
+                            <Grid Style="{StaticResource Row}">
+                                <StackPanel Margin="0,0,160,0">
+                                    <TextBlock Style="{StaticResource RowTitle}" Text="Папка настроек" />
+                                    <TextBlock Style="{StaticResource RowSub}" Text="settings.json и журнал ошибок" />
+                                </StackPanel>
+                                <Button Style="{StaticResource PlainButton}" Content="Открыть" HorizontalAlignment="Right"
+                                        VerticalAlignment="Center" Click="OnOpenFolder" />
+                            </Grid>
+                            <Border Style="{StaticResource Divider}" />
+                            <Grid Style="{StaticResource Row}">
+                                <StackPanel Margin="0,0,160,0">
+                                    <TextBlock Style="{StaticResource RowTitle}" Text="Сбросить все настройки" />
+                                    <TextBlock Style="{StaticResource RowSub}" Text="Вернуть всё как после установки" />
+                                </StackPanel>
+                                <Button Style="{StaticResource PlainButton}" Content="Сбросить" HorizontalAlignment="Right"
+                                        VerticalAlignment="Center" Click="OnReset" />
+                            </Grid>
+                            <Border Style="{StaticResource Divider}" />
+                            <Grid Style="{StaticResource Row}">
+                                <StackPanel Margin="0,0,160,0">
+                                    <TextBlock Style="{StaticResource RowTitle}" Text="Выйти из Ovira" />
+                                    <TextBlock Style="{StaticResource RowSub}" Text="Островок исчезнет до следующего запуска" />
+                                </StackPanel>
+                                <Button Style="{StaticResource PlainButton}" Content="Выйти" HorizontalAlignment="Right"
+                                        VerticalAlignment="Center" Click="OnQuit" />
+                            </Grid>
+                        </StackPanel>
+                    </Border>
+                </StackPanel>
+
+                <!-- ===== Островок ===== -->
+                <StackPanel x:Name="PageIsland">
+                    <TextBlock Style="{StaticResource CardTitle}" Text="Открытие" />
+                    <Border Style="{StaticResource Card}">
+                        <StackPanel>
+                            <Grid Style="{StaticResource Row}">
+                                <StackPanel Margin="0,0,260,0">
+                                    <TextBlock Style="{StaticResource RowTitle}" Text="Открывать плеер" />
+                                    <TextBlock Style="{StaticResource RowSub}" Text="Нажатием на островок или просто наведением курсора" />
+                                </StackPanel>
+                                <Border HorizontalAlignment="Right" VerticalAlignment="Center" Background="#14FFFFFF"
+                                        CornerRadius="8" Padding="2">
+                                    <StackPanel Orientation="Horizontal">
+                                        <RadioButton Style="{StaticResource Segment}" Content="По нажатию" GroupName="Open"
+                                                     IsChecked="{Binding OpenOnClick}" />
+                                        <RadioButton Style="{StaticResource Segment}" Content="При наведении" GroupName="Open"
+                                                     IsChecked="{Binding OpenOnHover}" />
+                                    </StackPanel>
+                                </Border>
+                            </Grid>
+                            <Border Style="{StaticResource Divider}" />
+                            <Grid Style="{StaticResource Row}">
+                                <StackPanel Margin="0,0,60,0">
+                                    <TextBlock Style="{StaticResource RowTitle}" Text="Откликаться на курсор" />
+                                    <TextBlock Style="{StaticResource RowSub}" Text="Островок чуть увеличивается, когда наводишь на него" />
+                                </StackPanel>
+                                <CheckBox Style="{StaticResource ToggleSwitch}" HorizontalAlignment="Right" VerticalAlignment="Center"
+                                          IsChecked="{Binding HoverPeek}" />
+                            </Grid>
+                        </StackPanel>
+                    </Border>
+                    <TextBlock Style="{StaticResource CardTitle}" Text="Вид" />
+                    <Border Style="{StaticResource Card}">
+                        <StackPanel>
+                            <Grid Style="{StaticResource Row}">
+                                <StackPanel Margin="0,0,280,0">
+                                    <TextBlock Style="{StaticResource RowTitle}" Text="Размер островка" />
+                                    <TextBlock x:Name="ScaleText" Style="{StaticResource RowSub}" />
+                                </StackPanel>
+                                <Slider Width="240" HorizontalAlignment="Right" VerticalAlignment="Center" Minimum="0.85" Maximum="1.15"
+                                        TickFrequency="0.05" IsSnapToTickEnabled="True" Value="{Binding IslandScale}"
+                                        ValueChanged="OnScaleChanged" />
+                            </Grid>
+                            <Border Style="{StaticResource Divider}" />
+                            <Grid Style="{StaticResource Row}">
+                                <StackPanel Margin="0,0,60,0">
+                                    <TextBlock Style="{StaticResource RowTitle}" Text="Капсула, когда ничего не играет" />
+                                    <TextBlock Style="{StaticResource RowSub}" Text="Маленький чёрный островок вверху экрана всегда на месте" />
+                                </StackPanel>
+                                <CheckBox Style="{StaticResource ToggleSwitch}" HorizontalAlignment="Right" VerticalAlignment="Center"
+                                          IsChecked="{Binding ShowIdlePill}" />
+                            </Grid>
+                            <Border Style="{StaticResource Divider}" />
+                            <Grid Style="{StaticResource Row}">
+                                <StackPanel Margin="0,0,60,0">
+                                    <TextBlock Style="{StaticResource RowTitle}" Text="Прятать в полноэкранном режиме" />
+                                    <TextBlock Style="{StaticResource RowSub}" Text="Игры, видео на весь экран и презентации" />
+                                </StackPanel>
+                                <CheckBox Style="{StaticResource ToggleSwitch}" HorizontalAlignment="Right" VerticalAlignment="Center"
+                                          IsChecked="{Binding HideInFullscreen}" />
+                            </Grid>
+                        </StackPanel>
+                    </Border>
+                </StackPanel>
+
+                <!-- ===== Медиаплеер ===== -->
+                <StackPanel x:Name="PageMedia">
+                    <TextBlock Style="{StaticResource CardTitle}" Text="Плеер" />
+                    <Border Style="{StaticResource Card}">
+                        <StackPanel>
+                            <Grid Style="{StaticResource Row}">
+                                <StackPanel Margin="0,0,60,0">
+                                    <TextBlock Style="{StaticResource RowTitle}" Text="Показывать медиаплеер" />
+                                    <TextBlock Style="{StaticResource RowSub}" Text="Spotify, Яндекс Музыка, браузер — всё, что играет в Windows" />
+                                </StackPanel>
+                                <CheckBox Style="{StaticResource ToggleSwitch}" HorizontalAlignment="Right" VerticalAlignment="Center"
+                                          IsChecked="{Binding ShowMedia}" />
+                            </Grid>
+                            <Border Style="{StaticResource Divider}" />
+                            <Grid Style="{StaticResource Row}">
+                                <StackPanel Margin="0,0,60,0">
+                                    <TextBlock Style="{StaticResource RowTitle}" Text="Название трека в свёрнутом островке" />
+                                    <TextBlock Style="{StaticResource RowSub}" Text="Между обложкой и полосками" />
+                                </StackPanel>
+                                <CheckBox Style="{StaticResource ToggleSwitch}" HorizontalAlignment="Right" VerticalAlignment="Center"
+                                          IsChecked="{Binding CompactTitle}" />
+                            </Grid>
+                            <Border Style="{StaticResource Divider}" />
+                            <Grid Style="{StaticResource Row}">
+                                <StackPanel Margin="0,0,60,0">
+                                    <TextBlock Style="{StaticResource RowTitle}" Text="Полоски в такт музыке" />
+                                    <TextBlock Style="{StaticResource RowSub}" Text="По настоящей громкости звука, в цвет обложки" />
+                                </StackPanel>
+                                <CheckBox Style="{StaticResource ToggleSwitch}" HorizontalAlignment="Right" VerticalAlignment="Center"
+                                          IsChecked="{Binding LiveBars}" />
+                            </Grid>
+                            <Border Style="{StaticResource Divider}" />
+                            <Grid Style="{StaticResource Row}">
+                                <StackPanel Margin="0,0,60,0">
+                                    <TextBlock Style="{StaticResource RowTitle}" Text="Выбор устройства вывода звука" />
+                                    <TextBlock Style="{StaticResource RowSub}" Text="Кнопка в плеере: динамики, наушники, монитор" />
+                                </StackPanel>
+                                <CheckBox Style="{StaticResource ToggleSwitch}" HorizontalAlignment="Right" VerticalAlignment="Center"
+                                          IsChecked="{Binding OutputPicker}" />
+                            </Grid>
+                            <Border Style="{StaticResource Divider}" />
+                            <Grid Style="{StaticResource Row}">
+                                <StackPanel Margin="0,0,160,0">
+                                    <TextBlock Style="{StaticResource RowTitle}" Text="Открыть плеер" />
+                                    <TextBlock Style="{StaticResource RowSub}" Text="Показать, как он выглядит прямо сейчас" />
+                                </StackPanel>
+                                <Button Style="{StaticResource PlainButton}" Content="Показать" HorizontalAlignment="Right"
+                                        VerticalAlignment="Center" Click="OnDemoOpen" />
+                            </Grid>
+                        </StackPanel>
+                    </Border>
+                </StackPanel>
+
+                <!-- ===== Уведомления ===== -->
+                <StackPanel x:Name="PageBanners">
+                    <TextBlock Style="{StaticResource CardTitle}" Text="Системные уведомления в островке" />
+                    <Border Style="{StaticResource Card}">
+                        <StackPanel>
+                            <Grid Style="{StaticResource Row}">
+                                <StackPanel Margin="0,0,180,0">
+                                    <TextBlock Style="{StaticResource RowTitle}" Text="Громкость" />
+                                    <TextBlock Style="{StaticResource RowSub}" Text="Уровень и «Без звука»" />
+                                </StackPanel>
+                                <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" VerticalAlignment="Center">
+                                    <Button Style="{StaticResource PlainButton}" Content="Показать" Margin="0,0,14,0" Click="OnDemoVolume" />
+                                    <CheckBox Style="{StaticResource ToggleSwitch}" VerticalAlignment="Center" IsChecked="{Binding VolumeBanner}" />
+                                </StackPanel>
+                            </Grid>
+                            <Border Style="{StaticResource Divider}" />
+                            <Grid Style="{StaticResource Row}">
+                                <StackPanel Margin="0,0,180,0">
+                                    <TextBlock Style="{StaticResource RowTitle}" Text="Зарядка" />
+                                    <TextBlock Style="{StaticResource RowSub}" Text="Подключение и отключение зарядки ноутбука" />
+                                </StackPanel>
+                                <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" VerticalAlignment="Center">
+                                    <Button Style="{StaticResource PlainButton}" Content="Показать" Margin="0,0,14,0" Click="OnDemoCharging" />
+                                    <CheckBox Style="{StaticResource ToggleSwitch}" VerticalAlignment="Center" IsChecked="{Binding ChargingBanner}" />
+                                </StackPanel>
+                            </Grid>
+                            <Border Style="{StaticResource Divider}" />
+                            <Grid Style="{StaticResource Row}">
+                                <StackPanel Margin="0,0,180,0">
+                                    <TextBlock Style="{StaticResource RowTitle}" Text="Низкий заряд" />
+                                    <TextBlock Style="{StaticResource RowSub}" Text="При 20 % и 10 %" />
+                                </StackPanel>
+                                <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" VerticalAlignment="Center">
+                                    <Button Style="{StaticResource PlainButton}" Content="Показать" Margin="0,0,14,0" Click="OnDemoLow" />
+                                    <CheckBox Style="{StaticResource ToggleSwitch}" VerticalAlignment="Center" IsChecked="{Binding LowBatteryBanner}" />
+                                </StackPanel>
+                            </Grid>
+                            <Border Style="{StaticResource Divider}" />
+                            <Grid Style="{StaticResource Row}">
+                                <StackPanel Margin="0,0,180,0">
+                                    <TextBlock Style="{StaticResource RowTitle}" Text="Устройство вывода звука" />
+                                    <TextBlock Style="{StaticResource RowSub}" Text="Когда звук переключился на наушники или динамики" />
+                                </StackPanel>
+                                <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" VerticalAlignment="Center">
+                                    <Button Style="{StaticResource PlainButton}" Content="Показать" Margin="0,0,14,0" Click="OnDemoOutput" />
+                                    <CheckBox Style="{StaticResource ToggleSwitch}" VerticalAlignment="Center" IsChecked="{Binding OutputBanner}" />
+                                </StackPanel>
+                            </Grid>
+                        </StackPanel>
+                    </Border>
+                    <TextBlock Style="{StaticResource RowSub}" Margin="4,0,0,0"
+                               Text="Такси, доставка и живые активности появятся в следующей версии для Windows." />
+                </StackPanel>
+
+                <!-- ===== О программе ===== -->
+                <StackPanel x:Name="PageAbout">
+                    <Border Style="{StaticResource Card}" Padding="18,16">
+                        <StackPanel>
+                            <TextBlock FontSize="14" FontWeight="SemiBold" Text="Ovira для Windows — первая версия" />
+                            <TextBlock Style="{StaticResource RowSub}" Margin="0,8,0,0"
+                                       Text="Островок вверху экрана, медиаплеер для любого плеера, громкость, вывод звука и зарядка — с теми же анимациями, что на Mac. Всё работает на самом компьютере, ничего никуда не отправляется." />
+                            <TextBlock FontSize="13" FontWeight="SemiBold" Margin="0,16,0,0" Text="Чего на Windows нет" />
+                            <TextBlock Style="{StaticResource RowSub}" Margin="0,6,0,0"
+                                       Text="Свой экран блокировки (Windows не пускает программы на защищённый экран входа) и отклик трекпада. Заряд AirPods Windows показывает не всегда." />
+                            <TextBlock FontSize="13" FontWeight="SemiBold" Margin="0,16,0,0" Text="Дальше" />
+                            <TextBlock Style="{StaticResource RowSub}" Margin="0,6,0,0"
+                                       Text="Такси и доставка с живыми активностями, таймер, отдых для глаз, исправление раскладки, полка файлов." />
+                        </StackPanel>
+                    </Border>
+                </StackPanel>
+            </StackPanel>
+        </ScrollViewer>
+    </Grid>
+</Window>

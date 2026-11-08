@@ -1,0 +1,66 @@
+name: Windows build
+
+# Ovira for Windows 11: build a single self-contained Ovira.exe on a GitHub
+# Windows machine. With publish=yes it also goes to the releases repo as a
+# PRE-release «win-v<version>» — pre-releases are never «latest», so the Mac
+# app's updater does not see them.
+on:
+  push:
+    branches: [main]
+    paths: ['windows/**', '.github/workflows/windows.yml']
+  workflow_dispatch:
+    inputs:
+      publish:
+        description: 'yes = publish the zip as a pre-release'
+        default: 'no'
+
+permissions:
+  contents: write
+
+concurrency:
+  group: windows
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '8.0.x'
+
+      - name: Version
+        id: version
+        shell: pwsh
+        run: |
+          [xml]$p = Get-Content windows/OviraWin/OviraWin.csproj
+          $v = ($p.Project.PropertyGroup | Where-Object { $_.Version } | Select-Object -First 1).Version
+          "version=$v" >> $env:GITHUB_OUTPUT
+
+      - name: Build
+        shell: pwsh
+        run: dotnet publish windows/OviraWin/OviraWin.csproj -c Release -o build/Ovira
+
+      - name: Package
+        shell: pwsh
+        run: |
+          Copy-Item windows/README-Windows.txt build/Ovira/ПРОЧТИ-МЕНЯ.txt
+          Compress-Archive -Path build/Ovira/* -DestinationPath "build/Ovira-Windows-v${{ steps.version.outputs.version }}.zip"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Ovira-Windows-v${{ steps.version.outputs.version }}
+          path: build/Ovira-Windows-v${{ steps.version.outputs.version }}.zip
+
+      - name: Publish pre-release
+        if: ${{ inputs.publish == 'yes' }}
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ secrets.RELEASES_TOKEN }}
+        run: |
+          $v = "${{ steps.version.outputs.version }}"
+          gh release delete "win-v$v" -R H1rka-afk/notch-island-releases --yes 2>$null
+          gh release create "win-v$v" "build/Ovira-Windows-v$v.zip" -R H1rka-afk/notch-island-releases `
+            --prerelease --title "Ovira для Windows $v" --notes-file windows/README-Windows.txt
