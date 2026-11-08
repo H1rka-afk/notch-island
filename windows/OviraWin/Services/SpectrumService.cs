@@ -41,15 +41,49 @@ namespace Ovira.Services
 
         public void Start()
         {
-            Restart();
+            // 0.4.2: nothing is opened until music plays (see Wanted).
             // The default output can change (headphones in): re-open then.
             _watchdog = new Timer(_ => CheckDevice(), null, TimeSpan.FromSeconds(3), TimeSpan.FromSeconds(3));
+        }
+
+        private volatile bool _wanted;
+
+        // 0.4.2: listen only while something plays; in silence the capture
+        // is closed and the processor rests.
+        public bool Wanted
+        {
+            get => _wanted;
+            set
+            {
+                if (_wanted == value) return;
+                _wanted = value;
+                ThreadPool.QueueUserWorkItem(_ => { if (_wanted) Restart(); else Close(); });
+            }
+        }
+
+        private void Close()
+        {
+            lock (_gate)
+            {
+                if (_wanted) return;
+                try
+                {
+                    _capture?.StopRecording();
+                    _capture?.Dispose();
+                }
+                catch { }
+                _capture = null;
+                _deviceId = "";
+                Live = false;
+                Array.Clear(Levels, 0, Levels.Length);
+            }
         }
 
         private string _deviceId = "";
 
         private void CheckDevice()
         {
+            if (!_wanted) return;
             try
             {
                 var id = _enumerator.GetDefaultAudioEndpoint(DataFlow.Render, Role.Multimedia).ID;
@@ -62,6 +96,7 @@ namespace Ovira.Services
         {
             lock (_gate)
             {
+                if (!_wanted) return;
                 try
                 {
                     _capture?.StopRecording();

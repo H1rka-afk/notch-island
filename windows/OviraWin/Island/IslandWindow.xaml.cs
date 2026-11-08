@@ -122,11 +122,29 @@ namespace Ovira.Island
 
         // ---- state changes ----
 
+        // Busy = the player is open or a banner is showing (eye breaks and
+        // updates wait for it).
+        public bool Busy => _mode is Mode.Expanded or Mode.Banner;
+
+        // 0.4.2: the transparent window is only as tall as it must be — the
+        // processor redraws every pixel of it, so 720×64 instead of 720×320
+        // while the island is closed.
+        private const double TallHeight = 320, ShortHeight = 64;
+
+        private void FitWindow()
+        {
+            bool tall = _mode == Mode.Expanded || _h.Value > ShortHeight - 8 || _h.Target > ShortHeight - 8;
+            var height = tall ? TallHeight : ShortHeight;
+            if (Math.Abs(Height - height) > 0.5) Height = height;
+        }
+
         private void SetMode(Mode mode, bool animated = true)
         {
             var old = _mode;
             _mode = mode;
+            if (mode != Mode.Banner) _bannerTap = null;
             Relayout(animated, growing: Area(mode) > Area(old));
+            FitWindow();
             Fade(CompactLayer, mode == Mode.Compact);
             Fade(BannerLayer, mode == Mode.Banner);
             Fade(ExpandedLayer, mode == Mode.Expanded);
@@ -184,6 +202,7 @@ namespace Ovira.Island
             {
                 CompositionTarget.Rendering -= OnFrame;
                 _animating = false;
+                FitWindow();
             }
         }
 
@@ -298,6 +317,14 @@ namespace Ovira.Island
 
         private void OnIslandClick(object sender, MouseButtonEventArgs e)
         {
+            if (_mode == Mode.Banner && _bannerTap != null)
+            {
+                var tap = _bannerTap;
+                _bannerTap = null;
+                e.Handled = true;
+                tap();
+                return;
+            }
             if (_mode == Mode.Compact) { Expand(); e.Handled = true; }
         }
 
@@ -593,7 +620,9 @@ namespace Ovira.Island
 
         // ---- banners ----
 
-        private void ShowBanner(string icon, string text, Color colour, double? level, double seconds)
+        private Action? _bannerTap;
+
+        private void ShowBanner(string icon, string text, Color colour, double? level, double seconds, Action? tap = null)
         {
             BannerIcon.Icon = icon;
             BannerIcon.Fill = new SolidColorBrush(colour);
@@ -609,11 +638,29 @@ namespace Ovira.Island
             _bannerTimer.Interval = TimeSpan.FromSeconds(seconds);
             _bannerTimer.Start();
             if (_mode != Mode.Banner) SetMode(Mode.Banner);
+            _bannerTap = tap;
+            Island.Cursor = tap != null ? Cursors.Hand : null;
         }
+
+        // ---- the helper and updates (0.4.2) ----
+
+        private static readonly Color EyeColour = Color.FromRgb(0x40, 0xCC, 0xD9);
+
+        public void ShowEyeBreak(string text, double level, Action skip) => ShowBanner("eye", text, EyeColour, level, 2.5, skip);
+        public void ShowEyeBreakDone() => ShowBanner("checkmark", "Готово — можно продолжать", Color.FromRgb(0x34, 0xC7, 0x59), null, 1.8);
+        public void ShowEyeBreakSkipped() => ShowBanner("xmark", "Перерыв пропущен", Color.FromRgb(0x8E, 0x8E, 0x93), null, 1.3);
+
+        public void ShowUpdateReady(string version) =>
+            ShowBanner("arrow.down", $"Ovira {version} — нажми, чтобы обновить", Color.FromRgb(0x4C, 0x8D, 0xFF), null, 7,
+                       () => App.Current.Updates.Install());
+
+        public void ShowUpdated(string version) =>
+            ShowBanner("checkmark", $"Ovira обновлена до {version}", Color.FromRgb(0x34, 0xC7, 0x59), null, 3);
 
         private void EndBanner()
         {
             if (_mode != Mode.Banner) return;
+            Island.Cursor = null;
             SetMode(_pointerInside && HasTrack && S.OpenOnHover ? Mode.Expanded : RestingMode);
         }
 
@@ -657,6 +704,7 @@ namespace Ovira.Island
         public void DemoVolume() => ShowBanner("speaker.wave", "Громкость 60 %", Colors.White, 0.6, 2);
         public void DemoCharging() => ShowBanner("bolt", "Зарядка · 76 %", Color.FromRgb(0x34, 0xC7, 0x59), 0.76, 2.6);
         public void DemoLowBattery() => ShowBanner("battery", "Низкий заряд · 20 %", Color.FromRgb(0xFF, 0x9F, 0x0A), 0.2, 3);
+        public void DemoEyeBreak() => App.Current.EyeBreak.Begin();
         public void DemoOutput() => ShowBanner("headphones", "Наушники", Color.FromRgb(0x4C, 0x8D, 0xFF), null, 2.4);
         public void DemoOpen()
         {

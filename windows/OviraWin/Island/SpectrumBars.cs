@@ -19,8 +19,9 @@ namespace Ovira.Island
         public double BarWidth { get; set; } = 2.2;
         public double BarSpacing { get; set; } = 1.7;
         public double BarMaxHeight { get; set; } = 16;
-        public bool Playing { get; set; }
-        public bool Active { get; set; } = true;
+        private bool _playing, _active = true;
+        public bool Playing { get => _playing; set { if (_playing != value) { _playing = value; SpectrumClock.Wake(); } } }
+        public bool Active { get => _active; set { if (_active != value) { _active = value; SpectrumClock.Wake(); } } }
 
         private readonly WaveformPhysics _physics = new WaveformPhysics();
         private Color _tint = Color.FromRgb(0xFF, 0x5A, 0x7A);
@@ -32,6 +33,7 @@ namespace Ovira.Island
         {
             Loaded += (_, _) => SpectrumClock.Register(this);
             Unloaded += (_, _) => SpectrumClock.Unregister(this);
+            IsVisibleChanged += (_, _) => SpectrumClock.Wake();
         }
 
         public void SetCover(BitmapSource? artwork, Color tint)
@@ -41,6 +43,7 @@ namespace Ovira.Island
             _brushKey = "";
             try { CurrentBrush(); } catch { _brush = null; }
             InvalidateVisual();
+            SpectrumClock.Wake();
         }
 
         private double TotalWidth => WaveformPhysics.BarCount * BarWidth + (WaveformPhysics.BarCount - 1) * BarSpacing;
@@ -139,16 +142,32 @@ namespace Ovira.Island
         private static bool _hooked;
         public static SpectrumService? Source;
 
+        private static double _lastBusy;
+
         public static void Register(SpectrumBars bars)
         {
             if (!Bars.Contains(bars)) Bars.Add(bars);
-            if (!_hooked) { CompositionTarget.Rendering += OnRendering; _hooked = true; }
+            Wake();
         }
 
         public static void Unregister(SpectrumBars bars)
         {
             Bars.Remove(bars);
-            if (Bars.Count == 0 && _hooked) { CompositionTarget.Rendering -= OnRendering; _hooked = false; }
+            if (Bars.Count == 0) Sleep();
+        }
+
+        // 0.4.2: the clock runs only while some bars move. A subscription to
+        // CompositionTarget.Rendering alone makes WPF redraw at full screen
+        // rate, so with nothing playing it is dropped completely.
+        public static void Wake()
+        {
+            _lastBusy = Watch.Elapsed.TotalSeconds;
+            if (!_hooked && Bars.Count > 0) { CompositionTarget.Rendering += OnRendering; _hooked = true; }
+        }
+
+        private static void Sleep()
+        {
+            if (_hooked) { CompositionTarget.Rendering -= OnRendering; _hooked = false; }
         }
 
         private static void OnRendering(object? sender, EventArgs e)
@@ -161,7 +180,10 @@ namespace Ovira.Island
             var source = Source;
             var levels = source?.Levels ?? new double[6];
             bool live = source != null && source.Live;
-            foreach (var bars in Bars.ToArray()) bars.Tick(now, levels, live);
+            bool busy = false;
+            foreach (var bars in Bars.ToArray()) busy |= bars.Tick(now, levels, live);
+            if (busy) _lastBusy = now;
+            else if (now - _lastBusy > 0.6) Sleep();
         }
     }
 }

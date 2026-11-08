@@ -87,6 +87,33 @@ namespace Ovira.Core
         private System.Collections.Generic.List<UserProfile> _userProfiles = new();
         public System.Collections.Generic.List<UserProfile> UserProfiles { get => _userProfiles; set => Set(ref _userProfiles, value ?? new()); }
 
+        // 0.4.2: updates, as on the Mac — how often to look (hours), and
+        // whether a downloaded update installs by itself.
+        private bool _checkUpdates = true;
+        public bool CheckUpdates { get => _checkUpdates; set => Set(ref _checkUpdates, value); }
+
+        private double _updateIntervalHours = 3;
+        public double UpdateIntervalHours { get => _updateIntervalHours; set => Set(ref _updateIntervalHours, value is 1 or 3 or 6 or 24 or 168 ? value : 3); }
+
+        private bool _autoInstallUpdates;
+        public bool AutoInstallUpdates { get => _autoInstallUpdates; set => Set(ref _autoInstallUpdates, value); }
+
+        private DateTime _lastUpdateCheck = DateTime.MinValue;
+        public DateTime LastUpdateCheck { get => _lastUpdateCheck; set => Set(ref _lastUpdateCheck, value); }
+
+        // 0.4.2: the helper — 20-20-20 eye breaks.
+        private bool _eyeBreak = true;
+        public bool EyeBreak { get => _eyeBreak; set => Set(ref _eyeBreak, value); }
+
+        private bool _eyeBreakSound = true;
+        public bool EyeBreakSound { get => _eyeBreakSound; set => Set(ref _eyeBreakSound, value); }
+
+        private int _eyeBreakMinutes = 20;
+        public int EyeBreakMinutes { get => _eyeBreakMinutes; set => Set(ref _eyeBreakMinutes, value is 20 or 30 or 45 or 60 ? value : 20); }
+
+        private bool _animatedBackground = true;
+        public bool AnimatedBackground { get => _animatedBackground; set => Set(ref _animatedBackground, value); }
+
         // Banners
         private bool _volumeBanner = true;
         public bool VolumeBanner { get => _volumeBanner; set => Set(ref _volumeBanner, value); }
@@ -165,7 +192,7 @@ namespace Ovira.Core
             foreach (var p in typeof(Settings).GetProperties())
             {
                 if (p.CanWrite && p.CanRead && p.Name != nameof(Section) && p.Name != nameof(OpenOnHover) &&
-                    p.Name != nameof(CustomThemes) && p.Name != nameof(UserProfiles) && p.Name != nameof(CustomProfile))
+                    p.Name != nameof(CustomThemes) && p.Name != nameof(LastUpdateCheck) && p.Name != nameof(UserProfiles) && p.Name != nameof(CustomProfile))
                     p.SetValue(this, p.GetValue(fresh));
             }
         }

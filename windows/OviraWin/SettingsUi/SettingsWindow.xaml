@@ -264,6 +264,49 @@
             </Setter>
         </Style>
 
+        <!-- 0.4.2: slim scroll bar like on the Mac, no grey track and arrows -->
+        <Style TargetType="ScrollBar">
+            <Setter Property="Width" Value="10" />
+            <Setter Property="MinWidth" Value="10" />
+            <Setter Property="Background" Value="Transparent" />
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="ScrollBar">
+                        <Grid Background="Transparent">
+                            <Track x:Name="PART_Track" IsDirectionReversed="True">
+                                <Track.DecreaseRepeatButton>
+                                    <RepeatButton Style="{StaticResource MacSliderRepeat}" Command="ScrollBar.PageUpCommand" />
+                                </Track.DecreaseRepeatButton>
+                                <Track.IncreaseRepeatButton>
+                                    <RepeatButton Style="{StaticResource MacSliderRepeat}" Command="ScrollBar.PageDownCommand" />
+                                </Track.IncreaseRepeatButton>
+                                <Track.Thumb>
+                                    <Thumb>
+                                        <Thumb.Template>
+                                            <ControlTemplate TargetType="Thumb">
+                                                <Border x:Name="Knob" Width="5" CornerRadius="2.5" Background="{DynamicResource Fg3}"
+                                                        Opacity="0.45" HorizontalAlignment="Center" />
+                                                <ControlTemplate.Triggers>
+                                                    <Trigger Property="IsMouseOver" Value="True">
+                                                        <Setter TargetName="Knob" Property="Opacity" Value="0.85" />
+                                                        <Setter TargetName="Knob" Property="Width" Value="7" />
+                                                    </Trigger>
+                                                    <Trigger Property="IsDragging" Value="True">
+                                                        <Setter TargetName="Knob" Property="Opacity" Value="0.95" />
+                                                        <Setter TargetName="Knob" Property="Width" Value="7" />
+                                                    </Trigger>
+                                                </ControlTemplate.Triggers>
+                                            </ControlTemplate>
+                                        </Thumb.Template>
+                                    </Thumb>
+                                </Track.Thumb>
+                            </Track>
+                        </Grid>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
         <!-- Group: UPPERCASE title, glass card, hint below -->
         <Style x:Key="GroupTitle" TargetType="TextBlock">
             <Setter Property="FontSize" Value="10.5" />
@@ -325,32 +368,10 @@
     <Border x:Name="Frame" CornerRadius="12" ClipToBounds="True" Background="{DynamicResource Base}">
         <Grid>
             <!-- Living colour background: the section's colour and the cover's -->
-            <Canvas x:Name="Aurora" IsHitTestVisible="False" ClipToBounds="True">
-                <Ellipse x:Name="BlobA" Width="680" Height="560" Opacity="0.6">
-                    <Ellipse.Fill>
-                        <RadialGradientBrush>
-                            <GradientStop x:Name="BlobAColor" Color="#FF5C59E6" Offset="0" />
-                            <GradientStop Color="#005C59E6" Offset="1" />
-                        </RadialGradientBrush>
-                    </Ellipse.Fill>
-                </Ellipse>
-                <Ellipse x:Name="BlobB" Width="600" Height="520" Opacity="0.5">
-                    <Ellipse.Fill>
-                        <RadialGradientBrush>
-                            <GradientStop x:Name="BlobBColor" Color="#FFFF4566" Offset="0" />
-                            <GradientStop Color="#00FF4566" Offset="1" />
-                        </RadialGradientBrush>
-                    </Ellipse.Fill>
-                </Ellipse>
-                <Ellipse x:Name="BlobC" Width="540" Height="460" Opacity="0.4">
-                    <Ellipse.Fill>
-                        <RadialGradientBrush>
-                            <GradientStop x:Name="BlobCColor" Color="#FF8E5BFF" Offset="0" />
-                            <GradientStop Color="#008E5BFF" Offset="1" />
-                        </RadialGradientBrush>
-                    </Ellipse.Fill>
-                </Ellipse>
-            </Canvas>
+            <!-- 0.4.2: living background like the Mac — a small picture of
+                 drifting colour clouds, drawn by code ~30 times a second and
+                 stretched smoothly over the window (it is soft anyway) -->
+            <Image x:Name="Aurora" Stretch="Fill" IsHitTestVisible="False" RenderOptions.BitmapScalingMode="Linear" />
             <Border Background="{DynamicResource Dim}" IsHitTestVisible="False" />
 
             <DockPanel>
@@ -440,8 +461,9 @@
                             </StackPanel>
                             <StackPanel x:Name="HomeContent">
                                 <!-- Stage -->
+                                <Grid Margin="0,0,0,18">
                                 <Border x:Name="Stage" Height="176" CornerRadius="26" ClipToBounds="True" BorderThickness="1"
-                                        BorderBrush="#47FFFFFF" Margin="0,0,0,18">
+                                        BorderBrush="#47FFFFFF">
                                     <Border.Effect><DropShadowEffect x:Name="StageGlow" BlurRadius="28" ShadowDepth="6" Direction="270" Opacity="0.35" Color="#FF5C59E6" /></Border.Effect>
                                     <Border.Background>
                                         <LinearGradientBrush StartPoint="0,0" EndPoint="1,1">
@@ -466,30 +488,33 @@
                                                 </LinearGradientBrush>
                                             </Border.Background>
                                         </Border>
-                                        <Canvas x:Name="StageCanvas" Height="120" VerticalAlignment="Top">
-                                            <Path x:Name="StageShape" Fill="Black">
-                                                <Path.Effect><DropShadowEffect BlurRadius="14" ShadowDepth="4" Direction="270" Opacity="0.35" /></Path.Effect>
-                                            </Path>
-                                            <Grid x:Name="StageContent" Height="35" Canvas.Top="0">
-                                                <Grid.ColumnDefinitions>
-                                                    <ColumnDefinition Width="44" />
-                                                    <ColumnDefinition Width="*" />
-                                                    <ColumnDefinition Width="Auto" />
-                                                </Grid.ColumnDefinitions>
-                                                <Border x:Name="StageArt" Width="22" Height="22" CornerRadius="6" Background="#FF2A2A2A" />
-                                                <core:IconView x:Name="StageIcon" Width="16" Height="16" />
-                                                <TextBlock x:Name="StageText" Foreground="White" Grid.Column="1" FontSize="12.5" FontWeight="SemiBold"
-                                                           VerticalAlignment="Center" TextTrimming="CharacterEllipsis" />
-                                                <island:SpectrumBars x:Name="StageBars" Grid.Column="2" Margin="0,0,14,0" VerticalAlignment="Center"
-                                                                     BarWidth="2.2" BarSpacing="1.7" BarMaxHeight="16" />
-                                            </Grid>
-                                        </Canvas>
                                         <TextBlock x:Name="StageCaption" FontSize="12.5" FontWeight="SemiBold" Foreground="#E6FFFFFF"
                                                    HorizontalAlignment="Center" VerticalAlignment="Bottom" Margin="0,0,0,14">
                                             <TextBlock.Effect><DropShadowEffect BlurRadius="3" ShadowDepth="1" Direction="270" Opacity="0.3" /></TextBlock.Effect>
                                         </TextBlock>
                                     </Grid>
                                 </Border>
+                                <!-- The stage's top edge is the screen's top edge: the island
+                                     sits over the frame line, as on the Mac -->
+                                <Canvas x:Name="StageCanvas" Height="120" VerticalAlignment="Top" IsHitTestVisible="False">
+                                    <Path x:Name="StageShape" Fill="Black">
+                                        <Path.Effect><DropShadowEffect BlurRadius="14" ShadowDepth="4" Direction="270" Opacity="0.35" /></Path.Effect>
+                                    </Path>
+                                    <Grid x:Name="StageContent" Height="35" Canvas.Top="0">
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="44" />
+                                            <ColumnDefinition Width="*" />
+                                            <ColumnDefinition Width="Auto" />
+                                        </Grid.ColumnDefinitions>
+                                        <Border x:Name="StageArt" Width="22" Height="22" CornerRadius="6" Background="#FF2A2A2A" />
+                                        <core:IconView x:Name="StageIcon" Width="16" Height="16" />
+                                        <TextBlock x:Name="StageText" Foreground="White" Grid.Column="1" FontSize="12.5" FontWeight="SemiBold"
+                                                   VerticalAlignment="Center" TextTrimming="CharacterEllipsis" />
+                                        <island:SpectrumBars x:Name="StageBars" Grid.Column="2" Margin="0,0,14,0" VerticalAlignment="Center"
+                                                             BarWidth="2.2" BarSpacing="1.7" BarMaxHeight="16" />
+                                    </Grid>
+                                </Canvas>
+                                </Grid>
                                 <!-- Bento tiles -->
                                 <Grid x:Name="Tiles">
                                     <Grid.ColumnDefinitions>

@@ -23,31 +23,36 @@ namespace Ovira
 
         public static new App Current => (App)Application.Current;
 
-        // Animations may run faster than 60 fps on high-refresh screens. Must
-        // happen before any XAML (styles hold storyboards), hence here.
-        static App()
-        {
-            try
-            {
-                System.Windows.Media.Animation.Timeline.DesiredFrameRateProperty.OverrideMetadata(
-                    typeof(System.Windows.Media.Animation.Timeline),
-                    new FrameworkPropertyMetadata { DefaultValue = 240 });
-            }
-            catch { }
-        }
-        public static string Version => "0.4.1";
+        // 0.4.2: no global 240 fps for every animation any more — it kept the
+        // processor busy. The island's springs follow the screen by themselves.
+        public static string Version => "0.4.2";
+
+        public UpdateService Updates { get; } = new UpdateService();
+        public EyeBreakService EyeBreak { get; } = new EyeBreakService();
 
         protected override async void OnStartup(StartupEventArgs e)
         {
             base.OnStartup(e);
 
             // One Ovira at a time.
+            bool updated = Array.IndexOf(e.Args, "--updated") >= 0;
             _single = new Mutex(true, "Ovira.Windows.Single", out var first);
             if (!first)
             {
-                Shutdown();
-                return;
+                // Right after an update the old copy is still closing: wait for it.
+                bool got = false;
+                if (updated)
+                {
+                    try { got = _single.WaitOne(TimeSpan.FromSeconds(20)); }
+                    catch (AbandonedMutexException) { got = true; }
+                }
+                if (!got)
+                {
+                    Shutdown();
+                    return;
+                }
             }
+            UpdateService.CleanUp();
 
             DispatcherUnhandledException += (_, args) =>
             {
@@ -70,12 +75,18 @@ namespace Ovira
             Power.Start();
             Spectrum.Start();
             SpectrumClock.Source = Spectrum;
+            // The sound is analysed only while music plays — no work in silence.
+            Media.Changed += t => Spectrum.Wanted = t != null && t.Playing;
             _island = new IslandWindow(Media, Audio, Power);
             _island.Show();
             _island.Begin();
             await Media.StartAsync();
 
             SetUpTray();
+            if (updated) _island.ShowUpdated(Version);
+            Updates.Ready += OnUpdateReady;
+            Updates.Start();
+            EyeBreak.Start(_island);
             if (firstRun)
             {
                 Settings.Current.Save();
@@ -112,6 +123,28 @@ namespace Ovira
             };
         }
 
+        private void OnUpdateReady(string version)
+        {
+            if (Settings.Current.AutoInstallUpdates && !(_island?.Busy ?? false))
+            {
+                Updates.Install();
+                return;
+            }
+            _island?.ShowUpdateReady(version);
+            try
+            {
+                if (_tray != null)
+                {
+                    _tray.BalloonTipClicked -= OnBalloonClicked;
+                    _tray.BalloonTipClicked += OnBalloonClicked;
+                    _tray.ShowBalloonTip(8000, "Ovira " + version, "Обновление скачано. Нажми, чтобы установить.", System.Windows.Forms.ToolTipIcon.Info);
+                }
+            }
+            catch { }
+        }
+
+        private void OnBalloonClicked(object? sender, EventArgs e) => Dispatcher.BeginInvoke(new Action(Updates.Install));
+
         public void OpenSettings()
         {
             if (_settings == null || !_settings.IsLoaded)
@@ -130,6 +163,7 @@ namespace Ovira
             if (_tray != null) { _tray.Visible = false; _tray.Dispose(); }
             Audio.Dispose();
             Spectrum.Dispose();
+            EyeBreak.Stop();
             Shutdown();
         }
 

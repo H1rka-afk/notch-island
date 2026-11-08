@@ -37,13 +37,14 @@ namespace Ovira.SettingsUi
 
         private static readonly Section[] Sections =
         {
-            new("general", "Основные", "Оформление, запуск и обслуживание", "Темы и запуск", "gear", Color.FromRgb(0x8C, 0x8F, 0x99), "ovira"),
+            new("general", "Основные", "Оформление, обновления и запуск", "Темы и обновления", "gear", Color.FromRgb(0x8C, 0x8F, 0x99), "ovira"),
             new("profiles", "Профили", "Готовые наборы функций и свои профили", "iPhone, Тихий, Максимум", "stack", Color.FromRgb(0x5C, 0x59, 0xE6), "music"),
             new("island", "Островок", "Вид, размер и поведение островка", "Открытие и размер", "laptop", Color.FromRgb(0x33, 0x7A, 0xFF), "music"),
             new("media", "Медиаплеер", "Плеер, звук и обложки", "Любая музыка в Windows", "play", Color.FromRgb(0xFF, 0x45, 0x66), "music"),
             new("spectrum", "Спектрограмма", "Шесть полосок по настоящему звуку: вид, размытие и плавность", "Обложка, размытие, кадры", "waveform", Color.FromRgb(0xA8, 0x5C, 0xF2), "music"),
             new("notifications", "Уведомления", "Громкость и звук — короткие баннеры в островке", "Громкость и вывод звука", "bell", Color.FromRgb(0xFF, 0x45, 0x3A), "volume"),
             new("devices", "Устройства", "Батарея и зарядка ноутбука", "Зарядка и низкий заряд", "bolt", Color.FromRgb(0x33, 0xBF, 0x59), "charging"),
+            new("helper", "Помощник", "Отдых для глаз по правилу 20-20-20", "Отдых для глаз", "eye", Color.FromRgb(0x26, 0xB5, 0xC9), "eye"),
         };
 
         private readonly List<Entry> _entries = new();
@@ -69,12 +70,16 @@ namespace Ovira.SettingsUi
             Action<TrackInfo?> onTrack = _ => Dispatcher.BeginInvoke(new Action(() => { ShowTrack(); TintAurora(); CoverChanged(); }));
             app.Media.Changed += onTrack;
             S.PropertyChanged += OnSettingChanged;
-            Closed += (_, _) => { app.Media.Changed -= onTrack; S.PropertyChanged -= OnSettingChanged; _stageTimer.Stop(); };
+            Action updates = () => Dispatcher.BeginInvoke(new Action(ShowUpdateState));
+            app.Updates.Changed += updates;
+            Closed += (_, _) => { app.Media.Changed -= onTrack; app.Updates.Changed -= updates; S.PropertyChanged -= OnSettingChanged; _stageTimer.Stop(); _stageCycle.Stop(); };
             KeyDown += (_, e) => { if (e.Key == Key.Escape && _current != null) GoHome(); };
 
             ShowTrack();
+            Stage.SizeChanged += (_, _) => DrawStage();
             _stageTimer.Tick += (_, _) => StageTick();
-            _stageTimer.Start();
+            _stageCycle.Tick += (_, _) => { if (_hovered == null && HomeView.Visibility == Visibility.Visible && WindowState != WindowState.Minimized) { _stageStep++; UpdateStage(); } };
+            _stageCycle.Start();
             var start = Sections.FirstOrDefault(s => s.Key == S.Section);
             if (start != null && S.Section != "home") Open(start, animated: false); else GoHome(animated: false);
         }
@@ -87,6 +92,7 @@ namespace Ovira.SettingsUi
                 CrossFade(ApplyTheme);
                 return;
             }
+            if (e.PropertyName == nameof(Settings.AnimatedBackground)) UpdateAuroraClock();
             if (_current?.Key == "profiles") ScheduleProfiles();
         }
 
@@ -170,9 +176,10 @@ namespace Ovira.SettingsUi
             Place(Tile(Find("spectrum")), 1, 2);
             Place(Tile(Find("notifications")), 1, 3);
             Place(Tile(Find("devices")), 2, 0);
+            Place(Tile(Find("helper")), 2, 1);
             var look = ThemeTile();
-            Grid.SetColumnSpan(look, 3);
-            Place(look, 2, 1);
+            Grid.SetColumnSpan(look, 2);
+            Place(look, 2, 2);
         }
 
         private void Place(FrameworkElement tile, int row, int column)
@@ -378,9 +385,13 @@ namespace Ovira.SettingsUi
         private readonly DispatcherTimer _stageTimer = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(16) };
         private readonly Spring _sw = new Spring(255);
         private int _stageStep;
-        private double _stageClock;
+        // 0.4.2: frames only while the island on the stage moves; the scenes
+        // change on their own slow clock.
+        private readonly DispatcherTimer _stageCycle = new DispatcherTimer { Interval = TimeSpan.FromSeconds(3.2) };
+        private readonly System.Diagnostics.Stopwatch _stageWatch = System.Diagnostics.Stopwatch.StartNew();
+        private double _stageLast;
 
-        private static readonly string[] Cycle = { "music", "volume", "charging", "output" };
+        private static readonly string[] Cycle = { "music", "volume", "charging", "eye", "output" };
 
         private string StageScene() => _hovered?.Demo ?? Cycle[_stageStep % Cycle.Length];
 
@@ -414,6 +425,12 @@ namespace Ovira.SettingsUi
                     caption = "Зарядка — молния и процент прямо в островке";
                     width = 300;
                     break;
+                case "eye":
+                    StageIcon.Icon = "eye"; StageIcon.Fill = new SolidColorBrush(Color.FromRgb(0x40, 0xCC, 0xD9));
+                    StageText.Text = "Посмотри вдаль";
+                    caption = "Помощник — 20 секунд отдыха для глаз каждые 20 минут";
+                    width = 300;
+                    break;
                 case "output":
                     StageIcon.Icon = "headphones"; StageIcon.Fill = new SolidColorBrush(Color.FromRgb(0x4C, 0x8D, 0xFF));
                     StageText.Text = "Наушники";
@@ -429,6 +446,7 @@ namespace Ovira.SettingsUi
             }
             StageCaption.Text = caption;
             _sw.To(width * S.IslandScale, Motion.GrowResponse, Motion.GrowDamping);
+            if (!_stageTimer.IsEnabled) { _stageLast = _stageWatch.Elapsed.TotalSeconds; _stageTimer.Start(); }
             var accent = _hovered?.Accent ?? Color.FromRgb(0x5C, 0x59, 0xE6);
             var d = TimeSpan.FromSeconds(0.5);
             StageA.BeginAnimation(GradientStop.ColorProperty, new ColorAnimation(Color.FromArgb(0xD9, accent.R, accent.G, accent.B), d));
@@ -439,17 +457,12 @@ namespace Ovira.SettingsUi
 
         private void StageTick()
         {
-            const double dt = 0.016;
-            if (HomeView.Visibility != Visibility.Visible) return;
-            _sw.Step(dt);
-            _stageClock += dt;
-            if (_hovered == null && _stageClock > 3.2)
-            {
-                _stageClock = 0;
-                _stageStep++;
-                UpdateStage();
-            }
+            var now = _stageWatch.Elapsed.TotalSeconds;
+            var dt = Math.Clamp(now - _stageLast, 0.001, 0.05);
+            _stageLast = now;
+            bool moving = _sw.Step(dt);
             DrawStage();
+            if (!moving) _stageTimer.Stop();
         }
 
         private void DrawStage()
@@ -487,7 +500,14 @@ namespace Ovira.SettingsUi
             {
                 case "general":
                     page.Children.Add(Group("Оформление", "Темы те же, что у Ovira на Mac. «Обложка» берёт цвета играющей музыки. Своя тема — название, светлая или тёмная и 2–4 цвета.",
-                        ThemeGroupContent()));
+                        ThemeGroupContent(),
+                        ToggleRow("Живой фон", "Цвета плавно перетекают друг в друга, как на Mac", nameof(Settings.AnimatedBackground), "фон живой анимация переливы цвета")));
+                    page.Children.Add(Group("Обновления", "Ovira сама смотрит страницу выпусков на GitHub, скачивает новую версию в фоне и предлагает установить — в островке и в области уведомлений. Установка заменяет Ovira.exe в той же папке, права администратора не нужны.",
+                        ToggleRow("Проверять обновления", null, nameof(Settings.CheckUpdates), "обновления проверять версия"),
+                        SegmentRow("Как часто проверять", null, new (string, object)[] { ("1 ч", 1.0), ("3 ч", 3.0), ("6 ч", 6.0), ("День", 24.0), ("Неделя", 168.0) },
+                                   nameof(Settings.UpdateIntervalHours), "интервал обновления часто проверка"),
+                        ToggleRow("Устанавливать сами", "Скачанное обновление ставится без вопроса, когда островок свободен", nameof(Settings.AutoInstallUpdates), "автоматически установка обновления"),
+                        UpdateStatusRow()));
                     page.Children.Add(Group("Запуск", null,
                         ToggleRow("Запускать вместе с Windows", "Островок появляется сразу после входа", nameof(Settings.StartWithWindows), "автозапуск старт вход")));
                     page.Children.Add(Group("Обслуживание", "Ovira для Windows " + App.Version + ". Всё работает на самом компьютере и никуда не отправляется.",
@@ -497,11 +517,20 @@ namespace Ovira.SettingsUi
                     page.Children.Add(Group("Версия для Windows", null,
                         TextRow("Что уже есть", "Островок с пружинными анимациями, медиаплеер для любой музыки, настоящая спектрограмма, громкость, вывод звука и зарядка."),
                         TextRow("Чего на Windows не будет", "Свой экран блокировки (Windows не пускает программы на экран входа) и отклик трекпада."),
-                        TextRow("Дальше", "Такси и доставка с живыми активностями, таймер, отдых для глаз, исправление раскладки, полка файлов.")));
+                        TextRow("Дальше", "Такси и доставка с живыми активностями, таймер, исправление раскладки, полка файлов.")));
                     break;
 
                 case "profiles":
                     page.Children.Add(ProfilesPage());
+                    break;
+
+                case "helper":
+                    page.Children.Add(Group("Отдых для глаз", "Считается только время за компьютером — клавиатура или мышь в последнюю минуту. Пять минут без компьютера — глаза уже отдохнули, счёт начинается заново. Во время звонка (заняты микрофон или камера) и поверх игры или видео на весь экран перерыв подождёт. Нажми на островок, чтобы пропустить перерыв.",
+                        ToggleRow("Напоминать об отдыхе", "Островок попросит 20 секунд посмотреть вдаль", nameof(Settings.EyeBreak), "отдых глаза перерыв 20-20-20 помощник",
+                                  () => App.Current.IslandWindow?.DemoEyeBreak()),
+                        SegmentRow("Как часто", "Сколько работать до перерыва", new (string, object)[] { ("20 мин", 20), ("30 мин", 30), ("45 мин", 45), ("1 ч", 60) },
+                                   nameof(Settings.EyeBreakMinutes), "интервал отдых минуты как часто"),
+                        ToggleRow("Звук", "Тихий сигнал в начале и в конце перерыва", nameof(Settings.EyeBreakSound), "звук сигнал отдых")));
                     break;
 
                 case "island":
@@ -628,6 +657,53 @@ namespace Ovira.SettingsUi
         }
 
         private FrameworkElement TextRow(string title, string text) => Row(title, text, new Border());
+
+        private TextBlock? _updText;
+        private Button? _updButton;
+
+        private FrameworkElement UpdateStatusRow()
+        {
+            _updButton = new Button { Style = (Style)FindResource("MacButton") };
+            _updButton.Click += (_, _) =>
+            {
+                var u = App.Current.Updates;
+                if (u.State == Ovira.Services.UpdateService.UpdateState.Ready) u.Install();
+                else _ = u.CheckAsync(force: true);
+            };
+            var row = Row("Ovira " + App.Version, " ", _updButton);
+            _updText = row.Children.OfType<StackPanel>().First().Children.OfType<TextBlock>().Last();
+            Remember("Проверить обновления", "обновления версия скачать установить", row);
+            ShowUpdateState();
+            return row;
+        }
+
+        private void ShowUpdateState()
+        {
+            if (_updText == null || _updButton == null) return;
+            var u = App.Current.Updates;
+            var last = S.LastUpdateCheck;
+            string status = u.State switch
+            {
+                Ovira.Services.UpdateService.UpdateState.Idle => last == DateTime.MinValue ? "Ещё не проверяли" : "Проверено " + When(last),
+                _ => u.Message
+            };
+            _updText.Text = status;
+            bool busy = u.State is Ovira.Services.UpdateService.UpdateState.Checking or Ovira.Services.UpdateService.UpdateState.Downloading
+                                 or Ovira.Services.UpdateService.UpdateState.Installing;
+            _updButton.Content = u.State == Ovira.Services.UpdateService.UpdateState.Ready ? "Обновить до " + u.NewVersion : "Проверить";
+            _updButton.IsEnabled = !busy;
+            _updButton.Opacity = busy ? 0.5 : 1;
+        }
+
+        private static string When(DateTime t)
+        {
+            var d = DateTime.Now - t;
+            if (d.TotalMinutes < 1) return "только что";
+            if (d.TotalHours < 1) return (int)d.TotalMinutes + " мин назад";
+            if (t.Date == DateTime.Today) return "сегодня в " + t.ToString("HH:mm");
+            if (t.Date == DateTime.Today.AddDays(-1)) return "вчера в " + t.ToString("HH:mm");
+            return t.ToString("d MMMM, HH:mm", new System.Globalization.CultureInfo("ru-RU"));
+        }
 
         // Segments bound to one setting: each option has its value.
         private FrameworkElement SegmentRow(string title, string? subtitle, (string label, object value)[] options, string property, string keywords)
@@ -763,39 +839,6 @@ namespace Ovira.SettingsUi
                     RepeatBehavior = new RepeatBehavior(2)
                 });
             }
-        }
-
-        // ================================================================ living background
-
-        private void StartAurora()
-        {
-            Loaded += (_, _) =>
-            {
-                Drift(BlobA, -180, 440, -220, 260, 17);
-                Drift(BlobB, 380, 780, 220, 440, 21);
-                Drift(BlobC, 120, 580, -140, 400, 26);
-                TintAurora();
-            };
-        }
-
-        private static void Drift(UIElement blob, double x1, double x2, double y1, double y2, double seconds)
-        {
-            var ease = new SineEase { EasingMode = EasingMode.EaseInOut };
-            blob.BeginAnimation(Canvas.LeftProperty, new DoubleAnimation(x1, x2, TimeSpan.FromSeconds(seconds))
-            { AutoReverse = true, RepeatBehavior = RepeatBehavior.Forever, EasingFunction = ease });
-            blob.BeginAnimation(Canvas.TopProperty, new DoubleAnimation(y1, y2, TimeSpan.FromSeconds(seconds * 0.77))
-            { AutoReverse = true, RepeatBehavior = RepeatBehavior.Forever, EasingFunction = ease });
-        }
-
-        private void TintAurora()
-        {
-            var a = _current?.Accent ?? (s_palette.Length > 0 ? s_palette[0] : Color.FromRgb(0x5C, 0x59, 0xE6));
-            var cover = s_palette.Length > 1 && S.Theme != "cover" ? s_palette[1] : CoverTint;
-            var d = TimeSpan.FromSeconds(0.8);
-            BlobAColor.BeginAnimation(GradientStop.ColorProperty, new ColorAnimation(a, d));
-            BlobBColor.BeginAnimation(GradientStop.ColorProperty, new ColorAnimation(cover, d));
-            BlobCColor.BeginAnimation(GradientStop.ColorProperty,
-                new ColorAnimation(Color.FromRgb((byte)((a.R + cover.R) / 2), (byte)((a.G + cover.G) / 2), (byte)Math.Min(255, (a.B + 255) / 2)), d));
         }
 
         // ================================================================ actions

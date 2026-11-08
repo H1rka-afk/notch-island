@@ -3,7 +3,7 @@
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         xmlns:core="clr-namespace:Ovira.Core"
         xmlns:island="clr-namespace:Ovira.Island"
-        Title="Ovira" Width="720" Height="320"
+        Title="Ovira" Width="720" Height="64"
         WindowStyle="None" AllowsTransparency="True" Background="Transparent"
         Topmost="True" ShowInTaskbar="False" ResizeMode="NoResize" ShowActivated="False"
         Focusable="False" FontFamily="{StaticResource UiFont}" UseLayoutRounding="True"
@@ -14,11 +14,9 @@
                 <ScaleTransform x:Name="PeekScale" ScaleX="1" ScaleY="1" />
             </Grid.RenderTransform>
 
-            <Path x:Name="Shape" Fill="Black" HorizontalAlignment="Left" VerticalAlignment="Top">
-                <Path.Effect>
-                    <DropShadowEffect BlurRadius="16" ShadowDepth="3" Direction="270" Opacity="0.3" Color="Black" />
-                </Path.Effect>
-            </Path>
+            <!-- 0.4.2: no drop shadow — on a transparent window it was redrawn by
+                 the processor on every frame of the bars -->
+            <Path x:Name="Shape" Fill="Black" HorizontalAlignment="Left" VerticalAlignment="Top" />
 
             <Canvas x:Name="ContentHost" HorizontalAlignment="Left" VerticalAlignment="Top">
 
