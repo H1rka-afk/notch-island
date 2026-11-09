@@ -55,7 +55,9 @@ jobs:
           path: build/Ovira-Windows-v${{ steps.version.outputs.version }}.zip
 
       - name: Publish pre-release
-        if: ${{ inputs.publish == 'yes' }}
+        # A manual run with publish=yes, or a push whose message says [publish-win]
+        # (manual runs were refused by GitHub on 9 Nov 2026 without a reason).
+        if: ${{ inputs.publish == 'yes' || (github.event_name == 'push' && contains(github.event.head_commit.message, '[publish-win]')) }}
         shell: pwsh
         env:
           GH_TOKEN: ${{ secrets.RELEASES_TOKEN }}
