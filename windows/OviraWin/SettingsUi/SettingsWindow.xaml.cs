@@ -80,6 +80,7 @@ namespace Ovira.SettingsUi
             KeyDown += (_, e) => { if (e.Key == Key.Escape && _current != null) GoHome(); };
 
             ShowTrack();
+            ShowUpdateCard();
             Stage.SizeChanged += (_, _) => DrawStage();
             _stageTimer.Tick += (_, _) => StageTick();
             _stageCycle.Tick += (_, _) => { if (_hovered == null && HomeView.Visibility == Visibility.Visible && WindowState != WindowState.Minimized) { _stageStep++; UpdateStage(); } };
@@ -792,6 +793,7 @@ namespace Ovira.SettingsUi
 
         private void ShowUpdateState()
         {
+            ShowUpdateCard();
             if (_updText == null || _updButton == null) return;
             var u = App.Current.Updates;
             var last = S.LastUpdateCheck;

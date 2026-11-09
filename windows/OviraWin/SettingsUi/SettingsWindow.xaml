@@ -460,6 +460,8 @@
                                 </Border>
                             </StackPanel>
                             <StackPanel x:Name="HomeContent">
+                                <!-- 0.4.13: a waiting update and what it brings, as on the Mac -->
+                                <StackPanel x:Name="UpdateHost" />
                                 <!-- Stage -->
                                 <Grid Margin="0,0,0,18">
                                 <Border x:Name="Stage" Height="176" CornerRadius="26" ClipToBounds="True" BorderThickness="1"

@@ -25,7 +25,7 @@ namespace Ovira
 
         // 0.4.2: no global 240 fps for every animation any more — it kept the
         // processor busy. The island's springs follow the screen by themselves.
-        public static string Version => "0.4.12";
+        public static string Version => "0.4.13";
 
         public UpdateService Updates { get; } = new UpdateService();
         public EyeBreakService EyeBreak { get; } = new EyeBreakService();
@@ -44,8 +44,15 @@ namespace Ovira
                 bool got = false;
                 if (updated)
                 {
-                    try { got = _single.WaitOne(TimeSpan.FromSeconds(20)); }
+                    try { got = _single.WaitOne(TimeSpan.FromSeconds(12)); }
                     catch (AbandonedMutexException) { got = true; }
+                    if (!got)
+                    {
+                        // 0.4.13: the old copy hung while closing — close it.
+                        UpdateService.CloseOldCopy();
+                        try { got = _single.WaitOne(TimeSpan.FromSeconds(5)); }
+                        catch (AbandonedMutexException) { got = true; }
+                    }
                 }
                 if (!got)
                 {
@@ -184,6 +191,9 @@ namespace Ovira
             EyeBreak.Stop();
             Keyboard.Stop();
             Shutdown();
+            // 0.4.13: nothing left in the background may keep Ovira running
+            // (a stuck audio thread used to block the update from starting).
+            _ = System.Threading.Tasks.Task.Delay(4000).ContinueWith(_ => Environment.Exit(0));
         }
 
         protected override void OnExit(ExitEventArgs e)
