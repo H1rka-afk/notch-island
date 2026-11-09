@@ -20,46 +20,80 @@ namespace Ovira.Services
     // refuses rather than guesses.
     public static class YandexFavorites
     {
-        private sealed record Target(AutomationElement Element, bool Saved);
+        // Saved is null when the app does not say whether the button is on.
+        private sealed record Target(AutomationElement Element, bool? Saved);
 
         private static readonly SemaphoreSlim Gate = new SemaphoreSlim(1, 1);
 
         public static bool MightBeYandex(TrackInfo t) =>
             t.Source is "Яндекс Музыка" or "Chrome" or "Edge" or "Яндекс Браузер" or "Opera" or "Firefox";
 
+        // 0.4.17: the Yandex account (if connected) answers first — it works
+        // for the app and the browser alike; then the button in the window.
         public static async Task<bool?> ReadAsync(TrackInfo t)
         {
+            if (YandexAccount.Connected)
+            {
+                var viaAccount = await YandexAccount.ReadAsync(t);
+                if (viaAccount != null) return viaAccount;
+            }
             await Gate.WaitAsync();
             try { return await Task.Run(() => FindWithRetry(t)?.Saved); }
             catch { return null; }
             finally { Gate.Release(); }
         }
 
-        // Returns the state the app really has afterwards, or null if the
-        // button could not be found.
-        public static async Task<bool?> WriteAsync(TrackInfo t, bool target)
+        public enum WriteResult { Done, Refused, NotFound }
+
+        // «shown» is what the star showed before the click; it is used only
+        // when the app does not tell the button's state.
+        public static async Task<WriteResult> WriteAsync(TrackInfo t, bool target)
         {
+            if (YandexAccount.Connected)
+            {
+                var viaAccount = await YandexAccount.WriteAsync(t, target);
+                if (viaAccount == true) return WriteResult.Done;
+            }
             await Gate.WaitAsync();
             try
             {
                 return await Task.Run(() =>
                 {
                     var control = FindWithRetry(t);
-                    if (control == null) return (bool?)null;
-                    if (control.Saved == target) return target;
-                    if (!Press(control.Element)) return control.Saved;
+                    if (control == null) return WriteResult.NotFound;
+                    if (control.Saved == target) return WriteResult.Done;
+                    if (!Press(control.Element)) return WriteResult.Refused;
+                    if (control.Saved == null) return WriteResult.Done;   // pressed; the app does not report more
                     for (int i = 0; i < 8; i++)
                     {
                         Thread.Sleep(170);
                         var now = Find(t);
-                        if (now != null && now.Saved == target) return target;
+                        if (now != null && now.Saved == target) return WriteResult.Done;
                     }
-                    return Find(t)?.Saved;
+                    return Find(t)?.Saved == target ? WriteResult.Done : WriteResult.Refused;
                 });
             }
-            catch { return null; }
+            catch { return WriteResult.NotFound; }
             finally { Gate.Release(); }
         }
+
+        // What Ovira sees — for «Проверить» in Settings.
+        public static Task<string> DiagnoseAsync(TrackInfo? t) => Task.Run(() =>
+        {
+            if (t == null) return "Сейчас ничего не играет — включи песню в Яндекс Музыке.";
+            var lines = new List<string>();
+            var windows = Candidates(t).ToList();
+            if (windows.Count == 0)
+                return "Окно Яндекс Музыки не найдено. Нужны приложение «Яндекс Музыка» или вкладка music.yandex.ru (открытая, не свёрнутая в фон).";
+            lines.Add("Окон Яндекс Музыки: " + windows.Count + ".");
+            var target = FindWithRetry(t, out var report);
+            lines.Add(report);
+            if (target != null)
+                lines.Add(target.Saved == null
+                    ? "Кнопка найдена, но приложение не сообщает, нажата ли она: звёздочка будет нажимать её вслепую."
+                    : "Кнопка найдена, сейчас: " + (target.Saved.Value ? "в «Мне нравится»." : "не в «Мне нравится»."));
+            return string.Join(" ", lines);
+        });
 
         private static bool Press(AutomationElement e)
         {
@@ -74,16 +108,22 @@ namespace Ovira.Services
 
         // Chromium switches its accessibility tree on at the first request,
         // so an empty first look is tried once more.
-        private static Target? FindWithRetry(TrackInfo t)
+        private static Target? FindWithRetry(TrackInfo t) => FindWithRetry(t, out _);
+
+        private static Target? FindWithRetry(TrackInfo t, out string report)
         {
-            var found = Find(t);
+            var found = Find(t, out report);
             if (found != null) return found;
-            Thread.Sleep(450);
-            return Find(t);
+            WakeChromium(t);
+            Thread.Sleep(600);
+            return Find(t, out report);
         }
 
-        private static Target? Find(TrackInfo t)
+        private static Target? Find(TrackInfo t) => Find(t, out _);
+
+        private static Target? Find(TrackInfo t, out string report)
         {
+            report = "Панель плеера не найдена.";
             if (Normalize(t.Title).Length == 0) return null;
             foreach (var hwnd in Candidates(t).Take(6))
             {
@@ -116,10 +156,21 @@ namespace Ovira.Services
                     catch { }
                 }
                 var texts = footer.Select(n => SafeName(n)).Where(s => s.Length > 0).ToList();
-                if (!texts.Any(x => Matches(x, t.Title))) continue;
-                if (Normalize(t.Artist).Length > 0 && !texts.Any(x => Matches(x, t.Artist))) continue;
+                if (footer.Count == 0) { report = "Окно найдено, но Windows не показывает его содержимое (элементов: " + all.Count + ")."; continue; }
+                if (!texts.Any(x => Matches(x, t.Title)))
+                {
+                    report = "В панели плеера не видно «" + t.Title + "». Видно: " + string.Join(", ", texts.Take(8).Select(x => "«" + x + "»")) + ".";
+                    continue;
+                }
+                if (Normalize(t.Artist).Length > 0 && !texts.Any(x => Matches(x, t.Artist)))
+                {
+                    report = "Песня в панели есть, но исполнитель «" + t.Artist + "» не совпал.";
+                    continue;
+                }
+                var buttonNames = footer.Where(n => { try { var c = n.Current.ControlType; return c == ControlType.Button || c == ControlType.CheckBox; } catch { return false; } })
+                                        .Select(SafeName).Where(x => x.Length > 0).Distinct().Take(14).ToList();
 
-                var matches = new List<(AutomationElement El, bool Saved, double Y)>();
+                var matches = new List<(AutomationElement El, bool? Saved, double Y)>();
                 foreach (var node in footer)
                 {
                     try
@@ -131,15 +182,24 @@ namespace Ovira.Services
                         if (!(text.Contains("нрав") || text.Contains("лайк") || text.Contains("любим") || text.Contains("liked") ||
                               text.Contains("favorite") || text.Contains("like"))) continue;
                         var state = LikeStatus(node, text);
-                        if (state == null) continue;
                         var r = node.Current.BoundingRectangle;
-                        matches.Add((node, state.Value, r.Top + r.Height / 2));
+                        matches.Add((node, state, r.Top + r.Height / 2));
                     }
                     catch { }
                 }
-                var ordered = matches.OrderByDescending(m => m.Y).ToList();
-                if (ordered.Count == 0) continue;
-                if (ordered.Count > 1 && Math.Abs(ordered[0].Y - ordered[1].Y) < 8) continue;   // two on one line: do not guess
+                // Buttons that tell their state win over silent ones.
+                var ordered = matches.OrderByDescending(m => m.Saved.HasValue).ThenByDescending(m => m.Y).ToList();
+                if (ordered.Count == 0)
+                {
+                    report = "Песня в панели есть, но кнопки «Мне нравится» нет. Кнопки: " + string.Join(", ", buttonNames.Select(x => "«" + x + "»")) + ".";
+                    continue;
+                }
+                if (ordered.Count > 1 && ordered[0].Saved.HasValue == ordered[1].Saved.HasValue && Math.Abs(ordered[0].Y - ordered[1].Y) < 8)
+                {
+                    report = "В панели две похожие кнопки — Ovira не будет угадывать.";
+                    continue;   // two on one line: do not guess
+                }
+                report = "Панель плеера и песня найдены.";
                 return new Target(ordered[0].El, ordered[0].Saved);
             }
             return null;
@@ -192,6 +252,39 @@ namespace Ovira.Services
             var q = Normalize(expected);
             if (q.Length == 0 || t.Length == 0) return false;
             return t == q || (" " + t + " ").Contains(" " + q + " ");
+        }
+
+        // Chromium (the app is built on it, and so are the browsers) builds
+        // its accessibility tree only once something asks for it the classic
+        // way — this asks.
+        [DllImport("oleacc.dll")] private static extern int AccessibleObjectFromWindow(IntPtr hwnd, uint id, ref Guid iid, [MarshalAs(UnmanagedType.Interface)] out object? obj);
+        [DllImport("user32.dll")] private static extern bool EnumChildWindows(IntPtr parent, EnumProc proc, IntPtr param);
+        [DllImport("user32.dll", CharSet = CharSet.Unicode)] private static extern int GetClassName(IntPtr hwnd, StringBuilder name, int max);
+
+        private static void WakeChromium(TrackInfo t)
+        {
+            foreach (var top in Candidates(t).Take(6))
+            {
+                Ask(top);
+                EnumChildWindows(top, (child, _) =>
+                {
+                    var cls = new StringBuilder(64);
+                    GetClassName(child, cls, 64);
+                    if (cls.ToString().StartsWith("Chrome_RenderWidgetHostHWND", StringComparison.Ordinal)) Ask(child);
+                    return true;
+                }, IntPtr.Zero);
+            }
+
+            static void Ask(IntPtr hwnd)
+            {
+                try
+                {
+                    var iid = new Guid("618736E0-3C3D-11CF-810C-00AA00389B71");   // IAccessible
+                    AccessibleObjectFromWindow(hwnd, 0xFFFFFFFC, ref iid, out var obj);  // OBJID_CLIENT
+                    if (obj != null) Marshal.ReleaseComObject(obj);
+                }
+                catch { }
+            }
         }
 
         // ---- the windows to look in ----

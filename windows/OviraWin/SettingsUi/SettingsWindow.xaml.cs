@@ -658,6 +658,7 @@ namespace Ovira.SettingsUi
                         ToggleRow("Выбор устройства вывода звука", "Кнопка в плеере: динамики, наушники, монитор", nameof(Settings.OutputPicker), "вывод звук наушники динамики устройство"),
                         ToggleRow("Кнопка «Сохранить»", "Звёздочка слева в плеере. В Яндекс Музыке — настоящее «Мне нравится», в остальных плеерах песня попадает в список ниже", nameof(Settings.SaveButton), "сохранить звезда избранное лайк нравится яндекс"),
                         ButtonRow("Открыть плеер", "Показать, как он выглядит прямо сейчас", "Показать", () => App.Current.IslandWindow?.DemoOpen(), "показать открыть плеер")));
+                    page.Children.Add(YandexGroup());
                     page.Children.Add(SavedGroup());
                     break;
 

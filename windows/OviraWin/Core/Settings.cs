@@ -149,6 +149,10 @@ namespace Ovira.Core
         private System.Collections.Generic.List<SavedTrack> _savedTracks = new();
         public System.Collections.Generic.List<SavedTrack> SavedTracks { get => _savedTracks; set => Set(ref _savedTracks, value ?? new()); }
 
+        // 0.4.17: the Yandex account link — the token sealed with DPAPI.
+        private string _yandexToken = "";
+        public string YandexToken { get => _yandexToken; set => Set(ref _yandexToken, value ?? ""); }
+
         // Banners
         private bool _volumeBanner = true;
         public bool VolumeBanner { get => _volumeBanner; set => Set(ref _volumeBanner, value); }
@@ -227,7 +231,7 @@ namespace Ovira.Core
             foreach (var p in typeof(Settings).GetProperties())
             {
                 if (p.CanWrite && p.CanRead && p.Name != nameof(Section) && p.Name != nameof(OpenOnHover) &&
-                    p.Name != nameof(CustomThemes) && p.Name != nameof(LastUpdateCheck) && p.Name != nameof(SavedTracks) && p.Name != nameof(UserProfiles) && p.Name != nameof(CustomProfile))
+                    p.Name != nameof(CustomThemes) && p.Name != nameof(LastUpdateCheck) && p.Name != nameof(SavedTracks) && p.Name != nameof(YandexToken) && p.Name != nameof(UserProfiles) && p.Name != nameof(CustomProfile))
                     p.SetValue(this, p.GetValue(fresh));
             }
         }

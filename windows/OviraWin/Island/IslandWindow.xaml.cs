@@ -618,36 +618,48 @@ namespace Ovira.Island
             if (state != _favRemote) { _favRemote = state; ShowSaved(animated: false); }
         }
 
+        // 0.4.17: the star answers at once — Yandex Music is asked afterwards.
         private async void OnSave(object sender, RoutedEventArgs e)
         {
             var t = _media.Track;
             if (t == null || _favBusy) return;
             var key = FavKey(t);
-            if (YandexFavorites.MightBeYandex(t))
+            bool before = _favRemote ?? SavedTracks.Contains(t.Title, t.Artist);
+            bool target = !before;
+            if (!YandexFavorites.MightBeYandex(t))
             {
-                _favBusy = true;
-                var before = _favRemote ?? await YandexFavorites.ReadAsync(t);
-                if (before != null)
-                {
-                    bool target = !before.Value;
-                    _favRemote = target;                     // the star answers at once…
-                    ShowSaved(animated: true, justSaved: target);
-                    var result = await YandexFavorites.WriteAsync(t, target);
-                    _favBusy = false;
-                    if (_media.Track == null || FavKey(_media.Track) != key) return;
-                    if (result != target)
-                    {
-                        // …and goes back if Yandex Music did not take it.
-                        _favRemote = result ?? before;
-                        ShowSaved(animated: false);
-                        ShowBanner("xmark", "", Grey, null, 1.6, right: "Не вышло");
-                    }
-                    return;
-                }
-                _favBusy = false;
+                SavedTracks.Toggle(t.Title, t.Artist, t.Source);
+                ShowSaved(animated: true, justSaved: target);
+                return;
             }
-            bool saved = SavedTracks.Toggle(t.Title, t.Artist, t.Source);
-            ShowSaved(animated: true, justSaved: saved);
+            _favBusy = true;
+            if (_favRemote != null) _favRemote = target;
+            else if (SavedTracks.Contains(t.Title, t.Artist) != target) SavedTracks.Toggle(t.Title, t.Artist, t.Source);
+            ShowSaved(animated: true, justSaved: target);
+            var result = await YandexFavorites.WriteAsync(t, target);
+            _favBusy = false;
+            if (_media.Track == null || FavKey(_media.Track) != key) return;
+            switch (result)
+            {
+                case YandexFavorites.WriteResult.Done:
+                    // In Yandex now — the local copy is not needed.
+                    if (SavedTracks.Contains(t.Title, t.Artist)) SavedTracks.Toggle(t.Title, t.Artist, t.Source);
+                    _favRemote = target;
+                    ShowSaved(animated: false);
+                    break;
+                case YandexFavorites.WriteResult.Refused:
+                    _favRemote = before;
+                    if (SavedTracks.Contains(t.Title, t.Artist)) SavedTracks.Toggle(t.Title, t.Artist, t.Source);
+                    ShowSaved(animated: false);
+                    ShowBanner("xmark", "", Grey, null, 1.6, right: "Не вышло");
+                    break;
+                default:
+                    // Yandex Music's button was not found: kept in Ovira's list.
+                    if (_favRemote != null) { _favRemote = null; if (SavedTracks.Contains(t.Title, t.Artist) != target) SavedTracks.Toggle(t.Title, t.Artist, t.Source); }
+                    ShowSaved(animated: false);
+                    if (target) ShowBanner("star.fill", "", Grey, null, 1.8, right: "Только в Ovira");
+                    break;
+            }
         }
 
         private void ShowSaved(bool animated, bool justSaved = false)
