@@ -135,6 +135,10 @@ namespace Ovira.Core
         private bool _gameEyeBreak;
         public bool GameEyeBreak { get => _gameEyeBreak; set => Set(ref _gameEyeBreak, value); }
 
+        // 0.4.15: the music island stays over games while music plays.
+        private bool _gameMedia;
+        public bool GameMedia { get => _gameMedia; set => Set(ref _gameMedia, value); }
+
         private bool _gameKeyboard;
         public bool GameKeyboard { get => _gameKeyboard; set => Set(ref _gameKeyboard, value); }
 

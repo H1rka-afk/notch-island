@@ -222,7 +222,8 @@ namespace Ovira.Services
         {
             var s = (id ?? "").ToLowerInvariant();
             if (s.Contains("spotify")) return "Spotify";
-            if (s.Contains("yandex.music") || s.Contains("yandexmusic")) return "Яндекс Музыка";
+            if (s.Contains("yandex.music") || s.Contains("yandexmusic") || (s.Contains("yandex") && s.Contains("music")) ||
+                s.Contains("яндекс музыка")) return "Яндекс Музыка";
             if (s.Contains("chrome")) return "Chrome";
             if (s.Contains("msedge") || s.Contains("microsoftedge")) return "Edge";
             if (s.Contains("firefox")) return "Firefox";

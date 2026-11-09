@@ -12,7 +12,7 @@ using System.Windows.Threading;
 using Microsoft.Win32;
 using Ovira.Core;
 using Ovira.Services;
-using Ovira.Services;
+using System.Threading.Tasks;
 
 namespace Ovira.Island
 {
@@ -96,7 +96,10 @@ namespace Ovira.Island
             if (hwnd != IntPtr.Zero)
                 Native.SetWindowPos(hwnd, Native.HWND_TOPMOST, 0, 0, 0, 0,
                                     Native.SWP_NOMOVE | Native.SWP_NOSIZE | Native.SWP_NOACTIVATE);
-            var hide = S.HideInFullscreen && Native.FullscreenAppInFront();
+            // 0.4.15: «Медиаплеер поверх игр» — while music plays the island
+            // stays over games and full-screen video.
+            var hide = S.HideInFullscreen && Native.FullscreenAppInFront() &&
+                       !(S.GameMedia && _media.Track?.Playing == true);
             if (hide != _hiddenForFullscreen)
             {
                 _hiddenForFullscreen = hide;
@@ -340,6 +343,7 @@ namespace Ovira.Island
         {
             if (!HasTrack || _mode == Mode.Banner) return;
             _peek.To(1, Motion.PeekResponse, 0.9);
+            RefreshFavorite(force: true);
             FillExpanded();
             SetMode(Mode.Expanded);
         }
@@ -375,6 +379,7 @@ namespace Ovira.Island
                 CompactBars.Playing = ExpandedBars.Playing = t.Playing;
                 PlayGlyph.Set(t.Playing);
                 ShowSaved(animated: false);
+                RefreshFavorite();
                 FillExpanded();
             }
             else
@@ -571,10 +576,59 @@ namespace Ovira.Island
         // star keeps the song in Ovira's own list (Settings → Медиаплеер →
         // «Сохранённые песни»). The motion is the Mac's AnimatedFavoriteStar.
 
-        private void OnSave(object sender, RoutedEventArgs e)
+        // 0.4.15: for Yandex Music the star is the app's real «Мне нравится»
+        // (read and pressed through Windows accessibility, see
+        // YandexFavorites); other players keep Ovira's own list.
+        private string _favKey = "";
+        private bool? _favRemote;          // the app's state, when it could be read
+        private bool _favBusy;
+
+        private static string FavKey(TrackInfo t) => t.Title + "\u0001" + t.Artist;
+
+        private async void RefreshFavorite(bool force = false)
         {
             var t = _media.Track;
             if (t == null) return;
+            var key = FavKey(t);
+            bool changed = key != _favKey;
+            if (changed) { _favKey = key; _favRemote = null; ShowSaved(animated: false); }
+            else if (!force) return;                     // a pause or a position — nothing to read
+            if (!S.SaveButton || !YandexFavorites.MightBeYandex(t) || _favBusy) return;
+            await Task.Delay(700);                       // the app's player bar updates a moment later
+            if (_media.Track == null || FavKey(_media.Track) != key) return;
+            var state = await YandexFavorites.ReadAsync(_media.Track);
+            if (_media.Track == null || FavKey(_media.Track) != key || _favBusy) return;
+            if (state != _favRemote) { _favRemote = state; ShowSaved(animated: false); }
+        }
+
+        private async void OnSave(object sender, RoutedEventArgs e)
+        {
+            var t = _media.Track;
+            if (t == null || _favBusy) return;
+            var key = FavKey(t);
+            if (YandexFavorites.MightBeYandex(t))
+            {
+                _favBusy = true;
+                var before = _favRemote ?? await YandexFavorites.ReadAsync(t);
+                if (before != null)
+                {
+                    bool target = !before.Value;
+                    _favRemote = target;                     // the star answers at once…
+                    ShowSaved(animated: true, justSaved: target);
+                    var result = await YandexFavorites.WriteAsync(t, target);
+                    _favBusy = false;
+                    if (_media.Track == null || FavKey(_media.Track) != key) return;
+                    if (result != target)
+                    {
+                        // …and goes back if Yandex Music did not take it.
+                        _favRemote = result ?? before;
+                        ShowSaved(animated: false);
+                        ShowBanner("xmark", "", Grey, null, 1.6, right: "Не вышло");
+                    }
+                    return;
+                }
+                _favBusy = false;
+            }
             bool saved = SavedTracks.Toggle(t.Title, t.Artist, t.Source);
             ShowSaved(animated: true, justSaved: saved);
         }
@@ -583,11 +637,13 @@ namespace Ovira.Island
         {
             var t = _media.Track;
             SaveButton.Visibility = S.SaveButton ? Visibility.Visible : Visibility.Hidden;
-            bool saved = t != null && SavedTracks.Contains(t.Title, t.Artist);
+            bool saved = t != null && (_favRemote ?? SavedTracks.Contains(t.Title, t.Artist));
             SaveStar.Icon = saved ? "star.fill" : "star.outline";
             var tint = t != null ? Readable(t.Tint) : Colors.White;
             SaveStar.Fill = saved ? new SolidColorBrush(tint) : new SolidColorBrush(Color.FromArgb(0xD6, 0xFF, 0xFF, 0xFF));
-            SaveButton.ToolTip = saved ? "Убрать из сохранённых" : "Сохранить песню";
+            SaveButton.ToolTip = _favRemote != null
+                ? (saved ? "Убрать из «Мне нравится» в Яндекс Музыке" : "«Мне нравится» в Яндекс Музыке")
+                : (saved ? "Убрать из сохранённых" : "Сохранить песню");
             if (!animated) return;
 
             var press = new BackEase { Amplitude = 0.55, EasingMode = EasingMode.EaseOut };
