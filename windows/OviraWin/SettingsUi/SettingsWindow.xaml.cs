@@ -100,6 +100,7 @@ namespace Ovira.SettingsUi
                 return;
             }
             if (e.PropertyName == nameof(Settings.AnimatedBackground)) UpdateAuroraClock();
+            if (e.PropertyName == nameof(Settings.IslandStyle)) DrawStage();
             if (e.PropertyName == nameof(Settings.SavedTracks)) FillSaved();
             if (_current?.Key == "profiles") ScheduleProfiles();
         }
@@ -573,6 +574,19 @@ namespace Ovira.SettingsUi
             if (width <= 0) return;
             double w = _sw.Value, h = 35, r = 13, flare = 7, cx = width / 2;
             double l = cx - w / 2, rt = cx + w / 2;
+            // 0.4.18: the iPhone style floats below the stage's edge as a capsule.
+            bool floating = S.IslandStyle == "island";
+            Canvas.SetTop(StageContent, floating ? 12 : 0);
+            if (floating)
+            {
+                var pill = new RectangleGeometry(new Rect(l, 12, w, h), h / 2, h / 2);
+                pill.Freeze();
+                StageShape.Data = pill;
+                StageCanvas.Clip = new RectangleGeometry(new Rect(0, 0, width, Stage.ActualHeight), 26, 26);
+                StageContent.Width = Math.Max(0, w);
+                Canvas.SetLeft(StageContent, l);
+                return;
+            }
             var g = new StreamGeometry();
             using (var ctx = g.Open())
             {
@@ -643,7 +657,9 @@ namespace Ovira.SettingsUi
                     page.Children.Add(Group("Открытие", "При наведении островок раскрывается сам; по нажатию — только когда нажмёшь, а при наведении лишь чуть увеличивается.",
                         SegmentRow("Открывать плеер", null, new (string, object)[] { ("По нажатию", true), ("При наведении", false) }, nameof(Settings.OpenOnClick), "открытие клик наведение нажатие"),
                         ToggleRow("Откликаться на курсор", "Островок чуть увеличивается, когда наводишь на него", nameof(Settings.HoverPeek), "отклик курсор увеличение")));
-                    page.Children.Add(Group("Вид", null,
+                    page.Children.Add(Group("Вид", "«Вырез» прилегает к верхнему краю экрана, как на MacBook. «Как на iPhone» — отдельная капсула чуть ниже края, скруглённая со всех сторон, как Dynamic Island.",
+                        SegmentRow("Стиль островка", null, new (string, object)[] { ("Вырез", "notch"), ("Как на iPhone", "island") }, nameof(Settings.IslandStyle),
+                                   "стиль островка вырез notch айфон iphone dynamic island капсула отдельный"),
                         SliderRow("Размер островка", nameof(Settings.IslandScale), 0.85, 1.15, 0.05, "размер ширина больше меньше"),
                         ToggleRow("Капсула, когда ничего не играет", "Маленький чёрный островок вверху экрана всегда на месте", nameof(Settings.ShowIdlePill), "капсула пусто ничего"),
                         ToggleRow("Прятать в полноэкранном режиме", "Игры, видео на весь экран и презентации", nameof(Settings.HideInFullscreen), "полноэкранный игра видео презентация прятать")));

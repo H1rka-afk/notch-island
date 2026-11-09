@@ -178,6 +178,9 @@ namespace Ovira.Island
                 Mode.Idle => (IdleW, IdleH, 12.0),
                 _ => (IdleW * 0.8, 0.0, 12.0)
             };
+            // 0.4.18: the iPhone style is a capsule when small and a card
+            // with big round corners when open.
+            if (Floating) r = _mode == Mode.Expanded ? 40.0 : Math.Max(h, CompactH) / 2;
             if (!animated)
             {
                 _w.Snap(w); _h.Snap(h); _r.Snap(r);
@@ -215,8 +218,13 @@ namespace Ovira.Island
             }
         }
 
-        // Square to the top edge, small concave «flares» into the screen edge,
-        // round bottom corners — the Mac silhouette.
+        // 0.4.18: two styles. «Вырез» — square to the top edge, small concave
+        // «flares» into the screen edge, round bottom corners (the Mac).
+        // «Как на iPhone» — the Dynamic Island: a separate capsule floating a
+        // little below the edge, round on all sides.
+        private bool Floating => S.IslandStyle == "island";
+        private double TopGap => Floating ? 9 : 0;
+
         private void DrawFrame()
         {
             double w = Math.Max(0, _w.Value), h = Math.Max(0, _h.Value);
@@ -224,10 +232,18 @@ namespace Ovira.Island
             double r = Math.Max(0, Math.Min(_r.Value, Math.Min(h / 2, w / 2)));
             double flare = Math.Max(0, Math.Min(_mode == Mode.Expanded ? 13 : 7, h - r));
             double l = cx - w / 2, rt = cx + w / 2;
+            double top = TopGap;
+            Island.RenderTransformOrigin = new Point(0.5, Floating ? (top + h / 2) / Island.Height : 0);
 
             if (h < 0.5)
             {
                 Shape.Data = Geometry.Empty;
+            }
+            else if (Floating)
+            {
+                var g = new RectangleGeometry(new Rect(l, top, w, h), r, r);
+                g.Freeze();
+                Shape.Data = g;
             }
             else
             {
@@ -248,7 +264,7 @@ namespace Ovira.Island
             }
 
             // ContentHost is in a Grid: placed by its margin.
-            ContentHost.Margin = new Thickness(l, 0, 0, 0);
+            ContentHost.Margin = new Thickness(l, top, 0, 0);
             ContentHost.Width = w;
             ContentHost.Height = h;
             ContentHost.Clip = new RectangleGeometry(new Rect(0, 0, w, h), r, r);
@@ -1103,6 +1119,9 @@ namespace Ovira.Island
                 case nameof(Settings.Theme):
                 case nameof(Settings.CustomThemes):
                     ApplyIslandTheme();
+                    break;
+                case nameof(Settings.IslandStyle):
+                    Relayout(animated: true, growing: true);
                     break;
                 case nameof(Settings.SaveButton):
                 case nameof(Settings.SavedTracks):

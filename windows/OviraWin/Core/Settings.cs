@@ -31,6 +31,11 @@ namespace Ovira.Core
         private double _islandScale = 1.0;
         public double IslandScale { get => _islandScale; set => Set(ref _islandScale, Math.Clamp(value, 0.85, 1.15)); }
 
+        // 0.4.18: «notch» — the cut-out at the top edge (as before);
+        // «island» — a separate capsule like the iPhone's Dynamic Island.
+        private string _islandStyle = "notch";
+        public string IslandStyle { get => _islandStyle; set => Set(ref _islandStyle, value == "island" ? "island" : "notch"); }
+
         private bool _showIdlePill = true;
         public bool ShowIdlePill { get => _showIdlePill; set => Set(ref _showIdlePill, value); }
 
