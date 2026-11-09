@@ -95,8 +95,7 @@ namespace Ovira.Services
         private void Present()
         {
             int left = RestSeconds - _secondIndex;
-            var text = _secondIndex < 3 ? "Посмотри вдаль" : "Отдых для глаз";
-            _island?.ShowEyeBreak(text, left, RestSeconds, Skip);
+            _island?.ShowEyeBreak(_secondIndex, RestSeconds, Skip);
         }
 
         public void Skip()

@@ -112,7 +112,11 @@ namespace Ovira.Island
         private double Middle => 185;                              // where the Mac has its camera
         private double CompactW => (Middle + 70) * Scale;
         private const double CompactH = 35;
-        private double BannerW => (Middle + 150) * Scale;
+        // 0.4.5: the eye break is a short, lopsided banner like on the Mac —
+        // an icon on the left, a word or the countdown on the right, nothing
+        // in the middle.
+        private bool _wing;
+        private double BannerW => (Middle + (_wing ? 120 : 150)) * Scale;
         private double ExpandedW => 353 * Scale;
         private double ExpandedH => !S.PlayerNew ? 168 : (S.VolumeRow ? 206 : 186);
         private double IdleW => Middle * 0.8 * Scale;
@@ -629,8 +633,10 @@ namespace Ovira.Island
         // the banners chosen in Settings («Поверх игр») still come out for a
         // moment and go away again. Clicks pass through to the game.
         private void ShowBanner(string icon, string text, Color colour, double? level, double seconds, Action? tap = null, bool inGame = false,
-                                int? countdown = null, int countdownTotal = 20)
+                                int? countdown = null, int countdownTotal = 20, string? right = null)
         {
+            bool wing = right != null || countdown.HasValue;
+            bool timerWasShown = BannerTimer.Visibility == Visibility.Visible && _mode == Mode.Banner;
             if (_hiddenForFullscreen)
             {
                 if (!inGame) return;
@@ -645,7 +651,10 @@ namespace Ovira.Island
             colour = Tone(icon, colour);
             BannerIcon.Icon = icon;
             BannerIcon.Fill = new SolidColorBrush(colour);
-            BannerText.Text = text;
+            BannerText.Text = wing ? "" : text;
+            BannerText.Visibility = wing ? Visibility.Hidden : Visibility.Visible;
+            BannerRight.Text = right ?? "";
+            BannerRight.Visibility = right != null && !countdown.HasValue ? Visibility.Visible : Visibility.Collapsed;
             BannerLevel.Visibility = level.HasValue && countdown == null ? Visibility.Visible : Visibility.Collapsed;
             BannerTimer.Visibility = countdown.HasValue ? Visibility.Visible : Visibility.Collapsed;
             if (countdown.HasValue)
@@ -655,7 +664,7 @@ namespace Ovira.Island
                 BannerSeconds.Text = left.ToString();
                 BannerTimerFill.Background = new SolidColorBrush(colour);
                 double full = 34;
-                if (left >= countdownTotal) { BannerTimerFill.BeginAnimation(WidthProperty, null); BannerTimerFill.Width = full; }
+                if (!timerWasShown) { BannerTimerFill.BeginAnimation(WidthProperty, null); BannerTimerFill.Width = full * left / countdownTotal; }
                 BannerTimerFill.BeginAnimation(WidthProperty,
                     new DoubleAnimation(full * Math.Max(0, left - 1) / countdownTotal, TimeSpan.FromSeconds(1)));
             }
@@ -668,7 +677,10 @@ namespace Ovira.Island
             _bannerTimer.Stop();
             _bannerTimer.Interval = TimeSpan.FromSeconds(seconds);
             _bannerTimer.Start();
+            bool resized = wing != _wing;
+            _wing = wing;
             if (_mode != Mode.Banner) SetMode(Mode.Banner);
+            else if (resized) { Relayout(true, growing: !wing); FitWindow(); }
             _bannerTap = tap;
             Island.Cursor = tap != null ? Cursors.Hand : null;
         }
@@ -677,8 +689,12 @@ namespace Ovira.Island
 
         private static readonly Color EyeColour = Color.FromRgb(0x40, 0xCC, 0xD9);
 
-        public void ShowEyeBreak(string text, int secondsLeft, int total, Action skip) =>
-            ShowBanner("eye", text, EyeColour, null, 2.5, skip, countdown: secondsLeft, countdownTotal: total);
+        // «Вдаль» for the first two seconds, then the countdown with its bar.
+        public void ShowEyeBreak(int second, int total, Action skip)
+        {
+            if (second < 2) ShowBanner("eye", "", EyeColour, null, 2.5, skip, right: "Вдаль");
+            else ShowBanner("eye", "", EyeColour, null, 2.5, skip, countdown: total - second, countdownTotal: total);
+        }
 
         // ---- colours from the settings theme (0.4.4) ----
         // Icons, bars and buttons take the theme's colours; text stays white.
@@ -687,11 +703,12 @@ namespace Ovira.Island
 
         private Color[] ThemePalette => Themes.Find(S.Theme, _media.Track?.Tint ?? Color.FromRgb(0xFF, 0x45, 0x66)).Palette;
 
+        private static readonly Color DoneGreen = Color.FromRgb(0x33, 0xCC, 0x73);
         private static readonly Color Orange = Color.FromRgb(0xFF, 0x9F, 0x0A), Red = Color.FromRgb(0xFF, 0x45, 0x3A);
 
         private Color Tone(string icon, Color fallback)
         {
-            if (fallback == Orange || fallback == Red) return fallback;
+            if (fallback == Orange || fallback == Red || fallback == DoneGreen) return fallback;
             var p = ThemePalette;
             if (p.Length == 0) return fallback;
             int role = icon switch
@@ -725,8 +742,8 @@ namespace Ovira.Island
             NextGlyph.GlyphFill = main;
             PlayGlyph.GlyphFill = main;
         }
-        public void ShowEyeBreakDone() => ShowBanner("checkmark", "Готово — можно продолжать", Color.FromRgb(0x34, 0xC7, 0x59), null, 1.8);
-        public void ShowEyeBreakSkipped() => ShowBanner("xmark", "Перерыв пропущен", Color.FromRgb(0x8E, 0x8E, 0x93), null, 1.3);
+        public void ShowEyeBreakDone() => ShowBanner("checkmark.circle", "", DoneGreen, null, 1.6, right: "Готово");
+        public void ShowEyeBreakSkipped() => ShowBanner("xmark", "", Color.FromRgb(0x8E, 0x8E, 0x93), null, 1.3, right: "Пропуск");
 
         public void ShowUpdateReady(string version) =>
             ShowBanner("arrow.down", $"Ovira {version} — нажми, чтобы обновить", Color.FromRgb(0x4C, 0x8D, 0xFF), null, 7,

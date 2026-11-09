@@ -69,6 +69,9 @@ namespace Ovira.Core
             // SF «eye.fill»: a solid almond, the iris cut out as a ring around a solid pupil.
             "eye" => Parse("M1.2,12 C3.6,7 7.5,3.8 12,3.8 C16.5,3.8 20.4,7 22.8,12 C20.4,17 16.5,20.2 12,20.2 C7.5,20.2 3.6,17 1.2,12 Z " +
                            "M12,6.8 A5.2,5.2 0 1 0 12,17.2 A5.2,5.2 0 1 0 12,6.8 Z M12,9.1 A2.9,2.9 0 1 0 12,14.9 A2.9,2.9 0 1 0 12,9.1 Z"),
+            // SF «checkmark.circle.fill»: a disc with the tick cut out.
+            "checkmark.circle" => Parse("M12,2.5 A9.5,9.5 0 1 0 12,21.5 A9.5,9.5 0 1 0 12,2.5 Z " +
+                                        "M10.5,16.2 L17.6,9.1 L16.1,7.6 L10.5,13.2 L7.9,10.6 L6.4,12.1 Z"),
             "arrow.down" => Parse("M11,3.5 H13 V15.6 L17.6,11 L19,12.4 L12,19.4 L5,12.4 L6.4,11 L11,15.6 Z"),
             _ => Parse("M12,6 C15.3,6 18,8.7 18,12 C18,15.3 15.3,18 12,18 C8.7,18 6,15.3 6,12 C6,8.7 8.7,6 12,6 Z")
         };
@@ -136,7 +139,7 @@ namespace Ovira.Core
             dc.PushTransform(new ScaleTransform(k, k));
             // Icons with fine cut-outs (the eye) are drawn without the soft
             // outline — it would fill the gaps at small sizes.
-            var pen = Icon == "eye" ? null : new Pen(Fill, 0.9) { LineJoin = PenLineJoin.Round };
+            var pen = Icon is "eye" or "checkmark.circle" ? null : new Pen(Fill, 0.9) { LineJoin = PenLineJoin.Round };
             dc.DrawGeometry(Fill, pen, geometry);
             dc.Pop();
             dc.Pop();
