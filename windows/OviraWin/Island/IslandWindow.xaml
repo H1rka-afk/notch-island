@@ -134,9 +134,28 @@
                                     <island:SkipGlyph x:Name="NextGlyph" Forward="True" GlyphSize="20" />
                                 </Button>
                             </StackPanel>
+                            <!-- 0.4.14: «Сохранить» — the Mac's star with its pop and ring -->
+                            <Button x:Name="SaveButton" Grid.Column="0" Style="{StaticResource IslandButton}" Width="30" Height="44"
+                                    Click="OnSave" ToolTip="Сохранить песню">
+                                <Grid Width="30" Height="30">
+                                    <Ellipse x:Name="SaveRing" Width="27" Height="27" StrokeThickness="1.5" Stroke="White" Opacity="0"
+                                             RenderTransformOrigin="0.5,0.5">
+                                        <Ellipse.RenderTransform><ScaleTransform x:Name="SaveRingScale" ScaleX="0.55" ScaleY="0.55" /></Ellipse.RenderTransform>
+                                    </Ellipse>
+                                    <core:IconView x:Name="SaveStar" Icon="star.outline" Width="20" Height="20" Fill="#D6FFFFFF"
+                                                   RenderTransformOrigin="0.5,0.5">
+                                        <core:IconView.RenderTransform>
+                                            <TransformGroup>
+                                                <ScaleTransform x:Name="SaveStarScale" />
+                                                <RotateTransform x:Name="SaveStarTurn" />
+                                            </TransformGroup>
+                                        </core:IconView.RenderTransform>
+                                    </core:IconView>
+                                </Grid>
+                            </Button>
                             <Button x:Name="OutputButton" Grid.Column="4" Style="{StaticResource IslandButton}" Width="30" Height="44"
                                     Click="OnOutputs" ToolTip="Куда идёт звук">
-                                <core:IconView x:Name="OutputIcon" Icon="speaker.wave" Width="18" Height="18" Fill="#D6FFFFFF" />
+                                <core:IconView x:Name="OutputIcon" Icon="speaker.wave" Width="18" Height="18" Fill="White" />
                             </Button>
                         </Grid>
 

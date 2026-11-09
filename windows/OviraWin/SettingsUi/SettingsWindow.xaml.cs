@@ -98,6 +98,7 @@ namespace Ovira.SettingsUi
                 return;
             }
             if (e.PropertyName == nameof(Settings.AnimatedBackground)) UpdateAuroraClock();
+            if (e.PropertyName == nameof(Settings.SavedTracks)) FillSaved();
             if (_current?.Key == "profiles") ScheduleProfiles();
         }
 
@@ -653,7 +654,9 @@ namespace Ovira.SettingsUi
                                    new (string, object)[] { ("Новый", true), ("Классический", false) }, nameof(Settings.PlayerNew), "вид плеера новый классический старый островок"),
                         ToggleRow("Громкость в плеере", "Ползунок громкости под кнопками, как на Mac", nameof(Settings.VolumeRow), "громкость ползунок"),
                         ToggleRow("Выбор устройства вывода звука", "Кнопка в плеере: динамики, наушники, монитор", nameof(Settings.OutputPicker), "вывод звук наушники динамики устройство"),
+                        ToggleRow("Кнопка «Сохранить»", "Звёздочка слева в плеере — песня попадает в список ниже", nameof(Settings.SaveButton), "сохранить звезда избранное лайк"),
                         ButtonRow("Открыть плеер", "Показать, как он выглядит прямо сейчас", "Показать", () => App.Current.IslandWindow?.DemoOpen(), "показать открыть плеер")));
+                    page.Children.Add(SavedGroup());
                     break;
 
                 case "spectrum":

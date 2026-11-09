@@ -374,6 +374,7 @@ namespace Ovira.Island
                 ExpandedBars.SetCover(t.Artwork, t.Tint);
                 CompactBars.Playing = ExpandedBars.Playing = t.Playing;
                 PlayGlyph.Set(t.Playing);
+                ShowSaved(animated: false);
                 FillExpanded();
             }
             else
@@ -564,6 +565,71 @@ namespace Ovira.Island
         }
 
         private void OnNext(object sender, RoutedEventArgs e) { NextGlyph.Pulse(); _media.Next(); }
+
+        // ---- «Сохранить» (0.4.14) ----
+        // Windows gives no way to «like» a song inside a music app, so the
+        // star keeps the song in Ovira's own list (Settings → Медиаплеер →
+        // «Сохранённые песни»). The motion is the Mac's AnimatedFavoriteStar.
+
+        private void OnSave(object sender, RoutedEventArgs e)
+        {
+            var t = _media.Track;
+            if (t == null) return;
+            bool saved = SavedTracks.Toggle(t.Title, t.Artist, t.Source);
+            ShowSaved(animated: true, justSaved: saved);
+        }
+
+        private void ShowSaved(bool animated, bool justSaved = false)
+        {
+            var t = _media.Track;
+            SaveButton.Visibility = S.SaveButton ? Visibility.Visible : Visibility.Hidden;
+            bool saved = t != null && SavedTracks.Contains(t.Title, t.Artist);
+            SaveStar.Icon = saved ? "star.fill" : "star.outline";
+            var tint = t != null ? Readable(t.Tint) : Colors.White;
+            SaveStar.Fill = saved ? new SolidColorBrush(tint) : new SolidColorBrush(Color.FromArgb(0xD6, 0xFF, 0xFF, 0xFF));
+            SaveButton.ToolTip = saved ? "Убрать из сохранённых" : "Сохранить песню";
+            if (!animated) return;
+
+            var press = new BackEase { Amplitude = 0.55, EasingMode = EasingMode.EaseOut };
+            void Scale(double from, double to, double seconds, IEasingFunction ease, double delay = 0)
+            {
+                var a = new DoubleAnimation(from, to, TimeSpan.FromSeconds(seconds)) { EasingFunction = ease, BeginTime = TimeSpan.FromSeconds(delay) };
+                SaveStarScale.BeginAnimation(ScaleTransform.ScaleXProperty, a);
+                SaveStarScale.BeginAnimation(ScaleTransform.ScaleYProperty, a);
+            }
+            if (justSaved)
+            {
+                // Add: the star springs out of a squeeze, turning back from
+                // −10°, and a thin ring in the cover's colour spreads and fades.
+                var grow = new DoubleAnimationUsingKeyFrames();
+                grow.KeyFrames.Add(new DiscreteDoubleKeyFrame(0.68, KeyTime.FromTimeSpan(TimeSpan.Zero)));
+                grow.KeyFrames.Add(new EasingDoubleKeyFrame(1.32, KeyTime.FromTimeSpan(TimeSpan.FromSeconds(0.16)), new CubicEase { EasingMode = EasingMode.EaseOut }));
+                grow.KeyFrames.Add(new EasingDoubleKeyFrame(1.0, KeyTime.FromTimeSpan(TimeSpan.FromSeconds(0.5)), press));
+                SaveStarScale.BeginAnimation(ScaleTransform.ScaleXProperty, grow);
+                SaveStarScale.BeginAnimation(ScaleTransform.ScaleYProperty, grow);
+                SaveStarTurn.BeginAnimation(RotateTransform.AngleProperty,
+                    new DoubleAnimation(-10, 0, TimeSpan.FromSeconds(0.4)) { EasingFunction = press });
+                SaveRing.Stroke = new SolidColorBrush(Color.FromArgb(0xCC, tint.R, tint.G, tint.B));
+                var ring = new DoubleAnimation(0.55, 1.65, TimeSpan.FromSeconds(0.32)) { EasingFunction = new CubicEase { EasingMode = EasingMode.EaseOut } };
+                SaveRingScale.BeginAnimation(ScaleTransform.ScaleXProperty, ring);
+                SaveRingScale.BeginAnimation(ScaleTransform.ScaleYProperty, ring);
+                SaveRing.BeginAnimation(OpacityProperty, new DoubleAnimation(0.95, 0, TimeSpan.FromSeconds(0.32)) { EasingFunction = new CubicEase { EasingMode = EasingMode.EaseOut } });
+            }
+            else
+            {
+                // Remove: a short collapse inwards, then back to the outline.
+                var shrink = new DoubleAnimationUsingKeyFrames();
+                shrink.KeyFrames.Add(new DiscreteDoubleKeyFrame(1.16, KeyTime.FromTimeSpan(TimeSpan.Zero)));
+                shrink.KeyFrames.Add(new EasingDoubleKeyFrame(0.6, KeyTime.FromTimeSpan(TimeSpan.FromSeconds(0.13)), new CubicEase { EasingMode = EasingMode.EaseIn }));
+                shrink.KeyFrames.Add(new EasingDoubleKeyFrame(1.0, KeyTime.FromTimeSpan(TimeSpan.FromSeconds(0.5)), press));
+                SaveStarScale.BeginAnimation(ScaleTransform.ScaleXProperty, shrink);
+                SaveStarScale.BeginAnimation(ScaleTransform.ScaleYProperty, shrink);
+                SaveStarTurn.BeginAnimation(RotateTransform.AngleProperty,
+                    new DoubleAnimation(10, 0, TimeSpan.FromSeconds(0.4)) { EasingFunction = press });
+                SaveRing.BeginAnimation(OpacityProperty, null);
+                SaveRing.Opacity = 0;
+            }
+        }
         private void OnPrevious(object sender, RoutedEventArgs e) { PrevGlyph.Pulse(); _media.Previous(); }
 
         // ---- sound outputs ----
@@ -828,12 +894,14 @@ namespace Ovira.Island
             Brush main = p.Length == 0 ? Brushes.White : new SolidColorBrush(Readable(p[0]));
             Brush second = p.Length == 0 ? new SolidColorBrush(Color.FromArgb(0xD6, 0xFF, 0xFF, 0xFF)) : new SolidColorBrush(Readable(p[1 % p.Length]));
             Brush volume = p.Length == 0 ? new SolidColorBrush(Color.FromArgb(0xE6, 0xFF, 0xFF, 0xFF)) : new SolidColorBrush(Readable(p[Math.Min(2, p.Length - 1)]));
-            ProgressFill.Background = main;
+            // 0.4.14: the buttons, the time line and the output button stay
+            // white, as on the Mac; only the volume takes the theme's colour.
+            ProgressFill.Background = Brushes.White;
             VolumeFill.Background = volume;
-            OutputIcon.Fill = second;
-            PrevGlyph.GlyphFill = main;
-            NextGlyph.GlyphFill = main;
-            PlayGlyph.GlyphFill = main;
+            OutputIcon.Fill = Brushes.White;
+            PrevGlyph.GlyphFill = Brushes.White;
+            NextGlyph.GlyphFill = Brushes.White;
+            PlayGlyph.GlyphFill = Brushes.White;
         }
         public void ShowEyeBreakDone() => ShowBanner("checkmark.circle", "", DoneGreen, null, 1.6, inGame: S.GameEyeBreak, right: "Готово");
         public void ShowEyeBreakSkipped() => ShowBanner("xmark", "", Color.FromRgb(0x8E, 0x8E, 0x93), null, 1.3, inGame: S.GameEyeBreak, right: "Пропуск");
@@ -950,6 +1018,10 @@ namespace Ovira.Island
                 case nameof(Settings.Theme):
                 case nameof(Settings.CustomThemes):
                     ApplyIslandTheme();
+                    break;
+                case nameof(Settings.SaveButton):
+                case nameof(Settings.SavedTracks):
+                    ShowSaved(animated: false);
                     break;
                 case nameof(Settings.OutputPicker):
                     OutputButton.Visibility = S.OutputPicker ? Visibility.Visible : Visibility.Hidden;
