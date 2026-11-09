@@ -133,7 +133,8 @@ namespace Ovira.Services
                         if (image != null)
                         {
                             info.Artwork = image;
-                            info.Tint = AverageColour(image);
+                            // 0.4.16: off the window's thread (it is busy animating the buttons).
+                            info.Tint = await Task.Run(() => AverageColour(image));
                         }
                     }
                 }
@@ -179,14 +180,19 @@ namespace Ovira.Services
                 var memory = new MemoryStream();
                 await net.CopyToAsync(memory);
                 memory.Position = 0;
-                var bitmap = new BitmapImage();
-                bitmap.BeginInit();
-                bitmap.CacheOption = BitmapCacheOption.OnLoad;
-                bitmap.DecodePixelWidth = 200;
-                bitmap.StreamSource = memory;
-                bitmap.EndInit();
-                bitmap.Freeze();
-                return bitmap;
+                // 0.4.16: the picture is decoded in the background — decoding on
+                // the window's thread made the skip buttons stutter.
+                return await Task.Run(() =>
+                {
+                    var bitmap = new BitmapImage();
+                    bitmap.BeginInit();
+                    bitmap.CacheOption = BitmapCacheOption.OnLoad;
+                    bitmap.DecodePixelWidth = 200;
+                    bitmap.StreamSource = memory;
+                    bitmap.EndInit();
+                    bitmap.Freeze();
+                    return (BitmapSource)bitmap;
+                });
             }
             catch { return null; }
         }

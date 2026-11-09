@@ -71,7 +71,9 @@ namespace Ovira.SettingsUi
             ApplyTheme();
 
             var app = App.Current;
-            Action<TrackInfo?> onTrack = _ => Dispatcher.BeginInvoke(new Action(() => { ShowTrack(); TintAurora(); CoverChanged(); }));
+            // 0.4.16: after the island's own work and its animations (low priority).
+            Action<TrackInfo?> onTrack = _ => Dispatcher.BeginInvoke(new Action(() => { ShowTrack(); TintAurora(); CoverChanged(); }),
+                                                                     DispatcherPriority.Background);
             app.Media.Changed += onTrack;
             S.PropertyChanged += OnSettingChanged;
             Action updates = () => Dispatcher.BeginInvoke(new Action(ShowUpdateState));

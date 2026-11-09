@@ -360,6 +360,16 @@ namespace Ovira.Island
 
         private void OnTrack()
         {
+            var wait = _quietUntil - DateTime.Now;
+            if (wait > TimeSpan.Zero)
+            {
+                if (_trackPending) return;
+                _trackPending = true;
+                var later = new DispatcherTimer { Interval = wait };
+                later.Tick += (_, _) => { later.Stop(); _trackPending = false; OnTrack(); };
+                later.Start();
+                return;
+            }
             if (S.Theme == "cover") ApplyIslandTheme();
             var t = _media.Track;
             if (t != null)
@@ -569,7 +579,14 @@ namespace Ovira.Island
             }
         }
 
-        private void OnNext(object sender, RoutedEventArgs e) { NextGlyph.Pulse(); _media.Next(); }
+        // 0.4.16: the new song's cover, colours and blurred bars are built only
+        // after the step animation — building them in the middle made it stutter.
+        private DateTime _quietUntil;
+        private bool _trackPending;
+
+        private void HoldTrackWork() => _quietUntil = DateTime.Now.AddSeconds(0.34);
+
+        private void OnNext(object sender, RoutedEventArgs e) { HoldTrackWork(); NextGlyph.Pulse(); _media.Next(); }
 
         // ---- «Сохранить» (0.4.14) ----
         // Windows gives no way to «like» a song inside a music app, so the
@@ -686,7 +703,7 @@ namespace Ovira.Island
                 SaveRing.Opacity = 0;
             }
         }
-        private void OnPrevious(object sender, RoutedEventArgs e) { PrevGlyph.Pulse(); _media.Previous(); }
+        private void OnPrevious(object sender, RoutedEventArgs e) { HoldTrackWork(); PrevGlyph.Pulse(); _media.Previous(); }
 
         // ---- sound outputs ----
 
