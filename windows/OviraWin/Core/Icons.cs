@@ -67,23 +67,28 @@ namespace Ovira.Core
             "share" => Parse("M12,2.5 L16.7,7.2 L15.3,8.6 L13,6.3 V14.5 H11 V6.3 L8.7,8.6 L7.3,7.2 Z M5,10 H9 V12 H6.8 V19.5 H17.2 V12 H15 V10 H19 V21.5 H5 Z"),
             "folder" => Parse("M3.5,5 H9.5 L11.5,7 H20.5 C21.3,7 22,7.7 22,8.5 V18.5 C22,19.3 21.3,20 20.5,20 H3.5 C2.7,20 2,19.3 2,18.5 V6.5 C2,5.7 2.7,5 3.5,5 Z"),
             // SF «eye.fill»: a solid almond, the iris cut out as a ring around a solid pupil.
-            "eye" => Parse("M1.2,12 C3.6,7 7.5,3.8 12,3.8 C16.5,3.8 20.4,7 22.8,12 C20.4,17 16.5,20.2 12,20.2 C7.5,20.2 3.6,17 1.2,12 Z " +
+            "eye" => Holes("M1.2,12 C3.6,7 7.5,3.8 12,3.8 C16.5,3.8 20.4,7 22.8,12 C20.4,17 16.5,20.2 12,20.2 C7.5,20.2 3.6,17 1.2,12 Z " +
                            "M12,6.8 A5.2,5.2 0 1 0 12,17.2 A5.2,5.2 0 1 0 12,6.8 Z M12,9.1 A2.9,2.9 0 1 0 12,14.9 A2.9,2.9 0 1 0 12,9.1 Z"),
             // SF «checkmark.circle.fill»: a disc with the tick cut out.
-            "checkmark.circle" => Parse("M12,2.5 A9.5,9.5 0 1 0 12,21.5 A9.5,9.5 0 1 0 12,2.5 Z " +
+            "checkmark.circle" => Holes("M12,2.5 A9.5,9.5 0 1 0 12,21.5 A9.5,9.5 0 1 0 12,2.5 Z " +
                                         "M10.5,16.2 L17.6,9.1 L16.1,7.6 L10.5,13.2 L7.9,10.6 L6.4,12.1 Z"),
             // SF «capslock.fill»: the arrow-house over a bar.
             "capslock" => Parse("M12,2.8 L21.4,12.2 H16.6 V16.2 H7.4 V12.2 H2.6 Z M7.4,18 H16.6 V21.2 H7.4 Z"),
             // SF «keyboard.fill»: a rounded slab with the keys cut out.
-            "keyboard" => Parse("M3,5.5 H21 A2,2 0 0 1 23,7.5 V16.5 A2,2 0 0 1 21,18.5 H3 A2,2 0 0 1 1,16.5 V7.5 A2,2 0 0 1 3,5.5 Z " +
-                                "M3.6,8 h2.2 v2.1 h-2.2 Z M7.1,8 h2.2 v2.1 h-2.2 Z M10.6,8 h2.2 v2.1 h-2.2 Z M14.1,8 h2.2 v2.1 h-2.2 Z M17.6,8 h2.8 v2.1 h-2.8 Z " +
-                                "M5.3,11.3 h2.2 v2.1 h-2.2 Z M8.8,11.3 h2.2 v2.1 h-2.2 Z M12.3,11.3 h2.2 v2.1 h-2.2 Z M15.8,11.3 h2.2 v2.1 h-2.2 Z " +
-                                "M7,14.6 h10 v1.9 h-10 Z"),
+            "keyboard" => Holes("M3,5 H21 A2.2,2.2 0 0 1 23.2,7.2 V16.8 A2.2,2.2 0 0 1 21,19 H3 A2.2,2.2 0 0 1 0.8,16.8 V7.2 A2.2,2.2 0 0 1 3,5 Z " +
+                                "M3.2,7.4 h3.2 v2.4 h-3.2 Z M7.8,7.4 h3.2 v2.4 h-3.2 Z M12.4,7.4 h3.2 v2.4 h-3.2 Z M17,7.4 h3.8 v2.4 h-3.8 Z " +
+                                "M5.5,11 h3.2 v2.4 h-3.2 Z M10.1,11 h3.2 v2.4 h-3.2 Z M14.7,11 h3.2 v2.4 h-3.2 Z " +
+                                "M6.5,14.7 h11 v2 h-11 Z"),
             "arrow.down" => Parse("M11,3.5 H13 V15.6 L17.6,11 L19,12.4 L12,19.4 L5,12.4 L6.4,11 L11,15.6 Z"),
             _ => Parse("M12,6 C15.3,6 18,8.7 18,12 C18,15.3 15.3,18 12,18 C8.7,18 6,15.3 6,12 C6,8.7 8.7,6 12,6 Z")
         };
 
         private static Geometry Parse(string data) => Geometry.Parse("F1 " + data);
+
+        // Icons with cut-outs (keys of the keyboard, the eye's ring, the tick
+        // in the disc): even-odd, so every inner shape is a hole whatever
+        // direction it is drawn in.
+        private static Geometry Holes(string data) => Geometry.Parse("F0 " + data);
 
         private static Geometry Group(params Geometry[] parts)
         {
