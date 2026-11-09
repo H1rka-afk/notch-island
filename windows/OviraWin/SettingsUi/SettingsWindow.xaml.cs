@@ -63,6 +63,10 @@ namespace Ovira.SettingsUi
                 try { Native.DarkTitleBar(new WindowInteropHelper(this).Handle, _theme?.IsDark ?? true); } catch { }
             };
             foreach (var section in Sections) BuildPage(section, collectOnly: true);
+            CacheStatic(Stage);
+            CacheStatic(Hero);
+            Loaded += (_, _) => UpdateCacheScale();
+            DpiChanged += (_, _) => UpdateCacheScale();
             StartAurora();
             ApplyTheme();
 
@@ -182,11 +186,43 @@ namespace Ovira.SettingsUi
             Place(look, 2, 2);
         }
 
+        // 0.4.12: each tile (with its glow) is kept as a ready picture. The
+        // living background behind it changes 24 times a second; without the
+        // picture every tile, shadow and text was drawn again each time.
         private void Place(FrameworkElement tile, int row, int column)
         {
-            Grid.SetRow(tile, row);
-            Grid.SetColumn(tile, column);
-            Tiles.Children.Add(tile);
+            var host = new Grid { CacheMode = NewCache() };
+            Grid.SetColumnSpan(host, Grid.GetColumnSpan(tile));
+            host.Children.Add(tile);
+            Grid.SetRow(host, row);
+            Grid.SetColumn(host, column);
+            Tiles.Children.Add(host);
+        }
+
+        private double _dpiScale = 1;
+        private BitmapCache NewCache() => new BitmapCache { RenderAtScale = _dpiScale, SnapsToDevicePixels = true };
+
+        // The stage and the section header get the same treatment once.
+        private void CacheStatic(FrameworkElement element)
+        {
+            if (element.Parent is not Panel parent) return;
+            int index = parent.Children.IndexOf(element);
+            parent.Children.RemoveAt(index);
+            var host = new Grid { CacheMode = NewCache(), Margin = element.Margin, VerticalAlignment = element.VerticalAlignment };
+            element.Margin = new Thickness(0);
+            host.Children.Add(element);
+            parent.Children.Insert(index, host);
+        }
+
+        private void UpdateCacheScale()
+        {
+            var scale = VisualTreeHelper.GetDpi(this).DpiScaleX;
+            if (Math.Abs(scale - _dpiScale) < 0.01) return;
+            _dpiScale = scale;
+            foreach (var host in new FrameworkElement?[] { Stage.Parent as FrameworkElement, Hero.Parent as FrameworkElement })
+                if (host?.CacheMode is BitmapCache cache) host.CacheMode = NewCache();
+            BuildTiles();
+            ShowTrack();
         }
 
         // A bright tile: circle icon at the top, title and status at the bottom

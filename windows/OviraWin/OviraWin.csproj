@@ -16,7 +16,7 @@
     <AssemblyName>Ovira</AssemblyName>
     <ApplicationIcon>Assets\Ovira.ico</ApplicationIcon>
     <ApplicationManifest>app.manifest</ApplicationManifest>
-    <Version>0.4.11</Version>
+    <Version>0.4.12</Version>
     <Product>Ovira</Product>
     <Company>Ovira</Company>
     <Copyright>Ovira</Copyright>
@@ -25,6 +25,11 @@
     <RuntimeIdentifier>win-x64</RuntimeIdentifier>
     <SelfContained>true</SelfContained>
     <PublishSingleFile>true</PublishSingleFile>
+    <!-- 0.4.12: compiled ahead of time — no warm-up work for the processor
+         after every start; a calm garbage collector without extra threads -->
+    <PublishReadyToRun>true</PublishReadyToRun>
+    <ConcurrentGarbageCollection>false</ConcurrentGarbageCollection>
+    <TieredPGO>true</TieredPGO>
     <IncludeNativeLibrariesForSelfExtract>true</IncludeNativeLibrariesForSelfExtract>
     <EnableCompressionInSingleFile>true</EnableCompressionInSingleFile>
     <DebugType>none</DebugType>

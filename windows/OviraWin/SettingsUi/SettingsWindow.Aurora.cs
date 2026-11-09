@@ -17,7 +17,7 @@ namespace Ovira.SettingsUi
         private const int AuroraW = 96, AuroraH = 72;
         private WriteableBitmap? _auroraBitmap;
         private readonly uint[] _auroraPixels = new uint[AuroraW * AuroraH];
-        private readonly DispatcherTimer _auroraTimer = new DispatcherTimer(DispatcherPriority.Background) { Interval = TimeSpan.FromMilliseconds(33) };
+        private readonly DispatcherTimer _auroraTimer = new DispatcherTimer(DispatcherPriority.Background) { Interval = TimeSpan.FromMilliseconds(42) };
         private readonly System.Diagnostics.Stopwatch _auroraClock = System.Diagnostics.Stopwatch.StartNew();
         private double _auroraLast, _auroraT;
         private Color _auroraA = Color.FromRgb(0x5C, 0x59, 0xE6), _auroraB = Color.FromRgb(0xFF, 0x45, 0x66);
@@ -40,7 +40,8 @@ namespace Ovira.SettingsUi
         private void UpdateAuroraClock()
         {
             bool run = IsVisible && WindowState != WindowState.Minimized && S.AnimatedBackground;
-            _auroraTimer.Interval = TimeSpan.FromMilliseconds(IsActive ? 33 : 83);
+            // 0.4.12: 24 frames a second is plenty for slow clouds; 8 in the background.
+            _auroraTimer.Interval = TimeSpan.FromMilliseconds(IsActive ? 42 : 125);
             if (run && !_auroraTimer.IsEnabled) { _auroraLast = _auroraClock.Elapsed.TotalSeconds; _auroraTimer.Start(); }
             else if (!run) { _auroraTimer.Stop(); AuroraFrame(); }
         }

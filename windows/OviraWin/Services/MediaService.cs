@@ -38,6 +38,7 @@ namespace Ovira.Services
     public sealed class MediaService
     {
         public event Action<TrackInfo?>? Changed;
+        public event Action<TrackInfo>? TimelineChanged;
         public TrackInfo? Track { get; private set; }
 
         private GlobalSystemMediaTransportControlsSessionManager? _manager;
@@ -150,8 +151,11 @@ namespace Ovira.Services
             if (_session == null || Track == null) return;
             try
             {
+                // 0.4.12: only the position moved — no «Changed» for the whole
+                // app (browsers report it every second); the island reads the
+                // position by itself while the player is open.
                 ApplyTimeline(Track, _session);
-                Changed?.Invoke(Track);
+                TimelineChanged?.Invoke(Track);
             }
             catch { }
         }

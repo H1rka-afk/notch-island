@@ -27,7 +27,12 @@ namespace Ovira.Island
         private Color _tint = Color.FromRgb(0xFF, 0x5A, 0x7A);
         private BitmapSource? _artwork;
         private Brush? _brush;
-        private string _brushKey = "";
+        // What the current brush was made from — compared field by field each
+        // frame instead of building a text key (no garbage at 60 fps).
+        private string? _brushStyle;
+        private double _brushBlur;
+        private BitmapSource? _brushArt;
+        private Color _brushTint;
 
         public SpectrumBars()
         {
@@ -38,9 +43,12 @@ namespace Ovira.Island
 
         public void SetCover(BitmapSource? artwork, Color tint)
         {
+            // 0.4.12: the same cover again (a player reporting its position)
+            // must not rebuild the brush — the blurred one is costly.
+            if (ReferenceEquals(artwork, _artwork) && tint == _tint && _brush != null) return;
             _artwork = artwork;
             _tint = tint;
-            _brushKey = "";
+            _brushStyle = null;
             try { CurrentBrush(); } catch { _brush = null; }
             InvalidateVisual();
             SpectrumClock.Wake();
@@ -65,9 +73,13 @@ namespace Ovira.Island
         private Brush CurrentBrush()
         {
             var s = Settings.Current;
-            var key = s.SpectrumStyle + "|" + s.SpectrumBlur.ToString("0.00") + "|" + (_artwork?.GetHashCode() ?? 0) + "|" + _tint;
-            if (_brush != null && key == _brushKey) return _brush;
-            _brushKey = key;
+            if (_brush != null && _brushStyle == s.SpectrumStyle && Math.Abs(_brushBlur - s.SpectrumBlur) < 0.005 &&
+                ReferenceEquals(_brushArt, _artwork) && _brushTint == _tint)
+                return _brush;
+            _brushStyle = s.SpectrumStyle;
+            _brushBlur = s.SpectrumBlur;
+            _brushArt = _artwork;
+            _brushTint = _tint;
             Brush brush;
             if (_artwork != null && s.SpectrumStyle == "artwork")
                 brush = CoverBrush(_artwork);
