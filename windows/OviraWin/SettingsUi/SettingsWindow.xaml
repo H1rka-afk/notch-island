@@ -508,8 +508,9 @@
                                         </Grid.ColumnDefinitions>
                                         <Border x:Name="StageArt" Width="22" Height="22" CornerRadius="6" Background="#FF2A2A2A" />
                                         <core:IconView x:Name="StageIcon" Width="16" Height="16" />
-                                        <TextBlock x:Name="StageText" Foreground="White" Grid.Column="1" FontSize="12.5" FontWeight="SemiBold"
-                                                   VerticalAlignment="Center" TextTrimming="CharacterEllipsis" />
+                                        <!-- 0.4.8: never text in the middle — the word sits on the right -->
+                                        <TextBlock x:Name="StageText" Foreground="White" Grid.Column="2" FontSize="15" FontWeight="SemiBold"
+                                                   VerticalAlignment="Center" Margin="8,0,16,0" />
                                         <island:SpectrumBars x:Name="StageBars" Grid.Column="2" Margin="0,0,14,0" VerticalAlignment="Center"
                                                              BarWidth="2.2" BarSpacing="1.7" BarMaxHeight="16" />
                                     </Grid>

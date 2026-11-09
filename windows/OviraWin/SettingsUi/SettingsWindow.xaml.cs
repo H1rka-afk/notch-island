@@ -42,7 +42,7 @@ namespace Ovira.SettingsUi
             new("island", "Островок", "Вид, размер и поведение островка", "Открытие и размер", "laptop", Color.FromRgb(0x33, 0x7A, 0xFF), "music"),
             new("media", "Медиаплеер", "Плеер, звук и обложки", "Любая музыка в Windows", "play", Color.FromRgb(0xFF, 0x45, 0x66), "music"),
             new("spectrum", "Спектрограмма", "Шесть полосок по настоящему звуку: вид, размытие и плавность", "Обложка, размытие, кадры", "waveform", Color.FromRgb(0xA8, 0x5C, 0xF2), "music"),
-            new("notifications", "Уведомления", "Громкость и звук — короткие баннеры в островке", "Громкость и вывод звука", "bell", Color.FromRgb(0xFF, 0x45, 0x3A), "volume"),
+            new("notifications", "Уведомления", "Громкость, звук и клавиатура — короткие баннеры в островке", "Громкость, Caps Lock, раскладка", "bell", Color.FromRgb(0xFF, 0x45, 0x3A), "volume"),
             new("devices", "Устройства", "Батарея и зарядка ноутбука", "Зарядка и низкий заряд", "bolt", Color.FromRgb(0x33, 0xBF, 0x59), "charging"),
             new("helper", "Помощник", "Отдых для глаз по правилу 20-20-20", "Отдых для глаз", "eye", Color.FromRgb(0x26, 0xB5, 0xC9), "eye"),
         };
@@ -399,6 +399,7 @@ namespace Ovira.SettingsUi
         {
             if (StageText == null) return;
             var scene = StageScene();
+            StageText.Visibility = scene == "music" ? Visibility.Collapsed : Visibility.Visible;
             var t = App.Current.Media.Track;
             StageArt.Visibility = scene == "music" ? Visibility.Visible : Visibility.Collapsed;
             StageIcon.Visibility = scene == "music" ? Visibility.Collapsed : Visibility.Visible;
@@ -415,19 +416,19 @@ namespace Ovira.SettingsUi
                     break;
                 case "volume":
                     StageIcon.Icon = "speaker.wave"; StageIcon.Fill = Brushes.White;
-                    StageText.Text = "Громкость 60 %";
+                    StageText.Text = "60 %";
                     caption = "Громкость и вывод звука — короткие баннеры";
                     width = 300;
                     break;
                 case "charging":
                     StageIcon.Icon = "bolt"; StageIcon.Fill = new SolidColorBrush(Color.FromRgb(0x34, 0xC7, 0x59));
-                    StageText.Text = "Зарядка · 76 %";
+                    StageText.Text = "76 %";
                     caption = "Зарядка — молния и процент прямо в островке";
                     width = 300;
                     break;
                 case "eye":
                     StageIcon.Icon = "eye"; StageIcon.Fill = new SolidColorBrush(Color.FromRgb(0x40, 0xCC, 0xD9));
-                    StageText.Text = "Посмотри вдаль";
+                    StageText.Text = "Вдаль";
                     caption = "Помощник — 20 секунд отдыха для глаз каждые 20 минут";
                     width = 300;
                     break;
@@ -439,7 +440,7 @@ namespace Ovira.SettingsUi
                     break;
                 default:
                     StageIcon.Icon = "sparkles"; StageIcon.Fill = Brushes.White;
-                    StageText.Text = "Ovira " + App.Version;
+                    StageText.Text = App.Version;
                     caption = "Островок вверху экрана — как на Mac";
                     width = 260;
                     break;
@@ -571,10 +572,16 @@ namespace Ovira.SettingsUi
                                   () => App.Current.IslandWindow?.DemoVolume()),
                         ToggleRow("Устройство вывода звука", "Когда звук переключился на наушники или динамики", nameof(Settings.OutputBanner), "наушники динамики вывод",
                                   () => App.Current.IslandWindow?.DemoOutput())));
+                    page.Children.Add(Group("Клавиатура", "Ovira только спрашивает у Windows, включён ли Caps Lock и какой язык ввода у окна впереди. Нажатые клавиши она не видит и не записывает.",
+                        ToggleRow("Caps Lock", "Справа «Вкл» или «Выкл»", nameof(Settings.CapsLockBanner), "капс caps lock заглавные",
+                                  () => App.Current.IslandWindow?.DemoCapsLock()),
+                        ToggleRow("Раскладка", "Справа язык: RU, EN…", nameof(Settings.LayoutBanner), "раскладка язык ввода ru en клавиатура",
+                                  () => App.Current.IslandWindow?.DemoLayout())));
                     page.Children.Add(Group("Поверх игр", "В игре или видео на весь экран островок прячется, но отмеченные уведомления всё равно появятся на пару секунд и исчезнут; клики проходят в игру. Если игра в эксклюзивном полноэкранном режиме, Windows не даёт ничему показаться поверх — выбери в игре «Оконный без рамки» (Borderless).",
                         ToggleRow("Уровень громкости", "Видно, сколько сейчас", nameof(Settings.GameVolume), "игра полноэкранный поверх громкость"),
                         ToggleRow("Зарядка и низкий заряд", "Чтобы не пропустить, что ноутбук садится", nameof(Settings.GameBattery), "игра полноэкранный поверх батарея зарядка"),
-                        ToggleRow("Смена устройства звука", "Наушники или динамики", nameof(Settings.GameOutput), "игра полноэкранный поверх наушники вывод")));
+                        ToggleRow("Смена устройства звука", "Наушники или динамики", nameof(Settings.GameOutput), "игра полноэкранный поверх наушники вывод"),
+                        ToggleRow("Caps Lock и раскладка", "Обычно в играх не нужно", nameof(Settings.GameKeyboard), "игра полноэкранный поверх капс раскладка")));
                     break;
 
                 case "devices":

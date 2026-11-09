@@ -25,10 +25,11 @@ namespace Ovira
 
         // 0.4.2: no global 240 fps for every animation any more — it kept the
         // processor busy. The island's springs follow the screen by themselves.
-        public static string Version => "0.4.7";
+        public static string Version => "0.4.8";
 
         public UpdateService Updates { get; } = new UpdateService();
         public EyeBreakService EyeBreak { get; } = new EyeBreakService();
+        public KeyboardWatch Keyboard { get; } = new KeyboardWatch();
 
         protected override async void OnStartup(StartupEventArgs e)
         {
@@ -94,6 +95,9 @@ namespace Ovira
             Updates.Ready += OnUpdateReady;
             Updates.Start();
             EyeBreak.Start(_island);
+            Keyboard.CapsLockChanged += on => _island?.ShowCapsLock(on);
+            Keyboard.LayoutChanged += code => _island?.ShowLayout(code);
+            Keyboard.Start();
             if (firstRun)
             {
                 Settings.Current.Save();
@@ -178,6 +182,7 @@ namespace Ovira
             Audio.Dispose();
             Spectrum.Dispose();
             EyeBreak.Stop();
+            Keyboard.Stop();
             Shutdown();
         }
 

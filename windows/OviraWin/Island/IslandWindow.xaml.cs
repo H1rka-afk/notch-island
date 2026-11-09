@@ -12,6 +12,7 @@ using System.Windows.Threading;
 using Microsoft.Win32;
 using Ovira.Core;
 using Ovira.Services;
+using Ovira.Services;
 
 namespace Ovira.Island
 {
@@ -686,7 +687,10 @@ namespace Ovira.Island
         private void ShowBanner(string icon, string text, Color colour, double? level, double seconds, Action? tap = null, bool inGame = false,
                                 int? countdown = null, int countdownTotal = 20, string? right = null)
         {
-            bool wing = right != null || countdown.HasValue;
+            // 0.4.8: every banner is lopsided like on the Mac — an icon on the
+            // left, a short word, a level or the countdown on the right, and
+            // never any text in the middle.
+            bool wing = true;
             bool timerWasShown = BannerTimer.Visibility == Visibility.Visible && _mode == Mode.Banner;
             if (_hiddenForFullscreen)
             {
@@ -709,7 +713,7 @@ namespace Ovira.Island
             // 0.4.7: the right side of the eye break — the word («Вдаль»,
             // «Готово») and the countdown share one place and hand over to
             // each other: the old one floats up and fades, the new one rises in.
-            int kind = !wing ? 0 : countdown.HasValue ? 2 : 1;
+            int kind = countdown.HasValue ? 2 : right != null ? 1 : 0;
             bool inBanner = _mode == Mode.Banner;
             BannerLevel.Visibility = level.HasValue && countdown == null ? Visibility.Visible : Visibility.Collapsed;
             if (kind == 0)
@@ -790,12 +794,13 @@ namespace Ovira.Island
 
         private Color[] ThemePalette => Themes.Find(S.Theme, _media.Track?.Tint ?? Color.FromRgb(0xFF, 0x45, 0x66)).Palette;
 
+        private static readonly Color Grey = Color.FromRgb(0x8E, 0x8E, 0x93);
         private static readonly Color DoneGreen = Color.FromRgb(0x33, 0xCC, 0x73);
         private static readonly Color Orange = Color.FromRgb(0xFF, 0x9F, 0x0A), Red = Color.FromRgb(0xFF, 0x45, 0x3A);
 
         private Color Tone(string icon, Color fallback)
         {
-            if (fallback == Orange || fallback == Red || fallback == DoneGreen) return fallback;
+            if (fallback == Orange || fallback == Red || fallback == DoneGreen || fallback == Grey) return fallback;
             var p = ThemePalette;
             if (p.Length == 0) return fallback;
             int role = icon switch
@@ -803,6 +808,7 @@ namespace Ovira.Island
                 "speaker" or "speaker.wave" or "speaker.slash" => 0,
                 "headphones" or "display" or "laptop" => 1,
                 "bolt" or "battery" => 2,
+                "capslock" or "keyboard" => 1,
                 "eye" => 3,
                 _ => 0
             };
@@ -833,11 +839,11 @@ namespace Ovira.Island
         public void ShowEyeBreakSkipped() => ShowBanner("xmark", "", Color.FromRgb(0x8E, 0x8E, 0x93), null, 1.3, right: "Пропуск");
 
         public void ShowUpdateReady(string version) =>
-            ShowBanner("arrow.down", $"Ovira {version} — нажми, чтобы обновить", Color.FromRgb(0x4C, 0x8D, 0xFF), null, 7,
-                       () => App.Current.Updates.Install());
+            ShowBanner("arrow.down", "", Color.FromRgb(0x4C, 0x8D, 0xFF), null, 7,
+                       () => App.Current.Updates.Install(), right: "Обновить");
 
         public void ShowUpdated(string version) =>
-            ShowBanner("checkmark", $"Ovira обновлена до {version}", Color.FromRgb(0x34, 0xC7, 0x59), null, 3);
+            ShowBanner("checkmark.circle", "", DoneGreen, null, 3, right: version);
 
         private void EndBanner()
         {
@@ -863,7 +869,7 @@ namespace Ovira.Island
         {
             OutputIcon.Icon = device.Glyph;
             if (!S.OutputBanner) return;
-            ShowBanner(device.Glyph, device.Name, Color.FromRgb(0x4C, 0x8D, 0xFF), null, 2.4, inGame: S.GameOutput);
+            ShowBanner(device.Glyph, "", Color.FromRgb(0x4C, 0x8D, 0xFF), null, 2.4, inGame: S.GameOutput, right: ShortName(device.Name));
         }
 
         private void OnPower(PowerEvent e, int percent)
@@ -871,31 +877,57 @@ namespace Ovira.Island
             switch (e)
             {
                 case PowerEvent.Plugged when S.ChargingBanner:
-                    ShowBanner("bolt", $"Зарядка · {percent} %", Color.FromRgb(0x34, 0xC7, 0x59), percent / 100.0, 2.6, inGame: S.GameBattery);
+                    ShowBanner("bolt", "", Color.FromRgb(0x34, 0xC7, 0x59), null, 2.6, inGame: S.GameBattery, right: $"{percent} %");
                     break;
                 case PowerEvent.Unplugged when S.ChargingBanner:
-                    ShowBanner("battery", $"От батареи · {percent} %", Colors.White, percent / 100.0, 2.2, inGame: S.GameBattery);
+                    ShowBanner("battery", "", Colors.White, null, 2.2, inGame: S.GameBattery, right: $"{percent} %");
                     break;
                 case PowerEvent.Low when S.LowBatteryBanner:
-                    ShowBanner("battery", $"Низкий заряд · {percent} %", Color.FromRgb(0xFF, 0x9F, 0x0A), percent / 100.0, 4, inGame: S.GameBattery);
+                    ShowBanner("battery", "", Orange, null, 4, inGame: S.GameBattery, right: $"{percent} %");
                     break;
                 case PowerEvent.Critical when S.LowBatteryBanner:
-                    ShowBanner("battery", $"Почти разряжен · {percent} %", Color.FromRgb(0xFF, 0x45, 0x3A), percent / 100.0, 5, inGame: S.GameBattery);
+                    ShowBanner("battery", "", Red, null, 5, inGame: S.GameBattery, right: $"{percent} %");
                     break;
             }
         }
 
         // ---- demonstrations for the settings window ----
 
-        public void DemoVolume() => ShowBanner("speaker.wave", "Громкость 60 %", Colors.White, 0.6, 2);
-        public void DemoCharging() => ShowBanner("bolt", "Зарядка · 76 %", Color.FromRgb(0x34, 0xC7, 0x59), 0.76, 2.6);
-        public void DemoLowBattery() => ShowBanner("battery", "Низкий заряд · 20 %", Color.FromRgb(0xFF, 0x9F, 0x0A), 0.2, 3);
+        public void DemoVolume() => ShowBanner("speaker.wave", "", Colors.White, 0.6, 2);
+        public void DemoCharging() => ShowBanner("bolt", "", Color.FromRgb(0x34, 0xC7, 0x59), null, 2.6, right: "76 %");
+        public void DemoLowBattery() => ShowBanner("battery", "", Orange, null, 3, right: "20 %");
+        public void DemoCapsLock() => ShowCapsLock(true);
+        public void DemoLayout() => ShowLayout(KeyboardWatch.CurrentLayout());
         public void DemoEyeBreak() => App.Current.EyeBreak.Begin();
-        public void DemoOutput() => ShowBanner("headphones", "Наушники", Color.FromRgb(0x4C, 0x8D, 0xFF), null, 2.4);
+        public void DemoOutput() => ShowBanner("headphones", "", Color.FromRgb(0x4C, 0x8D, 0xFF), null, 2.4, right: "Наушники");
+
+        // A device name short enough for the right side.
+        private static string ShortName(string name)
+        {
+            var n = (name ?? "").Trim();
+            int cut = n.IndexOfAny(new[] { '(', ',' });
+            if (cut > 2) n = n.Substring(0, cut).Trim();
+            return n.Length > 14 ? n.Substring(0, 13).TrimEnd() + "…" : n;
+        }
+
+        // ---- Caps Lock and the keyboard layout (0.4.8) ----
+
+        public void ShowCapsLock(bool on)
+        {
+            if (!S.CapsLockBanner) return;
+            ShowBanner("capslock", "", on ? Color.FromRgb(0x34, 0xC7, 0x59) : Color.FromRgb(0x8E, 0x8E, 0x93), null, 1.4, inGame: S.GameKeyboard,
+                       right: on ? "Вкл" : "Выкл");
+        }
+
+        public void ShowLayout(string code)
+        {
+            if (!S.LayoutBanner || string.IsNullOrEmpty(code)) return;
+            ShowBanner("keyboard", "", Colors.White, null, 1.2, inGame: S.GameKeyboard, right: code);
+        }
         public void DemoOpen()
         {
             if (HasTrack) { Expand(); _hoverClose.Stop(); if (!_pointerInside) _hoverClose.Start(); }
-            else ShowBanner("music.note", "Включи музыку — плеер появится здесь", Colors.White, null, 3);
+            else ShowBanner("music.note", "", Colors.White, null, 3, right: "Нет музыки");
         }
 
         // ---- settings ----

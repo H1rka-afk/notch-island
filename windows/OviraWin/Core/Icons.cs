@@ -72,6 +72,13 @@ namespace Ovira.Core
             // SF «checkmark.circle.fill»: a disc with the tick cut out.
             "checkmark.circle" => Parse("M12,2.5 A9.5,9.5 0 1 0 12,21.5 A9.5,9.5 0 1 0 12,2.5 Z " +
                                         "M10.5,16.2 L17.6,9.1 L16.1,7.6 L10.5,13.2 L7.9,10.6 L6.4,12.1 Z"),
+            // SF «capslock.fill»: the arrow-house over a bar.
+            "capslock" => Parse("M12,2.8 L21.4,12.2 H16.6 V16.2 H7.4 V12.2 H2.6 Z M7.4,18 H16.6 V21.2 H7.4 Z"),
+            // SF «keyboard.fill»: a rounded slab with the keys cut out.
+            "keyboard" => Parse("M3,5.5 H21 A2,2 0 0 1 23,7.5 V16.5 A2,2 0 0 1 21,18.5 H3 A2,2 0 0 1 1,16.5 V7.5 A2,2 0 0 1 3,5.5 Z " +
+                                "M3.6,8 h2.2 v2.1 h-2.2 Z M7.1,8 h2.2 v2.1 h-2.2 Z M10.6,8 h2.2 v2.1 h-2.2 Z M14.1,8 h2.2 v2.1 h-2.2 Z M17.6,8 h2.8 v2.1 h-2.8 Z " +
+                                "M5.3,11.3 h2.2 v2.1 h-2.2 Z M8.8,11.3 h2.2 v2.1 h-2.2 Z M12.3,11.3 h2.2 v2.1 h-2.2 Z M15.8,11.3 h2.2 v2.1 h-2.2 Z " +
+                                "M7,14.6 h10 v1.9 h-10 Z"),
             "arrow.down" => Parse("M11,3.5 H13 V15.6 L17.6,11 L19,12.4 L12,19.4 L5,12.4 L6.4,11 L11,15.6 Z"),
             _ => Parse("M12,6 C15.3,6 18,8.7 18,12 C18,15.3 15.3,18 12,18 C8.7,18 6,15.3 6,12 C6,8.7 8.7,6 12,6 Z")
         };
@@ -139,7 +146,7 @@ namespace Ovira.Core
             dc.PushTransform(new ScaleTransform(k, k));
             // Icons with fine cut-outs (the eye) are drawn without the soft
             // outline — it would fill the gaps at small sizes.
-            var pen = Icon is "eye" or "checkmark.circle" ? null : new Pen(Fill, 0.9) { LineJoin = PenLineJoin.Round };
+            var pen = Icon is "eye" or "checkmark.circle" or "keyboard" ? null : new Pen(Fill, 0.9) { LineJoin = PenLineJoin.Round };
             dc.DrawGeometry(Fill, pen, geometry);
             dc.Pop();
             dc.Pop();

@@ -124,6 +124,16 @@ namespace Ovira.Core
         private bool _gameOutput;
         public bool GameOutput { get => _gameOutput; set => Set(ref _gameOutput, value); }
 
+        // 0.4.8: Caps Lock and the keyboard layout.
+        private bool _capsLockBanner = true;
+        public bool CapsLockBanner { get => _capsLockBanner; set => Set(ref _capsLockBanner, value); }
+
+        private bool _layoutBanner = true;
+        public bool LayoutBanner { get => _layoutBanner; set => Set(ref _layoutBanner, value); }
+
+        private bool _gameKeyboard;
+        public bool GameKeyboard { get => _gameKeyboard; set => Set(ref _gameKeyboard, value); }
+
         // Banners
         private bool _volumeBanner = true;
         public bool VolumeBanner { get => _volumeBanner; set => Set(ref _volumeBanner, value); }
