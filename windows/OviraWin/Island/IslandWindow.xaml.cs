@@ -250,7 +250,9 @@ namespace Ovira.Island
             ContentHost.Clip = new RectangleGeometry(new Rect(0, 0, w, h), r, r);
 
             Place(CompactLayer, CompactW, w);
-            Place(BannerLayer, BannerW, w);
+            // 0.4.6: banner contents ride on the island's edges while it grows,
+            // so the icon never trails behind the shape.
+            Place(BannerLayer, w, w);
             Place(ExpandedLayer, ExpandedW, w);
             ExpandedLayer.Height = ExpandedH;
 
@@ -663,10 +665,15 @@ namespace Ovira.Island
                 int left = countdown.Value;
                 BannerSeconds.Text = left.ToString();
                 BannerTimerFill.Background = new SolidColorBrush(colour);
-                double full = 34;
-                if (!timerWasShown) { BannerTimerFill.BeginAnimation(WidthProperty, null); BannerTimerFill.Width = full * left / countdownTotal; }
-                BannerTimerFill.BeginAnimation(WidthProperty,
-                    new DoubleAnimation(full * Math.Max(0, left - 1) / countdownTotal, TimeSpan.FromSeconds(1)));
+                // 0.4.6: one continuous run to zero over the remaining seconds —
+                // no restarts each second, so the bar never stutters.
+                double full = 26;
+                if (!timerWasShown)
+                {
+                    BannerTimerFill.BeginAnimation(WidthProperty, null);
+                    BannerTimerFill.Width = full * left / countdownTotal;
+                    BannerTimerFill.BeginAnimation(WidthProperty, new DoubleAnimation(0, TimeSpan.FromSeconds(left)));
+                }
             }
             if (level.HasValue)
             {
