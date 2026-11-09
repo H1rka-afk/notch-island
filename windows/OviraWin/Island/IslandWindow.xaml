@@ -46,19 +46,23 @@
                     <TextBlock x:Name="BannerText" Grid.Column="1" FontSize="12.5" FontWeight="SemiBold" Foreground="White"
                                VerticalAlignment="Center" TextTrimming="CharacterEllipsis" />
                     <!-- 0.4.5: the short word on the right of the eye break («Вдаль», «Готово») -->
-                    <TextBlock x:Name="BannerRight" Grid.Column="2" FontSize="12.5" FontWeight="SemiBold" Foreground="White"
+                    <TextBlock x:Name="BannerRight" Grid.Column="2" FontSize="15" FontWeight="SemiBold" Foreground="White"
                                VerticalAlignment="Center" Margin="8,0,16,0" Visibility="Collapsed" />
                     <Grid x:Name="BannerLevel" Grid.Column="2" Width="86" Height="5" Margin="8,0,16,0" VerticalAlignment="Center">
                         <Border CornerRadius="2.5" Background="#38FFFFFF" />
                         <Border x:Name="BannerLevelFill" CornerRadius="2.5" Background="White" HorizontalAlignment="Left" Width="0" />
                     </Grid>
                     <!-- 0.4.4: a countdown on the right — seconds on top, a bar that runs out below -->
-                    <StackPanel x:Name="BannerTimer" Grid.Column="2" Width="26" Margin="8,0,16,0" VerticalAlignment="Center" Visibility="Collapsed">
-                        <TextBlock x:Name="BannerSeconds" Foreground="White" FontSize="13" FontWeight="Bold" HorizontalAlignment="Center"
-                                   Margin="0,-2,0,2" />
+                    <StackPanel x:Name="BannerTimer" Grid.Column="2" Width="28" Margin="8,0,16,0" VerticalAlignment="Center" Visibility="Collapsed">
+                        <TextBlock x:Name="BannerSeconds" Foreground="White" FontSize="15" FontWeight="Bold" HorizontalAlignment="Center"
+                                   Margin="0,-3,0,1" />
                         <Grid Height="3">
                             <Border CornerRadius="1.5" Background="#38FFFFFF" />
-                            <Border x:Name="BannerTimerFill" CornerRadius="1.5" Background="White" HorizontalAlignment="Left" Width="26" />
+                            <Border x:Name="BannerTimerFill" CornerRadius="1.5" Background="White" RenderTransformOrigin="0,0.5">
+                                <Border.RenderTransform>
+                                    <ScaleTransform x:Name="BannerTimerScale" ScaleX="1" />
+                                </Border.RenderTransform>
+                            </Border>
                         </Grid>
                     </StackPanel>
                 </Grid>

@@ -630,6 +630,55 @@ namespace Ovira.Island
 
         private Action? _bannerTap;
         private bool _overGame;
+        private int _rightKind;   // 0 — nothing, 1 — a word, 2 — the countdown
+
+        private static readonly IEasingFunction Out = new CubicEase { EasingMode = EasingMode.EaseOut };
+
+        private static TranslateTransform Shift(UIElement e)
+        {
+            if (e.RenderTransform is TranslateTransform t && !t.IsFrozen) return t;
+            t = new TranslateTransform();
+            e.RenderTransform = t;
+            return t;
+        }
+
+        private static void Settle(UIElement e, bool shown)
+        {
+            e.BeginAnimation(OpacityProperty, null);
+            Shift(e).BeginAnimation(TranslateTransform.YProperty, null);
+            e.Opacity = shown ? 1 : 0;
+            Shift(e).Y = 0;
+        }
+
+        private static void SlideIn(UIElement e)
+        {
+            e.BeginAnimation(OpacityProperty, new DoubleAnimation(0, 1, TimeSpan.FromSeconds(0.3)) { EasingFunction = Out });
+            Shift(e).BeginAnimation(TranslateTransform.YProperty,
+                new DoubleAnimation(9, 0, TimeSpan.FromSeconds(0.42)) { EasingFunction = new BackEase { Amplitude = 0.35, EasingMode = EasingMode.EaseOut } });
+        }
+
+        private static void SlideOut(UIElement e)
+        {
+            e.BeginAnimation(OpacityProperty, new DoubleAnimation(0, TimeSpan.FromSeconds(0.18)) { EasingFunction = Out });
+            Shift(e).BeginAnimation(TranslateTransform.YProperty, new DoubleAnimation(-9, TimeSpan.FromSeconds(0.22)) { EasingFunction = Out });
+        }
+
+        private static void Roll(UIElement e)
+        {
+            e.BeginAnimation(OpacityProperty, new DoubleAnimation(0.25, 1, TimeSpan.FromSeconds(0.28)) { EasingFunction = Out });
+            Shift(e).BeginAnimation(TranslateTransform.YProperty, new DoubleAnimation(6, 0, TimeSpan.FromSeconds(0.32)) { EasingFunction = Out });
+        }
+
+        // A new icon in the same banner (the eye becoming the tick) pops in.
+        private static void Pop(FrameworkElement e)
+        {
+            e.RenderTransformOrigin = new Point(0.5, 0.5);
+            if (e.RenderTransform is not ScaleTransform s || s.IsFrozen) { s = new ScaleTransform(1, 1); e.RenderTransform = s; }
+            var grow = new DoubleAnimation(0.35, 1, TimeSpan.FromSeconds(0.45)) { EasingFunction = new BackEase { Amplitude = 0.5, EasingMode = EasingMode.EaseOut } };
+            s.BeginAnimation(ScaleTransform.ScaleXProperty, grow);
+            s.BeginAnimation(ScaleTransform.ScaleYProperty, grow);
+            e.BeginAnimation(OpacityProperty, new DoubleAnimation(0, 1, TimeSpan.FromSeconds(0.25)) { EasingFunction = Out });
+        }
 
         // 0.4.3: over a game or a full-screen video the island is hidden, but
         // the banners chosen in Settings («Поверх игр») still come out for a
@@ -651,30 +700,61 @@ namespace Ovira.Island
             }
             else _overGame = false;
             colour = Tone(icon, colour);
+            bool iconChanged = _mode == Mode.Banner && BannerIcon.Icon != icon;
             BannerIcon.Icon = icon;
+            if (iconChanged) Pop(BannerIcon);
             BannerIcon.Fill = new SolidColorBrush(colour);
             BannerText.Text = wing ? "" : text;
             BannerText.Visibility = wing ? Visibility.Hidden : Visibility.Visible;
-            BannerRight.Text = right ?? "";
-            BannerRight.Visibility = right != null && !countdown.HasValue ? Visibility.Visible : Visibility.Collapsed;
+            // 0.4.7: the right side of the eye break — the word («Вдаль»,
+            // «Готово») and the countdown share one place and hand over to
+            // each other: the old one floats up and fades, the new one rises in.
+            int kind = !wing ? 0 : countdown.HasValue ? 2 : 1;
+            bool inBanner = _mode == Mode.Banner;
             BannerLevel.Visibility = level.HasValue && countdown == null ? Visibility.Visible : Visibility.Collapsed;
-            BannerTimer.Visibility = countdown.HasValue ? Visibility.Visible : Visibility.Collapsed;
-            if (countdown.HasValue)
+            if (kind == 0)
             {
-                // The bar runs out smoothly: one second of travel per tick.
-                int left = countdown.Value;
-                BannerSeconds.Text = left.ToString();
-                BannerTimerFill.Background = new SolidColorBrush(colour);
-                // 0.4.6: one continuous run to zero over the remaining seconds —
-                // no restarts each second, so the bar never stutters.
-                double full = 26;
-                if (!timerWasShown)
+                BannerRight.Visibility = Visibility.Collapsed;
+                BannerTimer.Visibility = Visibility.Collapsed;
+            }
+            else
+            {
+                BannerRight.Visibility = Visibility.Visible;
+                BannerTimer.Visibility = Visibility.Visible;
+                var incoming = kind == 1 ? (UIElement)BannerRight : BannerTimer;
+                var outgoing = kind == 1 ? (UIElement)BannerTimer : BannerRight;
+                bool wordChanged = kind == 1 && BannerRight.Text != right;
+                if (kind == 1) BannerRight.Text = right!;
+                if (!inBanner || _rightKind == 0)
                 {
-                    BannerTimerFill.BeginAnimation(WidthProperty, null);
-                    BannerTimerFill.Width = full * left / countdownTotal;
-                    BannerTimerFill.BeginAnimation(WidthProperty, new DoubleAnimation(0, TimeSpan.FromSeconds(left)));
+                    Settle(incoming, true);
+                    Settle(outgoing, false);
+                }
+                else if (_rightKind != kind || wordChanged)
+                {
+                    SlideOut(outgoing);
+                    SlideIn(incoming);
                 }
             }
+            if (countdown.HasValue)
+            {
+                int left = countdown.Value;
+                var number = left.ToString();
+                // The number rolls like the Mac's numeric text.
+                if (BannerSeconds.Text != number && timerWasShown && _rightKind == 2) Roll(BannerSeconds);
+                BannerSeconds.Text = number;
+                BannerTimerFill.Background = new SolidColorBrush(colour);
+                // The bar is shrunk by a transform, not by its width: the width
+                // snaps to whole pixels and made the bar move in steps.
+                if (_rightKind != 2)
+                {
+                    BannerTimerScale.BeginAnimation(ScaleTransform.ScaleXProperty, null);
+                    BannerTimerScale.ScaleX = (double)left / countdownTotal;
+                    BannerTimerScale.BeginAnimation(ScaleTransform.ScaleXProperty,
+                        new DoubleAnimation(0, TimeSpan.FromSeconds(left)));
+                }
+            }
+            _rightKind = kind;
             if (level.HasValue)
             {
                 BannerLevelFill.Background = new SolidColorBrush(colour);
@@ -763,6 +843,7 @@ namespace Ovira.Island
         {
             if (_mode != Mode.Banner) return;
             Island.Cursor = null;
+            _rightKind = 0;
             if (_overGame && _hiddenForFullscreen)
                 Root.BeginAnimation(OpacityProperty, new DoubleAnimation(0, TimeSpan.FromSeconds(0.3)));
             _overGame = false;
