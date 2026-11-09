@@ -496,7 +496,7 @@
                                 </Border>
                                 <!-- The stage's top edge is the screen's top edge: the island
                                      sits over the frame line, as on the Mac -->
-                                <Canvas x:Name="StageCanvas" Height="120" VerticalAlignment="Top" IsHitTestVisible="False">
+                                <Canvas x:Name="StageCanvas" Height="176" VerticalAlignment="Top" IsHitTestVisible="False">
                                     <Path x:Name="StageShape" Fill="Black">
                                         <Path.Effect><DropShadowEffect BlurRadius="14" ShadowDepth="4" Direction="270" Opacity="0.35" /></Path.Effect>
                                     </Path>
@@ -511,6 +511,12 @@
                                         <!-- 0.4.8: never text in the middle — the word sits on the right -->
                                         <TextBlock x:Name="StageText" Foreground="White" Grid.Column="2" FontSize="15" FontWeight="SemiBold"
                                                    VerticalAlignment="Center" Margin="8,0,16,0" />
+                                        <Grid x:Name="StageLevel" Grid.Column="2" Width="86" Height="5" Margin="8,0,16,0" VerticalAlignment="Center" Visibility="Collapsed">
+                                            <Border CornerRadius="2.5" Background="#38FFFFFF" />
+                                            <Border x:Name="StageLevelFill" CornerRadius="2.5" Background="White" RenderTransformOrigin="0,0.5">
+                                                <Border.RenderTransform><ScaleTransform x:Name="StageLevelScale" ScaleX="0" /></Border.RenderTransform>
+                                            </Border>
+                                        </Grid>
                                         <island:SpectrumBars x:Name="StageBars" Grid.Column="2" Margin="0,0,14,0" VerticalAlignment="Center"
                                                              BarWidth="2.2" BarSpacing="1.7" BarMaxHeight="16" />
                                     </Grid>

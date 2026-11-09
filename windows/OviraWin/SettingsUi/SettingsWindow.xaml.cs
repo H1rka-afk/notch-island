@@ -387,66 +387,91 @@ namespace Ovira.SettingsUi
         private int _stageStep;
         // 0.4.2: frames only while the island on the stage moves; the scenes
         // change on their own slow clock.
-        private readonly DispatcherTimer _stageCycle = new DispatcherTimer { Interval = TimeSpan.FromSeconds(3.2) };
+        private readonly DispatcherTimer _stageCycle = new DispatcherTimer { Interval = TimeSpan.FromSeconds(2.6) };
         private readonly System.Diagnostics.Stopwatch _stageWatch = System.Diagnostics.Stopwatch.StartNew();
         private double _stageLast;
 
-        private static readonly string[] Cycle = { "music", "volume", "charging", "eye", "output" };
+        // 0.4.9: like real life — music, a banner, music again, the next
+        // banner… so the island grows and shrinks between them.
+        private static readonly string[] Cycle =
+            { "music", "volume", "music", "charging", "music", "eye", "music", "keyboard", "music", "output" };
 
         private string StageScene() => _hovered?.Demo ?? Cycle[_stageStep % Cycle.Length];
+
+        private string? _stageShown;
 
         private void UpdateStage()
         {
             if (StageText == null) return;
             var scene = StageScene();
-            StageText.Visibility = scene == "music" ? Visibility.Collapsed : Visibility.Visible;
             var t = App.Current.Media.Track;
-            StageArt.Visibility = scene == "music" ? Visibility.Visible : Visibility.Collapsed;
-            StageIcon.Visibility = scene == "music" ? Visibility.Collapsed : Visibility.Visible;
-            StageBars.Visibility = scene == "music" ? Visibility.Visible : Visibility.Collapsed;
-            string caption;
-            double width;
+            bool music = scene == "music";
+            string caption, word = "";
+            string icon = "sparkles";
+            Color colour = Colors.White;
+            double? level = null;
             switch (scene)
             {
                 case "music":
                     StageArt.Background = t?.Artwork != null ? new ImageBrush(t.Artwork) { Stretch = Stretch.UniformToFill } : new SolidColorBrush(Color.FromRgb(0x2A, 0x2A, 0x2A));
-                    StageText.Text = "";
                     caption = "Сейчас играет — обложка и полоски в такт музыке";
-                    width = 255;
                     break;
                 case "volume":
-                    StageIcon.Icon = "speaker.wave"; StageIcon.Fill = Brushes.White;
-                    StageText.Text = "60 %";
-                    caption = "Громкость и вывод звука — короткие баннеры";
-                    width = 300;
+                    icon = "speaker.wave"; level = 0.6;
+                    caption = "Громкость — полоска справа";
                     break;
                 case "charging":
-                    StageIcon.Icon = "bolt"; StageIcon.Fill = new SolidColorBrush(Color.FromRgb(0x34, 0xC7, 0x59));
-                    StageText.Text = "76 %";
-                    caption = "Зарядка — молния и процент прямо в островке";
-                    width = 300;
+                    icon = "bolt"; colour = Color.FromRgb(0x34, 0xC7, 0x59); word = "76 %";
+                    caption = "Зарядка — молния и процент";
                     break;
                 case "eye":
-                    StageIcon.Icon = "eye"; StageIcon.Fill = new SolidColorBrush(Color.FromRgb(0x40, 0xCC, 0xD9));
-                    StageText.Text = "Вдаль";
-                    caption = "Помощник — 20 секунд отдыха для глаз каждые 20 минут";
-                    width = 300;
+                    icon = "eye"; colour = Color.FromRgb(0x40, 0xCC, 0xD9); word = "Вдаль";
+                    caption = "Помощник — 20 секунд отдыха для глаз";
+                    break;
+                case "keyboard":
+                    icon = "keyboard"; word = KeyboardWord();
+                    caption = "Раскладка и Caps Lock";
                     break;
                 case "output":
-                    StageIcon.Icon = "headphones"; StageIcon.Fill = new SolidColorBrush(Color.FromRgb(0x4C, 0x8D, 0xFF));
-                    StageText.Text = "Наушники";
+                    icon = "headphones"; colour = Color.FromRgb(0x4C, 0x8D, 0xFF); word = "Наушники";
                     caption = "Звук переключился — островок покажет куда";
-                    width = 280;
                     break;
                 default:
-                    StageIcon.Icon = "sparkles"; StageIcon.Fill = Brushes.White;
-                    StageText.Text = App.Version;
+                    icon = "sparkles"; word = App.Version;
                     caption = "Островок вверху экрана — как на Mac";
-                    width = 260;
                     break;
             }
-            StageCaption.Text = caption;
-            _sw.To(width * S.IslandScale, Motion.GrowResponse, Motion.GrowDamping);
+
+            bool changed = _stageShown != scene;
+            bool wasMusic = _stageShown == null || _stageShown == "music";
+            _stageShown = scene;
+
+            if (changed)
+            {
+                // Contents: the old ones are gone at once, the new ones come in
+                // a beat later from slightly smaller and transparent — the
+                // island's own animation.
+                StageArt.Visibility = music ? Visibility.Visible : Visibility.Collapsed;
+                StageBars.Visibility = music ? Visibility.Visible : Visibility.Collapsed;
+                StageIcon.Visibility = music ? Visibility.Collapsed : Visibility.Visible;
+                StageText.Visibility = word.Length > 0 && !music ? Visibility.Visible : Visibility.Collapsed;
+                StageLevel.Visibility = level.HasValue ? Visibility.Visible : Visibility.Collapsed;
+                StageIcon.Icon = icon;
+                StageIcon.Fill = new SolidColorBrush(colour);
+                StageText.Text = word;
+                ArriveStage(StageContent);
+                if (level.HasValue)
+                {
+                    StageLevelFill.Background = new SolidColorBrush(colour);
+                    StageLevelScale.BeginAnimation(ScaleTransform.ScaleXProperty,
+                        new DoubleAnimation(0, level.Value, TimeSpan.FromSeconds(0.6)) { BeginTime = TimeSpan.FromSeconds(0.12), EasingFunction = new CubicEase { EasingMode = EasingMode.EaseOut } });
+                }
+                FadeCaption(caption);
+            }
+
+            double width = music ? 255 : 305;   // the island's compact and banner widths
+            bool growing = width * S.IslandScale > _sw.Target + 0.5 || (!music && wasMusic);
+            _sw.To(width * S.IslandScale, growing ? Motion.GrowResponse : Motion.ShrinkResponse, growing ? Motion.GrowDamping : Motion.ShrinkDamping);
             if (!_stageTimer.IsEnabled) { _stageLast = _stageWatch.Elapsed.TotalSeconds; _stageTimer.Start(); }
             var accent = _hovered?.Accent ?? Color.FromRgb(0x5C, 0x59, 0xE6);
             var d = TimeSpan.FromSeconds(0.5);
@@ -454,6 +479,42 @@ namespace Ovira.SettingsUi
             StageGlow.BeginAnimation(DropShadowEffect.ColorProperty, new ColorAnimation(accent, d));
             var tint = t?.Tint ?? Color.FromRgb(0xFF, 0x45, 0x66);
             StageTintColor.BeginAnimation(GradientStop.ColorProperty, new ColorAnimation(Color.FromArgb(0x99, tint.R, tint.G, tint.B), d));
+        }
+
+        private static string KeyboardWord()
+        {
+            var code = Ovira.Services.KeyboardWatch.CurrentLayout();
+            return string.IsNullOrEmpty(code) ? "RU" : code;
+        }
+
+        private static void ArriveStage(FrameworkElement e)
+        {
+            e.RenderTransformOrigin = new Point(0.5, 0.5);
+            if (e.RenderTransform is not ScaleTransform scale || scale.IsFrozen) { scale = new ScaleTransform(1, 1); e.RenderTransform = scale; }
+            var fade = new DoubleAnimationUsingKeyFrames();
+            fade.KeyFrames.Add(new DiscreteDoubleKeyFrame(0, KeyTime.FromTimeSpan(TimeSpan.Zero)));
+            fade.KeyFrames.Add(new DiscreteDoubleKeyFrame(0, KeyTime.FromTimeSpan(TimeSpan.FromSeconds(0.08))));
+            fade.KeyFrames.Add(new EasingDoubleKeyFrame(1, KeyTime.FromTimeSpan(TimeSpan.FromSeconds(0.34)), new CubicEase { EasingMode = EasingMode.EaseOut }));
+            e.BeginAnimation(OpacityProperty, fade);
+            var grow = new DoubleAnimationUsingKeyFrames();
+            grow.KeyFrames.Add(new DiscreteDoubleKeyFrame(0.86, KeyTime.FromTimeSpan(TimeSpan.Zero)));
+            grow.KeyFrames.Add(new DiscreteDoubleKeyFrame(0.86, KeyTime.FromTimeSpan(TimeSpan.FromSeconds(0.08))));
+            grow.KeyFrames.Add(new EasingDoubleKeyFrame(1, KeyTime.FromTimeSpan(TimeSpan.FromSeconds(0.5)), new BackEase { Amplitude = 0.3, EasingMode = EasingMode.EaseOut }));
+            scale.BeginAnimation(ScaleTransform.ScaleXProperty, grow);
+            scale.BeginAnimation(ScaleTransform.ScaleYProperty, grow);
+        }
+
+        // The caption under the island changes softly, too.
+        private void FadeCaption(string text)
+        {
+            if (StageCaption.Text == text) return;
+            var fade = new DoubleAnimationUsingKeyFrames();
+            fade.KeyFrames.Add(new EasingDoubleKeyFrame(0, KeyTime.FromTimeSpan(TimeSpan.FromSeconds(0.15))));
+            fade.KeyFrames.Add(new EasingDoubleKeyFrame(1, KeyTime.FromTimeSpan(TimeSpan.FromSeconds(0.45)), new CubicEase { EasingMode = EasingMode.EaseOut }));
+            var swap = new System.Windows.Threading.DispatcherTimer { Interval = TimeSpan.FromSeconds(0.15) };
+            swap.Tick += (_, _) => { swap.Stop(); StageCaption.Text = text; };
+            swap.Start();
+            StageCaption.BeginAnimation(OpacityProperty, fade);
         }
 
         private void StageTick()
@@ -486,6 +547,9 @@ namespace Ovira.SettingsUi
             }
             g.Freeze();
             StageShape.Data = g;
+            // 0.4.9: nothing may stick out of the stage — the island, its
+            // flares and its shadow are cut to the stage's rounded frame.
+            StageCanvas.Clip = new RectangleGeometry(new Rect(0, 0, width, Stage.ActualHeight), 26, 26);
             StageContent.Width = Math.Max(0, w);
             Canvas.SetLeft(StageContent, l);
         }
