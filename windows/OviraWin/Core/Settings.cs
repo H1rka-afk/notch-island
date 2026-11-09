@@ -131,6 +131,10 @@ namespace Ovira.Core
         private bool _layoutBanner = true;
         public bool LayoutBanner { get => _layoutBanner; set => Set(ref _layoutBanner, value); }
 
+        // 0.4.11: eye breaks over games and full-screen video too.
+        private bool _gameEyeBreak;
+        public bool GameEyeBreak { get => _gameEyeBreak; set => Set(ref _gameEyeBreak, value); }
+
         private bool _gameKeyboard;
         public bool GameKeyboard { get => _gameKeyboard; set => Set(ref _gameKeyboard, value); }
 

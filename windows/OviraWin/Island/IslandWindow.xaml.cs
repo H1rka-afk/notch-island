@@ -783,8 +783,8 @@ namespace Ovira.Island
         // «Вдаль» for the first two seconds, then the countdown with its bar.
         public void ShowEyeBreak(int second, int total, Action skip)
         {
-            if (second < 2) ShowBanner("eye", "", EyeColour, null, 2.5, skip, right: "Вдаль");
-            else ShowBanner("eye", "", EyeColour, null, 2.5, skip, countdown: total - second, countdownTotal: total);
+            if (second < 2) ShowBanner("eye", "", EyeColour, null, 2.5, skip, inGame: S.GameEyeBreak, right: "Вдаль");
+            else ShowBanner("eye", "", EyeColour, null, 2.5, skip, inGame: S.GameEyeBreak, countdown: total - second, countdownTotal: total);
         }
 
         // ---- colours from the settings theme (0.4.4) ----
@@ -835,8 +835,8 @@ namespace Ovira.Island
             NextGlyph.GlyphFill = main;
             PlayGlyph.GlyphFill = main;
         }
-        public void ShowEyeBreakDone() => ShowBanner("checkmark.circle", "", DoneGreen, null, 1.6, right: "Готово");
-        public void ShowEyeBreakSkipped() => ShowBanner("xmark", "", Color.FromRgb(0x8E, 0x8E, 0x93), null, 1.3, right: "Пропуск");
+        public void ShowEyeBreakDone() => ShowBanner("checkmark.circle", "", DoneGreen, null, 1.6, inGame: S.GameEyeBreak, right: "Готово");
+        public void ShowEyeBreakSkipped() => ShowBanner("xmark", "", Color.FromRgb(0x8E, 0x8E, 0x93), null, 1.3, inGame: S.GameEyeBreak, right: "Пропуск");
 
         public void ShowUpdateReady(string version) =>
             ShowBanner("arrow.down", "", Color.FromRgb(0x4C, 0x8D, 0xFF), null, 7,
