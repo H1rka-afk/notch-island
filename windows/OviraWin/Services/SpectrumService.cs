@@ -274,12 +274,54 @@ namespace Ovira.Services
             }
         }
 
+        // 0.4.19 — the iPhone's waveform: the bars breathe together with the
+        // loudness, each with its own slow sway and a little of its own
+        // frequency band; never drop below a third while music plays; rise
+        // and fall at the same soft pace; settle to dots on pause. Measured
+        // from a screen recording of the iPhone player.
+        private static readonly double[] SwaySpeed = { 7.3, 9.1, 8.2, 10.4, 7.8, 9.7 };
+        private static readonly double[] SwayPhase = { 0.0, 1.9, 4.1, 0.8, 2.9, 5.2 };
+        private double _energy;
+
+        private void StepIphone(double time, double dt, double[] levels, bool playing, bool live)
+        {
+            double loud = 0;
+            if (playing)
+            {
+                if (live)
+                {
+                    double sum = 0;
+                    for (int i = 0; i < BarCount && i < levels.Length; i++) sum += Math.Clamp(levels[i], 0, 1);
+                    loud = Math.Clamp(Math.Pow(sum / BarCount, 0.7) * 1.35, 0, 1);
+                }
+                else loud = 0.55 + 0.25 * Synthetic(0, time);
+            }
+            // The overall loudness itself is smoothed, so the bars swell and ease.
+            _energy += (loud - _energy) * (1 - Math.Exp(-dt / 0.12));
+            for (int i = 0; i < BarCount; i++)
+            {
+                double target;
+                if (!playing) target = 0;
+                else
+                {
+                    double band = live && i < levels.Length ? Math.Clamp(Math.Pow(Math.Clamp(levels[i], 0, 1), 0.9) * 1.1, 0, 1) : Synthetic(i, time) * 0.7;
+                    double sway = 0.5 + 0.5 * Math.Sin(time * SwaySpeed[i] + SwayPhase[i]) * Math.Sin(time * SwaySpeed[i] * 0.37 + SwayPhase[i] * 1.7);
+                    double mix = 0.5 * _energy + 0.3 * band + 0.45 * _energy * (sway - 0.5) + 0.12 * sway;
+                    target = 0.34 + 0.66 * Math.Clamp(mix, 0, 1);
+                }
+                double tau = !playing ? 0.18 : target > Heights[i] ? 0.06 : 0.085;
+                Heights[i] += (target - Heights[i]) * (1 - Math.Exp(-dt / tau));
+                if (!playing && Heights[i] < 0.003) Heights[i] = 0;
+            }
+        }
+
         public void Step(double time, double[] levels, bool playing, bool live)
         {
             double previous = _last ?? time;
             _last = time;
             double dt = Math.Min(0.1, Math.Max(0, time - previous));
             if (dt <= 0) return;
+            if (Ovira.Core.Settings.Current.SpectrumMotion == "iphone") { StepIphone(time, dt, levels, playing, live); return; }
             for (int i = 0; i < BarCount; i++)
             {
                 double target;

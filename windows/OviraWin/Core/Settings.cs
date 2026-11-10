@@ -62,6 +62,10 @@ namespace Ovira.Core
         private string _spectrumStyle = "blurred";
         public string SpectrumStyle { get => _spectrumStyle; set => Set(ref _spectrumStyle, value is "artwork" or "blurred" or "tint" ? value : "blurred"); }
 
+        // 0.4.19: «iphone» — the iPhone's soft waveform; «precise» — the exact spectrum.
+        private string _spectrumMotion = "iphone";
+        public string SpectrumMotion { get => _spectrumMotion; set => Set(ref _spectrumMotion, value == "precise" ? "precise" : "iphone"); }
+
         private double _spectrumBlur = 0.4;
         public double SpectrumBlur { get => _spectrumBlur; set => Set(ref _spectrumBlur, Math.Clamp(value, 0, 1)); }
 

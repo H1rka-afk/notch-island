@@ -679,6 +679,9 @@ namespace Ovira.SettingsUi
                     break;
 
                 case "spectrum":
+                    page.Children.Add(Group("Движение", "«Как на iPhone» — полоски дышат вместе с громкостью, каждая чуть по-своему, плавно поднимаются и опускаются и не падают ниже трети, пока музыка играет. «Точный спектр» — каждая полоска показывает свою частоту, резко и подробно.",
+                        SegmentRow("Движение полосок", null, new (string, object)[] { ("Как на iPhone", "iphone"), ("Точный спектр", "precise") },
+                                   nameof(Settings.SpectrumMotion), "движение полосок айфон iphone точный спектр плавно")));
                     page.Children.Add(Group("Вид полос", null,
                         SegmentRow("Внутри полос", null, new (string, object)[] { ("Обложка", "artwork"), ("Размытая обложка", "blurred"), ("Цвет обложки", "tint") },
                                    nameof(Settings.SpectrumStyle), "обложка размытая цвет вид полос спектрограмма"),
