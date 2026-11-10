@@ -194,6 +194,14 @@ namespace Ovira.Services
             if (audible) _lastSound = DateTime.Now;
 
             var now = DateTime.Now;
+            // 0.4.20: in the iPhone motion the bars smooth evenly themselves —
+            // the raw band levels go straight through, every buffer, with no
+            // slow fall added here.
+            if (Ovira.Core.Settings.Current.SpectrumMotion == "iphone")
+            {
+                for (int k = 0; k < Bands; k++) Levels[k] = _targets[k];
+                return;
+            }
             if ((now - _lastPresentation).TotalSeconds >= 0.045)
             {
                 _lastPresentation = now;
@@ -274,42 +282,30 @@ namespace Ovira.Services
             }
         }
 
-        // 0.4.19 — the iPhone's waveform: the bars breathe together with the
-        // loudness, each with its own slow sway and a little of its own
-        // frequency band; never drop below a third while music plays; rise
-        // and fall at the same soft pace; settle to dots on pause. Measured
-        // from a screen recording of the iPhone player.
-        private static readonly double[] SwaySpeed = { 7.3, 9.1, 8.2, 10.4, 7.8, 9.7 };
-        private static readonly double[] SwayPhase = { 0.0, 1.9, 4.1, 0.8, 2.9, 5.2 };
-        private double _energy;
+        // 0.4.20 — the iPhone's waveform, measured frame by frame from a
+        // screen recording of the iPhone player (424 frames, 60 fps):
+        //  · every bar is its own frequency band — neighbours in the treble
+        //    move together, the bass and the low mids do not;
+        //  · the first bar (bass) sits near the top most of the time (avg 0.87),
+        //    the second is the quiet one (avg 0.3), the other four live in the
+        //    middle (avg 0.45–0.66) and seldom drop to a dot;
+        //  · up and down at the same quick, soft pace (half-life ~65 ms,
+        //    typical 2 heights per second, peaks 7) — no jumps, no slow fall.
+        private static readonly double[] IphoneGain = { 1.3, 0.55, 1.0, 0.86, 0.86, 0.8 };
+        private static readonly double[] IphoneFloor = { 0.3, 0.05, 0.12, 0.1, 0.1, 0.08 };
 
         private void StepIphone(double time, double dt, double[] levels, bool playing, bool live)
         {
-            double loud = 0;
-            if (playing)
-            {
-                if (live)
-                {
-                    double sum = 0;
-                    for (int i = 0; i < BarCount && i < levels.Length; i++) sum += Math.Clamp(levels[i], 0, 1);
-                    loud = Math.Clamp(Math.Pow(sum / BarCount, 0.7) * 1.35, 0, 1);
-                }
-                else loud = 0.55 + 0.25 * Synthetic(0, time);
-            }
-            // The overall loudness itself is smoothed, so the bars swell and ease.
-            _energy += (loud - _energy) * (1 - Math.Exp(-dt / 0.12));
             for (int i = 0; i < BarCount; i++)
             {
                 double target;
                 if (!playing) target = 0;
                 else
                 {
-                    double band = live && i < levels.Length ? Math.Clamp(Math.Pow(Math.Clamp(levels[i], 0, 1), 0.9) * 1.1, 0, 1) : Synthetic(i, time) * 0.7;
-                    double sway = 0.5 + 0.5 * Math.Sin(time * SwaySpeed[i] + SwayPhase[i]) * Math.Sin(time * SwaySpeed[i] * 0.37 + SwayPhase[i] * 1.7);
-                    double mix = 0.5 * _energy + 0.3 * band + 0.45 * _energy * (sway - 0.5) + 0.12 * sway;
-                    target = 0.34 + 0.66 * Math.Clamp(mix, 0, 1);
+                    double l = live && i < levels.Length ? Math.Clamp(levels[i], 0, 1) : Synthetic(i, time) * 0.85;
+                    target = live && l <= 0.01 ? 0.04 : Math.Clamp(IphoneFloor[i] + IphoneGain[i] * Math.Pow(l, 0.85) * (1 - IphoneFloor[i]), 0, 1);
                 }
-                double tau = !playing ? 0.18 : target > Heights[i] ? 0.06 : 0.085;
+                double tau = playing ? 0.045 : 0.12;
                 Heights[i] += (target - Heights[i]) * (1 - Math.Exp(-dt / tau));
                 if (!playing && Heights[i] < 0.003) Heights[i] = 0;
             }
