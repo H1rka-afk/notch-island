@@ -59,6 +59,7 @@ namespace Ovira.Island
             {
                 var hwnd = new WindowInteropHelper(this).Handle;
                 Native.AddExStyle(hwnd, Native.WS_EX_TOOLWINDOW | Native.WS_EX_NOACTIVATE);
+                App.Current.VolumeKeys.Attach(hwnd);
             };
             Loaded += (_, _) => { Position(); Relayout(animated: false); };
 

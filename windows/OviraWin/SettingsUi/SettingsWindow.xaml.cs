@@ -694,9 +694,10 @@ namespace Ovira.SettingsUi
                     break;
 
                 case "notifications":
-                    page.Children.Add(Group("Звук", "Такси, доставка и живые активности появятся в следующей версии для Windows.",
+                    page.Children.Add(Group("Звук", "«Вместо индикатора Windows»: Ovira забирает себе только три клавиши громкости (тише, громче, без звука) и меняет громкость сама теми же шагами по 2 %, поэтому системная плашка Windows не появляется. Другие клавиши Ovira не видит. Кнопки громкости на Bluetooth-наушниках и фирменные утилиты ноутбуков могут всё равно показывать свой индикатор.",
                         ToggleRow("Громкость", "Уровень и «Без звука»", nameof(Settings.VolumeBanner), "громкость звук баннер",
                                   () => App.Current.IslandWindow?.DemoVolume()),
+                        VolumeKeysRow(),
                         ToggleRow("Устройство вывода звука", "Когда звук переключился на наушники или динамики", nameof(Settings.OutputBanner), "наушники динамики вывод",
                                   () => App.Current.IslandWindow?.DemoOutput())));
                     page.Children.Add(Group("Клавиатура", "Ovira только спрашивает у Windows, включён ли Caps Lock и какой язык ввода у окна впереди. Нажатые клавиши она не видит и не записывает.",
@@ -797,6 +798,28 @@ namespace Ovira.SettingsUi
         }
 
         private FrameworkElement TextRow(string title, string text) => Row(title, text, new Border());
+
+        // 0.4.21: the switch with a line saying whether the keys were taken.
+        private FrameworkElement VolumeKeysRow()
+        {
+            var row = (Grid)ToggleRow("Вместо индикатора Windows", " ", nameof(Settings.ReplaceVolumeOsd), "индикатор громкости windows системный плашка osd скрыть заменить");
+            var sub = row.Children.OfType<StackPanel>().First().Children.OfType<TextBlock>().Last();
+            void Show()
+            {
+                var keys = App.Current.VolumeKeys;
+                sub.Text = !S.ReplaceVolumeOsd ? "Выключено — громкость показывает Windows"
+                         : keys.Working ? "Клавиши громкости показывают островок, плашки Windows нет"
+                         : "Не получилось: клавиши громкости уже заняты другой программой";
+            }
+            Show();
+            if (!_collecting)
+            {
+                Action changed = () => Dispatcher.BeginInvoke(new Action(Show));
+                App.Current.VolumeKeys.Changed += changed;
+                Closed += (_, _) => App.Current.VolumeKeys.Changed -= changed;
+            }
+            return row;
+        }
 
         private TextBlock? _updText;
         private Button? _updButton;

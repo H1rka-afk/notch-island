@@ -123,6 +123,10 @@ namespace Ovira.Core
         private bool _animatedBackground = true;
         public bool AnimatedBackground { get => _animatedBackground; set => Set(ref _animatedBackground, value); }
 
+        // 0.4.21: the island instead of Windows' own volume indicator.
+        private bool _replaceVolumeOsd = true;
+        public bool ReplaceVolumeOsd { get => _replaceVolumeOsd; set => Set(ref _replaceVolumeOsd, value); }
+
         // 0.4.3: banners that still appear over games and full-screen video.
         private bool _gameVolume = true;
         public bool GameVolume { get => _gameVolume; set => Set(ref _gameVolume, value); }

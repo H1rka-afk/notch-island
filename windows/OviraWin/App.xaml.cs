@@ -25,11 +25,13 @@ namespace Ovira
 
         // 0.4.2: no global 240 fps for every animation any more — it kept the
         // processor busy. The island's springs follow the screen by themselves.
-        public static string Version => "0.4.20";
+        public static string Version => "0.4.21";
 
         public UpdateService Updates { get; } = new UpdateService();
         public EyeBreakService EyeBreak { get; } = new EyeBreakService();
         public KeyboardWatch Keyboard { get; } = new KeyboardWatch();
+        private VolumeKeys? _volumeKeys;
+        public VolumeKeys VolumeKeys => _volumeKeys ??= new VolumeKeys(Audio);
 
         protected override async void OnStartup(StartupEventArgs e)
         {
@@ -190,6 +192,7 @@ namespace Ovira
             Spectrum.Dispose();
             EyeBreak.Stop();
             Keyboard.Stop();
+            _volumeKeys?.Release();
             Shutdown();
             // 0.4.13: nothing left in the background may keep Ovira running
             // (a stuck audio thread used to block the update from starting).

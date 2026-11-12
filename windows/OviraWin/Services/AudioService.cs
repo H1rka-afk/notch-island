@@ -70,6 +70,11 @@ namespace Ovira.Services
             get { try { return _device?.AudioEndpointVolume.Mute ?? false; } catch { return false; } }
         }
 
+        public void ToggleMute()
+        {
+            try { if (_device != null) _device.AudioEndpointVolume.Mute = !_device.AudioEndpointVolume.Mute; } catch { }
+        }
+
         // What is playing right now, 0…1 — for the live bars.
         public float Peak
         {
