@@ -66,7 +66,7 @@ namespace Ovira.SettingsUi
             if (S.StatsEnabled)
             {
                 var bars = WeekBars(58, compact: true);
-                bars.Width = 150;
+                bars.Width = 116;
                 bars.VerticalAlignment = VerticalAlignment.Center;
                 Grid.SetColumn(bars, 2);
                 row.Children.Add(bars);
@@ -92,7 +92,7 @@ namespace Ovira.SettingsUi
 
         private static FrameworkElement TileMetric(string title, string value, string icon)
         {
-            var stack = new StackPanel { MinWidth = 92, Margin = new Thickness(0, 0, 14, 0) };
+            var stack = new StackPanel { MinWidth = 84, Margin = new Thickness(0, 0, 10, 0) };
             stack.Children.Add(new IconView { Icon = icon, Width = 13, Height = 13, HorizontalAlignment = HorizontalAlignment.Left, Opacity = 0.8 });
             stack.Children.Add(new TextBlock { Text = value, FontSize = 17, FontWeight = FontWeights.Black, FontFamily = DisplayFont, Margin = new Thickness(0, 3, 0, 1) });
             stack.Children.Add(new TextBlock { Text = title.ToUpperInvariant(), FontSize = 9, FontWeight = FontWeights.Black, Opacity = 0.7 });

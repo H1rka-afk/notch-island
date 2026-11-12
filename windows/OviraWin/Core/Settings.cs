@@ -183,6 +183,23 @@ namespace Ovira.Core
         private bool _steamActivity = true;
         public bool SteamActivity { get => _steamActivity; set => Set(ref _steamActivity, value); }
 
+        // 0.6.0: desktop widgets.
+        private System.Collections.Generic.List<Ovira.Widgets.WidgetState> _widgets = new();
+        public System.Collections.Generic.List<Ovira.Widgets.WidgetState> Widgets { get => _widgets; set => Set(ref _widgets, value ?? new()); }
+
+        // «glass», «theme», «white» or «mono».
+        private string _widgetStyle = "glass";
+        public string WidgetStyle { get => _widgetStyle; set => Set(ref _widgetStyle, value is "theme" or "white" or "mono" ? value : "glass"); }
+
+        private bool _widgetsLocked;
+        public bool WidgetsLocked { get => _widgetsLocked; set => Set(ref _widgetsLocked, value); }
+
+        private string _weatherCity = "";
+        public string WeatherCity { get => _weatherCity; set => Set(ref _weatherCity, value ?? ""); }
+
+        // Positions and texts inside the widgets change without a new list.
+        public void SaveSoon() => ScheduleSave();
+
         // Banners
         private bool _volumeBanner = true;
         public bool VolumeBanner { get => _volumeBanner; set => Set(ref _volumeBanner, value); }
@@ -261,7 +278,7 @@ namespace Ovira.Core
             foreach (var p in typeof(Settings).GetProperties())
             {
                 if (p.CanWrite && p.CanRead && p.Name != nameof(Section) && p.Name != nameof(OpenOnHover) &&
-                    p.Name != nameof(CustomThemes) && p.Name != nameof(LastUpdateCheck) && p.Name != nameof(SavedTracks) && p.Name != nameof(Alarms) && p.Name != nameof(YandexToken) && p.Name != nameof(UserProfiles) && p.Name != nameof(CustomProfile))
+                    p.Name != nameof(CustomThemes) && p.Name != nameof(LastUpdateCheck) && p.Name != nameof(SavedTracks) && p.Name != nameof(Widgets) && p.Name != nameof(Alarms) && p.Name != nameof(YandexToken) && p.Name != nameof(UserProfiles) && p.Name != nameof(CustomProfile))
                     p.SetValue(this, p.GetValue(fresh));
             }
         }

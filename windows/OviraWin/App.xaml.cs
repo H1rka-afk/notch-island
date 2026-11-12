@@ -25,7 +25,7 @@ namespace Ovira
 
         // 0.4.2: no global 240 fps for every animation any more — it kept the
         // processor busy. The island's springs follow the screen by themselves.
-        public static string Version => "0.5.1";
+        public static string Version => "0.6.0";
 
         public UpdateService Updates { get; } = new UpdateService();
         public EyeBreakService EyeBreak { get; } = new EyeBreakService();
@@ -126,6 +126,7 @@ namespace Ovira
             Stats.InCall = () => Calls.Current != null;
             Calls.Changed += () => { if (Calls.Current != null && !_inCall) Stats.Record(StatEvent.Call); _inCall = Calls.Current != null; };
             Stats.Start();
+            Ovira.Widgets.WidgetManager.Start();
             if (firstRun)
             {
                 Settings.Current.Save();
@@ -278,6 +279,7 @@ namespace Ovira
             EyeBreak.Stop();
             Keyboard.Stop();
             Stats.Stop();
+            Ovira.Widgets.WidgetManager.CloseAll();
             _volumeKeys?.Release();
             Shutdown();
             // 0.4.13: nothing left in the background may keep Ovira running
