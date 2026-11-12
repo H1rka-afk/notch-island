@@ -25,13 +25,15 @@ namespace Ovira
 
         // 0.4.2: no global 240 fps for every animation any more — it kept the
         // processor busy. The island's springs follow the screen by themselves.
-        public static string Version => "0.5.0";
+        public static string Version => "0.5.1";
 
         public UpdateService Updates { get; } = new UpdateService();
         public EyeBreakService EyeBreak { get; } = new EyeBreakService();
         public KeyboardWatch Keyboard { get; } = new KeyboardWatch();
         public ClockService Clock { get; } = new ClockService();
         public CallService Calls { get; } = new CallService();
+        public SteamService Steam { get; } = new SteamService();
+        public StatsService Stats { get; } = new StatsService();
         private VolumeKeys? _volumeKeys;
         public VolumeKeys VolumeKeys => _volumeKeys ??= new VolumeKeys(Audio);
 
@@ -115,6 +117,15 @@ namespace Ovira
             Calls.Changed += () => _island?.RefreshActivity();
             Clock.Start();
             Calls.Start();
+            // 0.5.1: Steam downloads and the day's statistics.
+            Steam.Changed += () => _island?.RefreshActivity();
+            Steam.Finished += name => _island?.ShowNote("checkmark.circle", "Готово");
+            Steam.Start();
+            Stats.IsPlaying = () => Media.Track?.Playing == true;
+            Stats.CurrentTrack = () => Media.Track is { } t ? t.Title + "\u0001" + t.Artist : null;
+            Stats.InCall = () => Calls.Current != null;
+            Calls.Changed += () => { if (Calls.Current != null && !_inCall) Stats.Record(StatEvent.Call); _inCall = Calls.Current != null; };
+            Stats.Start();
             if (firstRun)
             {
                 Settings.Current.Save();
@@ -180,6 +191,8 @@ namespace Ovira
 
         private void OnBalloonClicked(object? sender, EventArgs e) => Dispatcher.BeginInvoke(new Action(Updates.Install));
 
+        private bool _inCall;
+        private static readonly System.Windows.Media.Color SteamBlue = System.Windows.Media.Color.FromRgb(0x1A, 0x9F, 0xFF);
         private static readonly System.Windows.Media.Color Green = System.Windows.Media.Color.FromRgb(0x34, 0xC7, 0x59);
         private static readonly System.Windows.Media.Color Amber = System.Windows.Media.Color.FromRgb(0xFF, 0x9F, 0x0A);
         private static readonly System.Windows.Media.Color Yellow = System.Windows.Media.Color.FromRgb(0xFF, 0xD6, 0x0A);
@@ -201,6 +214,24 @@ namespace Ovira
                 return new Island.IslandWindow.Activity("ring", "bell", Amber, alarm ? Clock.RingingTime : "Готово", what,
                     alarm ? Clock.RingingTime : "Время вышло", alarm ? "moon" : null, alarm ? () => Clock.Snooze() : null, false,
                     "xmark", Clock.StopRinging, TapRuns: true);
+            }
+            if (Steam.Current is { } d)
+            {
+                var percent = (int)Math.Floor(d.Progress * 100) + " %";
+                var state = d.Installing ? "Установка" : d.Paused ? "Пауза" : percent;
+                var details = new (string, string)[]
+                {
+                    ("Прошло", ClockService.Format(d.Elapsed)),
+                    ("Осталось", d.Installing ? "почти всё" : d.Left is { } left ? ClockService.Format(left) : "—"),
+                    ("Скачано", d.Total > 0 ? SteamService.Size(d.Done) + " из " + SteamService.Size(d.Total) : "—"),
+                    ("Скорость", SteamService.Rate(d.Speed)),
+                    ("Пик", SteamService.Rate(d.Peak)),
+                    ("Диск", SteamService.Rate(d.Disk)),
+                };
+                var steam = new Island.IslandWindow.Activity("steam", "arrow.down", SteamBlue, d.Installing ? "Уст." : d.Paused ? "Пауза" : percent,
+                    "Steam · " + state, d.Name, null, null, false, "xmark", Steam.Dismiss, Progress: d.Progress, Details: details);
+                // A running timer or stopwatch keeps the small banner; Steam shows when they do not.
+                if (!Clock.TimerActive && !Clock.StopwatchActive) return steam;
             }
             if (Clock.TimerActive)
             {
@@ -246,6 +277,7 @@ namespace Ovira
             Spectrum.Dispose();
             EyeBreak.Stop();
             Keyboard.Stop();
+            Stats.Stop();
             _volumeKeys?.Release();
             Shutdown();
             // 0.4.13: nothing left in the background may keep Ovira running

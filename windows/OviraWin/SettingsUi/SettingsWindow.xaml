@@ -536,6 +536,8 @@
                                         <RowDefinition Height="150" />
                                         <RowDefinition Height="150" />
                                         <RowDefinition Height="150" />
+                                        <!-- 0.5.1: the wide «Статистика» tile -->
+                                        <RowDefinition Height="126" />
                                     </Grid.RowDefinitions>
                                 </Grid>
                             </StackPanel>

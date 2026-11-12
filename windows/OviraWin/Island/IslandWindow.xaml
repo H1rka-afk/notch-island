@@ -196,8 +196,8 @@
                     </Grid>
                 </Grid>
                 <!-- 0.5.0: a live activity opened — a call, the timer, the stopwatch, an alarm -->
-                <Grid x:Name="ActivityLayer" Height="104" Opacity="0">
-                    <Grid Margin="20,14,16,14">
+                <StackPanel x:Name="ActivityLayer" Opacity="0">
+                    <Grid Margin="20,14,16,14" Height="76">
                         <Grid.ColumnDefinitions>
                             <ColumnDefinition Width="Auto" />
                             <ColumnDefinition Width="*" />
@@ -230,7 +230,17 @@
                             </Button>
                         </StackPanel>
                     </Grid>
-                </Grid>
+                    <!-- 0.5.1: details of a long job (a Steam download): progress and figures -->
+                    <StackPanel x:Name="ActivityDetails" Margin="20,-4,20,14" Visibility="Collapsed">
+                        <Grid Height="5" Margin="0,0,0,10">
+                            <Border CornerRadius="2.5" Background="#2EFFFFFF" />
+                            <Border x:Name="ActivityProgress" CornerRadius="2.5" Background="White" RenderTransformOrigin="0,0.5">
+                                <Border.RenderTransform><ScaleTransform x:Name="ActivityProgressScale" ScaleX="0" /></Border.RenderTransform>
+                            </Border>
+                        </Grid>
+                        <UniformGrid x:Name="ActivityFigures" Columns="3" />
+                    </StackPanel>
+                </StackPanel>
             </Canvas>
         </Grid>
     </Canvas>

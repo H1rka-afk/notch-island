@@ -55,6 +55,7 @@ namespace Ovira.Services
             TimerTotal = length;
             _timerEnd = DateTime.Now + length;
             _timerPausedLeft = null;
+            App.Current.Stats.Record(StatEvent.Timer);
             Changed?.Invoke();
         }
 

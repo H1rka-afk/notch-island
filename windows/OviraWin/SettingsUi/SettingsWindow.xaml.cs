@@ -44,6 +44,7 @@ namespace Ovira.SettingsUi
             new("spectrum", "Спектрограмма", "Шесть полосок по настоящему звуку: вид, размытие и плавность", "Обложка, размытие, кадры", "waveform", Color.FromRgb(0xA8, 0x5C, 0xF2), "music"),
             new("notifications", "Уведомления", "Громкость, звук и клавиатура — короткие баннеры в островке", "Громкость, Caps Lock, раскладка", "bell", Color.FromRgb(0xFF, 0x45, 0x3A), "volume"),
             new("devices", "Устройства", "Батарея и зарядка ноутбука", "Зарядка и низкий заряд", "bolt", Color.FromRgb(0x33, 0xBF, 0x59), "charging"),
+            new("stats", "Статистика", "Твой день за компьютером: работа, музыка, перерывы", "Сегодня и неделя", "chart", Color.FromRgb(0x1A, 0xB8, 0x9E), "music"),
             new("clock", "Часы", "Таймер, секундомер и будильник", "Таймер, будильник", "timer", Color.FromRgb(0xFF, 0x9F, 0x0A), "timer"),
             new("helper", "Помощник", "Отдых для глаз по правилу 20-20-20", "Отдых для глаз", "eye", Color.FromRgb(0x26, 0xB5, 0xC9), "eye"),
         };
@@ -77,6 +78,9 @@ namespace Ovira.SettingsUi
                                                                      DispatcherPriority.Background);
             app.Media.Changed += onTrack;
             S.PropertyChanged += OnSettingChanged;
+            Action statsChanged = () => Dispatcher.BeginInvoke(new Action(RefreshStatsTile), DispatcherPriority.Background);
+            app.Stats.Changed += statsChanged;
+            Closed += (_, _) => app.Stats.Changed -= statsChanged;
             Action updates = () => Dispatcher.BeginInvoke(new Action(ShowUpdateState));
             app.Updates.Changed += updates;
             Closed += (_, _) => { app.Media.Changed -= onTrack; app.Updates.Changed -= updates; S.PropertyChanged -= OnSettingChanged; _stageTimer.Stop(); _stageCycle.Stop(); };
@@ -101,6 +105,7 @@ namespace Ovira.SettingsUi
                 return;
             }
             if (e.PropertyName == nameof(Settings.AnimatedBackground)) UpdateAuroraClock();
+            if (e.PropertyName == nameof(Settings.StatsEnabled)) { FillStats(); _statsTileKey = ""; if (_current == null) RefreshStatsTile(); }
             if (e.PropertyName == nameof(Settings.IslandStyle)) DrawStage();
             if (e.PropertyName == nameof(Settings.SavedTracks)) FillSaved();
             if (_current?.Key == "profiles") ScheduleProfiles();
@@ -189,6 +194,9 @@ namespace Ovira.SettingsUi
             Place(Tile(Find("helper")), 2, 1);
             Place(Tile(Find("clock")), 2, 2);
             Place(ThemeTile(), 2, 3);
+            var stats = StatsTile();
+            Grid.SetColumnSpan(stats, 4);
+            Place(stats, 3, 0);
         }
 
         // 0.4.12: each tile (with its glow) is kept as a ready picture. The
@@ -651,6 +659,10 @@ namespace Ovira.SettingsUi
                     BuildClockPage(page);
                     break;
 
+                case "stats":
+                    BuildStatsPage(page);
+                    break;
+
                 case "helper":
                     page.Children.Add(Group("Отдых для глаз", "Считается только время за компьютером — клавиатура или мышь в последнюю минуту. Пять минут без компьютера — глаза уже отдохнули, счёт начинается заново. Во время звонка (заняты микрофон или камера) перерыв подождёт; поверх игры или видео на весь экран — тоже, если не включено «Поверх игр». Нажми на островок, чтобы пропустить перерыв.",
                         ToggleRow("Напоминать об отдыхе", "Островок попросит 20 секунд посмотреть вдаль", nameof(Settings.EyeBreak), "отдых глаза перерыв 20-20-20 помощник",
@@ -711,6 +723,8 @@ namespace Ovira.SettingsUi
                                   () => App.Current.IslandWindow?.DemoOutput())));
                     page.Children.Add(Group("Звонки", "Ovira замечает звонок по тому, что Discord или VK Мессенджер (приложение или вкладка в браузере) включили микрофон. В островке — зелёная трубка и время звонка; нажми на островок: «Микрофон» выключает микрофон Windows целиком — тебя не слышно ни в одной программе, «Отключиться» нажимает кнопку завершения в самом Discord или VK.",
                         ToggleRow("Звонки в островке", "Discord и VK Мессенджер: время, микрофон и «Отключиться»", nameof(Settings.CallActivity), "звонок discord дискорд vk вк мессенджер микрофон отключиться")));
+                    page.Children.Add(Group("Steam", "Пока Steam качает игру, островок показывает процент; нажми на островок — прошло, осталось, скорость сейчас и пиковая, запись на диск, как на странице загрузок Steam. Ovira только читает то, что Steam сам записывает (отметку «обновляется» и файл игры в библиотеке), и ничего в Steam не меняет. Скорость — это всё, что компьютер получает из сети: если одновременно идёт видео, цифра чуть выше, чем в Steam.",
+                        ToggleRow("Загрузки Steam", "Процент в островке и подробности в раскрытом", nameof(Settings.SteamActivity), "steam стим загрузка скачивание игра скорость")));
                     page.Children.Add(Group("Клавиатура", "Ovira только спрашивает у Windows, включён ли Caps Lock и какой язык ввода у окна впереди. Нажатые клавиши она не видит и не записывает.",
                         ToggleRow("Caps Lock", "Справа «Вкл» или «Выкл»", nameof(Settings.CapsLockBanner), "капс caps lock заглавные",
                                   () => App.Current.IslandWindow?.DemoCapsLock()),

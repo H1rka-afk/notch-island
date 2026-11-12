@@ -176,6 +176,13 @@ namespace Ovira.Core
         private bool _livingCover = true;
         public bool LivingCover { get => _livingCover; set => Set(ref _livingCover, value); }
 
+        // 0.5.1: statistics for the day; Steam downloads in the island.
+        private bool _statsEnabled = true;
+        public bool StatsEnabled { get => _statsEnabled; set => Set(ref _statsEnabled, value); }
+
+        private bool _steamActivity = true;
+        public bool SteamActivity { get => _steamActivity; set => Set(ref _steamActivity, value); }
+
         // Banners
         private bool _volumeBanner = true;
         public bool VolumeBanner { get => _volumeBanner; set => Set(ref _volumeBanner, value); }

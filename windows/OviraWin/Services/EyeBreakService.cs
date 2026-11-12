@@ -87,6 +87,7 @@ namespace Ovira.Services
                 _second.Stop();
                 Chime.Play(start: false);
                 _island?.ShowEyeBreakDone();
+                App.Current.Stats.Record(StatEvent.EyeBreak);
                 return;
             }
             Present();
@@ -103,6 +104,7 @@ namespace Ovira.Services
             if (!Running) return;
             _second.Stop();
             _island?.ShowEyeBreakSkipped();
+            App.Current.Stats.Record(StatEvent.EyeSkipped);
         }
 
         // ---- the system ----

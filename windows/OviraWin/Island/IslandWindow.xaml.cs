@@ -124,7 +124,8 @@ namespace Ovira.Island
         private bool _wing;
         private double BannerW => (Middle + (_wing ? 120 : 150)) * Scale;
         private double ExpandedW => 353 * Scale;
-        private double ExpandedH => _activityOpen ? 104 : !S.PlayerNew ? 168 : (S.VolumeRow ? 206 : 186);
+        private double ExpandedH => _activityOpen ? (_shownActivity?.Details != null ? 104 + 19 + 46 * Math.Ceiling(_shownActivity.Details.Length / 3.0) : 104)
+                                    : !S.PlayerNew ? 168 : (S.VolumeRow ? 206 : 186);
         private double IdleW => Middle * 0.8 * Scale;
         private const double IdleH = 30;
 
@@ -815,7 +816,8 @@ namespace Ovira.Island
         // (volume…) goes over it and then gives the place back.
 
         public sealed record Activity(string Key, string Icon, Color Colour, string Right, string Title, string Big,
-                                      string? IconA, Action? A, bool ARed, string IconB, Action B, bool TapRuns = false);
+                                      string? IconA, Action? A, bool ARed, string IconB, Action B, bool TapRuns = false,
+                                      double? Progress = null, (string Label, string Value)[]? Details = null);
 
         public Func<Activity?>? ActivitySource;
         private bool _activityBanner, _activityOpen;
@@ -871,6 +873,7 @@ namespace Ovira.Island
             _activityBanner = false;
             _bannerTimer.Stop();
             _activityOpen = true;
+            _shownActivity = a;
             FillActivity(a);
             _peek.To(1, Motion.PeekResponse, 0.9);
             SetMode(Mode.Expanded);
@@ -889,6 +892,33 @@ namespace Ovira.Island
             ActivityABg.Background = new SolidColorBrush(a.ARed ? Color.FromRgb(0xFF, 0x3B, 0x30) : Color.FromArgb(0x33, 0xFF, 0xFF, 0xFF));
             ActivityBIcon.Icon = a.IconB;
             ActivityC.Visibility = HasTrack ? Visibility.Visible : Visibility.Collapsed;
+            ActivityBig.FontSize = a.Details != null ? 22 : 30;
+            ActivityBBg.Background = new SolidColorBrush(a.Details != null ? Color.FromArgb(0x33, 0xFF, 0xFF, 0xFF) : Color.FromRgb(0xFF, 0x3B, 0x30));
+            ActivityDetails.Visibility = a.Details != null ? Visibility.Visible : Visibility.Collapsed;
+            if (a.Details != null)
+            {
+                ActivityProgress.Background = new SolidColorBrush(colour);
+                ActivityProgressScale.BeginAnimation(ScaleTransform.ScaleXProperty,
+                    new DoubleAnimation(Math.Clamp(a.Progress ?? 0, 0, 1), TimeSpan.FromSeconds(0.5)));
+                // Figures: a small grey caption over a white value, three in a row.
+                if (ActivityFigures.Children.Count != a.Details.Length)
+                {
+                    ActivityFigures.Children.Clear();
+                    foreach (var _ in a.Details)
+                    {
+                        var cell = new StackPanel { Height = 46 };
+                        cell.Children.Add(new TextBlock { Foreground = new SolidColorBrush(Color.FromArgb(0x99, 0xFF, 0xFF, 0xFF)), FontSize = 10.5, FontWeight = FontWeights.SemiBold });
+                        cell.Children.Add(new TextBlock { Foreground = Brushes.White, FontSize = 15, FontWeight = FontWeights.SemiBold, Margin = new Thickness(0, 1, 0, 0) });
+                        ActivityFigures.Children.Add(cell);
+                    }
+                }
+                for (int i = 0; i < a.Details.Length; i++)
+                {
+                    var cell = (StackPanel)ActivityFigures.Children[i];
+                    ((TextBlock)cell.Children[0]).Text = a.Details[i].Label.ToUpperInvariant();
+                    ((TextBlock)cell.Children[1]).Text = a.Details[i].Value;
+                }
+            }
         }
 
         private void OnActivityA(object sender, RoutedEventArgs e) { _shownActivity?.A?.Invoke(); RefreshActivity(); }
