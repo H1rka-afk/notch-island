@@ -44,6 +44,7 @@ namespace Ovira.SettingsUi
             new("spectrum", "Спектрограмма", "Шесть полосок по настоящему звуку: вид, размытие и плавность", "Обложка, размытие, кадры", "waveform", Color.FromRgb(0xA8, 0x5C, 0xF2), "music"),
             new("notifications", "Уведомления", "Громкость, звук и клавиатура — короткие баннеры в островке", "Громкость, Caps Lock, раскладка", "bell", Color.FromRgb(0xFF, 0x45, 0x3A), "volume"),
             new("devices", "Устройства", "Батарея и зарядка ноутбука", "Зарядка и низкий заряд", "bolt", Color.FromRgb(0x33, 0xBF, 0x59), "charging"),
+            new("clock", "Часы", "Таймер, секундомер и будильник", "Таймер, будильник", "timer", Color.FromRgb(0xFF, 0x9F, 0x0A), "timer"),
             new("helper", "Помощник", "Отдых для глаз по правилу 20-20-20", "Отдых для глаз", "eye", Color.FromRgb(0x26, 0xB5, 0xC9), "eye"),
         };
 
@@ -186,9 +187,8 @@ namespace Ovira.SettingsUi
             Place(Tile(Find("notifications")), 1, 3);
             Place(Tile(Find("devices")), 2, 0);
             Place(Tile(Find("helper")), 2, 1);
-            var look = ThemeTile();
-            Grid.SetColumnSpan(look, 2);
-            Place(look, 2, 2);
+            Place(Tile(Find("clock")), 2, 2);
+            Place(ThemeTile(), 2, 3);
         }
 
         // 0.4.12: each tile (with its glow) is kept as a ready picture. The
@@ -305,7 +305,7 @@ namespace Ovira.SettingsUi
                 bg = new LinearGradientBrush(new GradientStopCollection(colours.Select((c, i) =>
                     new GradientStop(Themes.Scale(c, 0.62), colours.Count == 1 ? 0 : (double)i / (colours.Count - 1)))), 20);
             var strip = new StackPanel { Orientation = Orientation.Horizontal };
-            foreach (var other in all.Take(9))
+            foreach (var other in all.Take(3))
             {
                 var dot = new Border { Width = 22, Height = 22, CornerRadius = new CornerRadius(11), Margin = new Thickness(4, 0, 0, 0), Background = PreviewBrush(other.Preview),
                                        BorderThickness = new Thickness(other.Id == t.Id ? 2 : 1), BorderBrush = new SolidColorBrush(Color.FromArgb(other.Id == t.Id ? (byte)0xFF : (byte)0x66, 0xFF, 0xFF, 0xFF)) };
@@ -464,6 +464,10 @@ namespace Ovira.SettingsUi
                 case "charging":
                     icon = "bolt"; colour = Color.FromRgb(0x34, 0xC7, 0x59); word = "76 %";
                     caption = "Зарядка — молния и процент";
+                    break;
+                case "timer":
+                    icon = "timer"; colour = Color.FromRgb(0xFF, 0x9F, 0x0A); word = "4:59";
+                    caption = "Таймер, секундомер и будильник — время справа в островке";
                     break;
                 case "eye":
                     icon = "eye"; colour = Color.FromRgb(0x40, 0xCC, 0xD9); word = "Вдаль";
@@ -643,6 +647,10 @@ namespace Ovira.SettingsUi
                     page.Children.Add(ProfilesPage());
                     break;
 
+                case "clock":
+                    BuildClockPage(page);
+                    break;
+
                 case "helper":
                     page.Children.Add(Group("Отдых для глаз", "Считается только время за компьютером — клавиатура или мышь в последнюю минуту. Пять минут без компьютера — глаза уже отдохнули, счёт начинается заново. Во время звонка (заняты микрофон или камера) перерыв подождёт; поверх игры или видео на весь экран — тоже, если не включено «Поверх игр». Нажми на островок, чтобы пропустить перерыв.",
                         ToggleRow("Напоминать об отдыхе", "Островок попросит 20 секунд посмотреть вдаль", nameof(Settings.EyeBreak), "отдых глаза перерыв 20-20-20 помощник",
@@ -672,6 +680,7 @@ namespace Ovira.SettingsUi
                                    new (string, object)[] { ("Новый", true), ("Классический", false) }, nameof(Settings.PlayerNew), "вид плеера новый классический старый островок"),
                         ToggleRow("Громкость в плеере", "Ползунок громкости под кнопками, как на Mac", nameof(Settings.VolumeRow), "громкость ползунок"),
                         ToggleRow("Выбор устройства вывода звука", "Кнопка в плеере: динамики, наушники, монитор", nameof(Settings.OutputPicker), "вывод звук наушники динамики устройство"),
+                        ToggleRow("Живая обложка", "Обложка в раскрытом плеере медленно приближается и отдаляется, пока играет музыка", nameof(Settings.LivingCover), "живая анимированная обложка движение"),
                         ToggleRow("Кнопка «Сохранить»", "Звёздочка слева в плеере. В Яндекс Музыке — настоящее «Мне нравится», в остальных плеерах песня попадает в список ниже", nameof(Settings.SaveButton), "сохранить звезда избранное лайк нравится яндекс"),
                         ButtonRow("Открыть плеер", "Показать, как он выглядит прямо сейчас", "Показать", () => App.Current.IslandWindow?.DemoOpen(), "показать открыть плеер")));
                     page.Children.Add(YandexGroup());
@@ -700,6 +709,8 @@ namespace Ovira.SettingsUi
                         VolumeKeysRow(),
                         ToggleRow("Устройство вывода звука", "Когда звук переключился на наушники или динамики", nameof(Settings.OutputBanner), "наушники динамики вывод",
                                   () => App.Current.IslandWindow?.DemoOutput())));
+                    page.Children.Add(Group("Звонки", "Ovira замечает звонок по тому, что Discord или VK Мессенджер (приложение или вкладка в браузере) включили микрофон. В островке — зелёная трубка и время звонка; нажми на островок: «Микрофон» выключает микрофон Windows целиком — тебя не слышно ни в одной программе, «Отключиться» нажимает кнопку завершения в самом Discord или VK.",
+                        ToggleRow("Звонки в островке", "Discord и VK Мессенджер: время, микрофон и «Отключиться»", nameof(Settings.CallActivity), "звонок discord дискорд vk вк мессенджер микрофон отключиться")));
                     page.Children.Add(Group("Клавиатура", "Ovira только спрашивает у Windows, включён ли Caps Lock и какой язык ввода у окна впереди. Нажатые клавиши она не видит и не записывает.",
                         ToggleRow("Caps Lock", "Справа «Вкл» или «Выкл»", nameof(Settings.CapsLockBanner), "капс caps lock заглавные",
                                   () => App.Current.IslandWindow?.DemoCapsLock()),

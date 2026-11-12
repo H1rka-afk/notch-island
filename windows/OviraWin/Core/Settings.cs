@@ -166,6 +166,16 @@ namespace Ovira.Core
         private string _yandexToken = "";
         public string YandexToken { get => _yandexToken; set => Set(ref _yandexToken, value ?? ""); }
 
+        // 0.5.0: alarms, calls in the island, the living cover.
+        private System.Collections.Generic.List<Ovira.Services.Alarm> _alarms = new();
+        public System.Collections.Generic.List<Ovira.Services.Alarm> Alarms { get => _alarms; set => Set(ref _alarms, value ?? new()); }
+
+        private bool _callActivity = true;
+        public bool CallActivity { get => _callActivity; set => Set(ref _callActivity, value); }
+
+        private bool _livingCover = true;
+        public bool LivingCover { get => _livingCover; set => Set(ref _livingCover, value); }
+
         // Banners
         private bool _volumeBanner = true;
         public bool VolumeBanner { get => _volumeBanner; set => Set(ref _volumeBanner, value); }
@@ -244,7 +254,7 @@ namespace Ovira.Core
             foreach (var p in typeof(Settings).GetProperties())
             {
                 if (p.CanWrite && p.CanRead && p.Name != nameof(Section) && p.Name != nameof(OpenOnHover) &&
-                    p.Name != nameof(CustomThemes) && p.Name != nameof(LastUpdateCheck) && p.Name != nameof(SavedTracks) && p.Name != nameof(YandexToken) && p.Name != nameof(UserProfiles) && p.Name != nameof(CustomProfile))
+                    p.Name != nameof(CustomThemes) && p.Name != nameof(LastUpdateCheck) && p.Name != nameof(SavedTracks) && p.Name != nameof(Alarms) && p.Name != nameof(YandexToken) && p.Name != nameof(UserProfiles) && p.Name != nameof(CustomProfile))
                     p.SetValue(this, p.GetValue(fresh));
             }
         }

@@ -195,6 +195,42 @@
                         </ScrollViewer>
                     </Grid>
                 </Grid>
+                <!-- 0.5.0: a live activity opened — a call, the timer, the stopwatch, an alarm -->
+                <Grid x:Name="ActivityLayer" Height="104" Opacity="0">
+                    <Grid Margin="20,14,16,14">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="Auto" />
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="Auto" />
+                        </Grid.ColumnDefinitions>
+                        <Border x:Name="ActivityIconBox" Width="46" Height="46" CornerRadius="23" VerticalAlignment="Center">
+                            <core:IconView x:Name="ActivityIcon" Icon="timer" Width="22" Height="22" />
+                        </Border>
+                        <StackPanel Grid.Column="1" Margin="14,0,8,0" VerticalAlignment="Center">
+                            <TextBlock x:Name="ActivityTitle" Foreground="#A6FFFFFF" FontSize="13" FontWeight="SemiBold" TextTrimming="CharacterEllipsis" />
+                            <TextBlock x:Name="ActivityBig" Foreground="White" FontSize="30" FontWeight="SemiBold" Margin="0,-2,0,0"
+                                       Typography.NumeralAlignment="Tabular" TextTrimming="CharacterEllipsis" />
+                        </StackPanel>
+                        <StackPanel Grid.Column="2" Orientation="Horizontal" VerticalAlignment="Center">
+                            <Button x:Name="ActivityC" Style="{StaticResource IslandButton}" Width="40" Height="44" Margin="0,0,6,0"
+                                    Click="OnActivityC" ToolTip="К плееру">
+                                <Border Width="38" Height="38" CornerRadius="19" Background="#1FFFFFFF">
+                                    <core:IconView Icon="music.note" Width="17" Height="17" />
+                                </Border>
+                            </Button>
+                            <Button x:Name="ActivityA" Style="{StaticResource IslandButton}" Width="48" Height="48" Margin="0,0,8,0" Click="OnActivityA">
+                                <Border x:Name="ActivityABg" Width="46" Height="46" CornerRadius="23" Background="#33FFFFFF">
+                                    <core:IconView x:Name="ActivityAIcon" Icon="pause" Width="20" Height="20" />
+                                </Border>
+                            </Button>
+                            <Button x:Name="ActivityB" Style="{StaticResource IslandButton}" Width="48" Height="48" Click="OnActivityB">
+                                <Border x:Name="ActivityBBg" Width="46" Height="46" CornerRadius="23" Background="#FFFF3B30">
+                                    <core:IconView x:Name="ActivityBIcon" Icon="xmark" Width="18" Height="18" />
+                                </Border>
+                            </Button>
+                        </StackPanel>
+                    </Grid>
+                </Grid>
             </Canvas>
         </Grid>
     </Canvas>

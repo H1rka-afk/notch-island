@@ -25,11 +25,13 @@ namespace Ovira
 
         // 0.4.2: no global 240 fps for every animation any more — it kept the
         // processor busy. The island's springs follow the screen by themselves.
-        public static string Version => "0.4.21";
+        public static string Version => "0.5.0";
 
         public UpdateService Updates { get; } = new UpdateService();
         public EyeBreakService EyeBreak { get; } = new EyeBreakService();
         public KeyboardWatch Keyboard { get; } = new KeyboardWatch();
+        public ClockService Clock { get; } = new ClockService();
+        public CallService Calls { get; } = new CallService();
         private VolumeKeys? _volumeKeys;
         public VolumeKeys VolumeKeys => _volumeKeys ??= new VolumeKeys(Audio);
 
@@ -107,6 +109,12 @@ namespace Ovira
             Keyboard.CapsLockChanged += on => _island?.ShowCapsLock(on);
             Keyboard.LayoutChanged += code => _island?.ShowLayout(code);
             Keyboard.Start();
+            // 0.5.0: live activities — a call, the timer, the stopwatch, alarms.
+            _island.ActivitySource = CurrentActivity;
+            Clock.Changed += () => _island?.RefreshActivity();
+            Calls.Changed += () => _island?.RefreshActivity();
+            Clock.Start();
+            Calls.Start();
             if (firstRun)
             {
                 Settings.Current.Save();
@@ -171,6 +179,52 @@ namespace Ovira
         }
 
         private void OnBalloonClicked(object? sender, EventArgs e) => Dispatcher.BeginInvoke(new Action(Updates.Install));
+
+        private static readonly System.Windows.Media.Color Green = System.Windows.Media.Color.FromRgb(0x34, 0xC7, 0x59);
+        private static readonly System.Windows.Media.Color Amber = System.Windows.Media.Color.FromRgb(0xFF, 0x9F, 0x0A);
+        private static readonly System.Windows.Media.Color Yellow = System.Windows.Media.Color.FromRgb(0xFF, 0xD6, 0x0A);
+
+        // What the island shows as a live activity: a call first, then a
+        // ringing alarm or timer, then the timer, then the stopwatch.
+        private Island.IslandWindow.Activity? CurrentActivity()
+        {
+            if (Calls.Current is { } call)
+            {
+                var length = ClockService.Format(DateTime.Now - call.Since);
+                bool muted = Calls.MicMuted;
+                return new Island.IslandWindow.Activity("call", "phone.fill", Green, length, call.App, length,
+                    muted ? "mic.slash" : "mic", Calls.ToggleMic, muted, "phone.down", HangUp);
+            }
+            if (Clock.Ringing is { } what)
+            {
+                bool alarm = what != "Таймер";
+                return new Island.IslandWindow.Activity("ring", "bell", Amber, alarm ? Clock.RingingTime : "Готово", what,
+                    alarm ? Clock.RingingTime : "Время вышло", alarm ? "moon" : null, alarm ? () => Clock.Snooze() : null, false,
+                    "xmark", Clock.StopRinging, TapRuns: true);
+            }
+            if (Clock.TimerActive)
+            {
+                var left = ClockService.Format(Clock.TimerLeft);
+                return new Island.IslandWindow.Activity("timer", "timer", Amber, left, Clock.TimerPaused ? "Таймер · пауза" : "Таймер", left,
+                    Clock.TimerPaused ? "play" : "pause", () => { if (Clock.TimerPaused) Clock.ResumeTimer(); else Clock.PauseTimer(); }, false,
+                    "xmark", Clock.CancelTimer);
+            }
+            if (Clock.StopwatchActive)
+            {
+                var t = Clock.StopwatchTime;
+                return new Island.IslandWindow.Activity("stopwatch", "timer", Yellow, ClockService.Format(t),
+                    Clock.StopwatchRunning ? "Секундомер" : "Секундомер · пауза", ClockService.FormatPrecise(t),
+                    Clock.StopwatchRunning ? "pause" : "play", () => { if (Clock.StopwatchRunning) Clock.PauseStopwatch(); else Clock.StartStopwatch(); }, false,
+                    "xmark", Clock.ResetStopwatch);
+            }
+            return null;
+        }
+
+        private async void HangUp()
+        {
+            var ok = await Calls.HangUpAsync();
+            if (!ok) _island?.ShowNote("xmark", "Не нашёл кнопку");
+        }
 
         public void OpenSettings()
         {

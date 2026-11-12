@@ -99,8 +99,9 @@ namespace Ovira.Island
                                     Native.SWP_NOMOVE | Native.SWP_NOSIZE | Native.SWP_NOACTIVATE);
             // 0.4.15: «Медиаплеер поверх игр» — while music plays the island
             // stays over games and full-screen video.
+            // 0.5.0: on pause too — the player does not vanish from the game.
             var hide = S.HideInFullscreen && Native.FullscreenAppInFront() &&
-                       !(S.GameMedia && _media.Track?.Playing == true);
+                       !(S.GameMedia && HasTrack);
             if (hide != _hiddenForFullscreen)
             {
                 _hiddenForFullscreen = hide;
@@ -123,7 +124,7 @@ namespace Ovira.Island
         private bool _wing;
         private double BannerW => (Middle + (_wing ? 120 : 150)) * Scale;
         private double ExpandedW => 353 * Scale;
-        private double ExpandedH => !S.PlayerNew ? 168 : (S.VolumeRow ? 206 : 186);
+        private double ExpandedH => _activityOpen ? 104 : !S.PlayerNew ? 168 : (S.VolumeRow ? 206 : 186);
         private double IdleW => Middle * 0.8 * Scale;
         private const double IdleH = 30;
 
@@ -134,7 +135,7 @@ namespace Ovira.Island
 
         // Busy = the player is open or a banner is showing (eye breaks and
         // updates wait for it).
-        public bool Busy => _mode is Mode.Expanded or Mode.Banner;
+        public bool Busy => _mode == Mode.Expanded || (_mode == Mode.Banner && !_activityBanner);
 
         // 0.4.2: the transparent window is only as tall as it must be — the
         // processor redraws every pixel of it, so 720×64 instead of 720×320
@@ -157,7 +158,9 @@ namespace Ovira.Island
             FitWindow();
             Fade(CompactLayer, mode == Mode.Compact);
             Fade(BannerLayer, mode == Mode.Banner);
-            Fade(ExpandedLayer, mode == Mode.Expanded);
+            Fade(ExpandedLayer, mode == Mode.Expanded && !_activityOpen);
+            Fade(ActivityLayer, mode == Mode.Expanded && _activityOpen);
+            LivingCover(mode == Mode.Expanded && !_activityOpen);
             _progressTimer.IsEnabled = mode == Mode.Expanded;
             if (mode == Mode.Expanded) { UpdateProgress(); UpdateVolume(); }
             if (mode != Mode.Expanded) OutputList.Visibility = Visibility.Collapsed;
@@ -275,6 +278,7 @@ namespace Ovira.Island
             // so the icon never trails behind the shape.
             Place(BannerLayer, w, w);
             Place(ExpandedLayer, ExpandedW, w);
+            Place(ActivityLayer, ExpandedW, w);
             ExpandedLayer.Height = ExpandedH;
 
             PeekScale.ScaleX = _peek.Value;
@@ -368,7 +372,10 @@ namespace Ovira.Island
         private void Collapse()
         {
             if (_mode != Mode.Expanded) return;
+            bool wasActivity = _activityOpen;
+            _activityOpen = false;
             SetMode(RestingMode);
+            if (ActivitySource?.Invoke() != null) RefreshActivity();
         }
 
         // ---- media ----
@@ -396,6 +403,7 @@ namespace Ovira.Island
                     _shownArtwork = t.Artwork;
                     SetArt(CompactArt, CompactArtPlaceholder, t.Artwork);
                     SetArt(ExpandedArt, ExpandedArtPlaceholder, t.Artwork);
+                    _livingBrush = null;
                     Glow.Background = t.Artwork != null ? new ImageBrush(t.Artwork) { Stretch = Stretch.UniformToFill } : null;
                     if (Glow.Background != null)
                         Glow.Effect = new System.Windows.Media.Effects.BlurEffect { Radius = 24 };
@@ -407,6 +415,7 @@ namespace Ovira.Island
                 PlayGlyph.Set(t.Playing);
                 ShowSaved(animated: false);
                 RefreshFavorite();
+                LivingCover(_mode == Mode.Expanded && !_activityOpen);
                 FillExpanded();
             }
             else
@@ -799,6 +808,135 @@ namespace Ovira.Island
 
         private Action? _bannerTap;
         private bool _overGame;
+
+        // ---- live activities (0.5.0): a call, the timer, the stopwatch, an alarm ----
+        // Shown as a banner that stays (an icon on the left, the time on the
+        // right); a click opens the panel with the buttons. A short banner
+        // (volume…) goes over it and then gives the place back.
+
+        public sealed record Activity(string Key, string Icon, Color Colour, string Right, string Title, string Big,
+                                      string? IconA, Action? A, bool ARed, string IconB, Action B, bool TapRuns = false);
+
+        public Func<Activity?>? ActivitySource;
+        private bool _activityBanner, _activityOpen;
+        private string _activityKey = "";
+        private readonly DispatcherTimer _activityTick = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(250) };
+        private Activity? _shownActivity;
+
+        public void RefreshActivity()
+        {
+            if (!_activityTick.IsEnabled) { _activityTick.Tick -= OnActivityTick; _activityTick.Tick += OnActivityTick; }
+            var a = ActivitySource?.Invoke();
+            _shownActivity = a;
+            if (a == null)
+            {
+                _activityTick.Stop();
+                if (_mode == Mode.Expanded && _activityOpen) { _activityOpen = false; SetMode(RestingMode); }
+                else if (_mode == Mode.Banner && _activityBanner) { _activityBanner = false; _bannerTimer.Stop(); EndBanner(); }
+                _activityBanner = false;
+                return;
+            }
+            _activityTick.Start();
+            if (_mode == Mode.Expanded)
+            {
+                if (_activityOpen) FillActivity(a);
+                return;                                   // the player is open — leave it
+            }
+            if (_mode == Mode.Banner && !_activityBanner) return;   // a short banner is showing
+            if (_mode == Mode.Banner && _activityBanner && _activityKey == a.Key)
+            {
+                BannerRight.Text = a.Right;
+                if (BannerIcon.Icon != a.Icon) { BannerIcon.Icon = a.Icon; Pop(BannerIcon); }
+                BannerIcon.Fill = new SolidColorBrush(Tone(a.Icon, a.Colour));
+                _bannerTap = a.TapRuns ? a.B : OpenActivity;
+                return;
+            }
+            ShowActivityBanner(a);
+        }
+
+        private void OnActivityTick(object? sender, EventArgs e) => RefreshActivity();
+
+        private void ShowActivityBanner(Activity a)
+        {
+            ShowBanner(a.Icon, "", a.Colour, null, 3600, a.TapRuns ? a.B : OpenActivity, right: a.Right);
+            if (_mode != Mode.Banner) return;            // hidden over a game
+            _activityBanner = true;
+            _activityKey = a.Key;
+        }
+
+        private void OpenActivity()
+        {
+            var a = ActivitySource?.Invoke();
+            if (a == null) return;
+            _activityBanner = false;
+            _bannerTimer.Stop();
+            _activityOpen = true;
+            FillActivity(a);
+            _peek.To(1, Motion.PeekResponse, 0.9);
+            SetMode(Mode.Expanded);
+        }
+
+        private void FillActivity(Activity a)
+        {
+            var colour = Tone(a.Icon, a.Colour);
+            ActivityIcon.Icon = a.Icon;
+            ActivityIcon.Fill = new SolidColorBrush(colour);
+            ActivityIconBox.Background = new SolidColorBrush(Color.FromArgb(0x33, colour.R, colour.G, colour.B));
+            ActivityTitle.Text = a.Title;
+            ActivityBig.Text = a.Big;
+            ActivityA.Visibility = a.IconA != null ? Visibility.Visible : Visibility.Collapsed;
+            if (a.IconA != null) ActivityAIcon.Icon = a.IconA;
+            ActivityABg.Background = new SolidColorBrush(a.ARed ? Color.FromRgb(0xFF, 0x3B, 0x30) : Color.FromArgb(0x33, 0xFF, 0xFF, 0xFF));
+            ActivityBIcon.Icon = a.IconB;
+            ActivityC.Visibility = HasTrack ? Visibility.Visible : Visibility.Collapsed;
+        }
+
+        private void OnActivityA(object sender, RoutedEventArgs e) { _shownActivity?.A?.Invoke(); RefreshActivity(); }
+        private void OnActivityB(object sender, RoutedEventArgs e) { _shownActivity?.B.Invoke(); RefreshActivity(); }
+
+        private void OnActivityC(object sender, RoutedEventArgs e)
+        {
+            if (!HasTrack) return;
+            _activityOpen = false;
+            RefreshFavorite(force: true);
+            FillExpanded();
+            SetMode(Mode.Expanded);
+        }
+
+        // «Живая обложка»: Windows gives players only a still picture, so the
+        // cover in the open player slowly drifts closer and back, like the
+        // moving covers on the iPhone. Only while the player is open.
+        private ImageBrush? _livingBrush;
+        private bool _livingOn;
+
+        private void LivingCover(bool on)
+        {
+            if (ExpandedArt.Background is not ImageBrush brush) return;
+            bool want = on && S.LivingCover && _media.Track?.Playing == true;
+            if (ReferenceEquals(brush, _livingBrush) && want == _livingOn) return;   // already so — do not restart
+            if (brush.IsFrozen) { brush = brush.Clone(); ExpandedArt.Background = brush; }
+            _livingBrush = brush;
+            _livingOn = want;
+            if (brush.RelativeTransform is not ScaleTransform zoom || zoom.IsFrozen)
+            {
+                zoom = new ScaleTransform(1, 1, 0.5, 0.5);
+                brush.RelativeTransform = zoom;
+            }
+            if (!want)
+            {
+                zoom.BeginAnimation(ScaleTransform.ScaleXProperty, null);
+                zoom.BeginAnimation(ScaleTransform.ScaleYProperty, null);
+                return;
+            }
+            var drift = new DoubleAnimation(1, 1.13, TimeSpan.FromSeconds(7))
+            {
+                AutoReverse = true, RepeatBehavior = RepeatBehavior.Forever,
+                EasingFunction = new SineEase { EasingMode = EasingMode.EaseInOut }
+            };
+            Timeline.SetDesiredFrameRate(drift, 30);
+            zoom.BeginAnimation(ScaleTransform.ScaleXProperty, drift);
+            zoom.BeginAnimation(ScaleTransform.ScaleYProperty, drift);
+        }
         private int _rightKind;   // 0 — nothing, 1 — a word, 2 — the countdown
 
         private static readonly IEasingFunction Out = new CubicEase { EasingMode = EasingMode.EaseOut };
@@ -859,6 +997,7 @@ namespace Ovira.Island
             // left, a short word, a level or the countdown on the right, and
             // never any text in the middle.
             bool wing = true;
+            _activityBanner = false;
             bool timerWasShown = BannerTimer.Visibility == Visibility.Visible && _mode == Mode.Banner;
             if (_hiddenForFullscreen)
             {
@@ -1012,6 +1151,9 @@ namespace Ovira.Island
             ShowBanner("arrow.down", "", Color.FromRgb(0x4C, 0x8D, 0xFF), null, 7,
                        () => App.Current.Updates.Install(), right: "Обновить");
 
+        public void ShowNote(string icon, string word) =>
+            ShowBanner(icon, "", Color.FromRgb(0x8E, 0x8E, 0x93), null, 1.8, right: word);
+
         public void ShowUpdated(string version) =>
             ShowBanner("checkmark.circle", "", DoneGreen, null, 3, right: version);
 
@@ -1023,6 +1165,14 @@ namespace Ovira.Island
             if (_overGame && _hiddenForFullscreen)
                 Root.BeginAnimation(OpacityProperty, new DoubleAnimation(0, TimeSpan.FromSeconds(0.3)));
             _overGame = false;
+            // 0.5.0: back to the running activity (a call, the timer…), if any.
+            if (ActivitySource?.Invoke() is Activity running)
+            {
+                _activityBanner = false;
+                ShowActivityBanner(running);
+                return;
+            }
+            _activityBanner = false;
             SetMode(_pointerInside && HasTrack && S.OpenOnHover ? Mode.Expanded : RestingMode);
         }
 
@@ -1123,6 +1273,9 @@ namespace Ovira.Island
                     break;
                 case nameof(Settings.IslandStyle):
                     Relayout(animated: true, growing: true);
+                    break;
+                case nameof(Settings.LivingCover):
+                    LivingCover(_mode == Mode.Expanded && !_activityOpen);
                     break;
                 case nameof(Settings.SaveButton):
                 case nameof(Settings.SavedTracks):

@@ -154,9 +154,9 @@ namespace Ovira.Services
     // plays the quiet «Purr» and «Glass»). Made on the fly, nothing to ship.
     internal static class Chime
     {
-        public static void Play(bool start)
+        public static void Play(bool start, bool force = false)
         {
-            if (!Settings.Current.EyeBreakSound) return;
+            if (!force && !Settings.Current.EyeBreakSound) return;
             try
             {
                 // The device's own rate and channels, so Windows needs no converter.
