@@ -44,7 +44,7 @@ namespace Ovira.SettingsUi
             new("spectrum", "Спектрограмма", "Шесть полосок по настоящему звуку: вид, размытие и плавность", "Обложка, размытие, кадры", "waveform", Color.FromRgb(0xA8, 0x5C, 0xF2), "music"),
             new("notifications", "Уведомления", "Громкость, звук и клавиатура — короткие баннеры в островке", "Громкость, Caps Lock, раскладка", "bell", Color.FromRgb(0xFF, 0x45, 0x3A), "volume"),
             new("devices", "Устройства", "Батарея и зарядка ноутбука", "Зарядка и низкий заряд", "bolt", Color.FromRgb(0x33, 0xBF, 0x59), "charging"),
-            new("widgets", "Виджеты", "Карточки на рабочем столе: музыка, часы, система, заметки", "На рабочий стол", "grid", Color.FromRgb(0xE8, 0x5D, 0x9A), "music"),
+            new("widgets", "Рабочий стол", "Виджеты и своя панель задач", "Виджеты и панель задач", "grid", Color.FromRgb(0xE8, 0x5D, 0x9A), "music"),
             new("stats", "Статистика", "Твой день за компьютером: работа, музыка, перерывы", "Сегодня и неделя", "chart", Color.FromRgb(0x1A, 0xB8, 0x9E), "music"),
             new("clock", "Часы", "Таймер, секундомер и будильник", "Таймер, будильник", "timer", Color.FromRgb(0xFF, 0x9F, 0x0A), "timer"),
             new("helper", "Помощник", "Отдых для глаз по правилу 20-20-20", "Отдых для глаз", "eye", Color.FromRgb(0x26, 0xB5, 0xC9), "eye"),

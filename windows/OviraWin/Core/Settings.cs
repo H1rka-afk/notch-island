@@ -198,6 +198,38 @@ namespace Ovira.Core
         private bool _widgetsSnap = true;
         public bool WidgetsSnap { get => _widgetsSnap; set => Set(ref _widgetsSnap, value); }
 
+        // 0.7.0: Ovira's own taskbar.
+        private bool _taskbarEnabled;
+        public bool TaskbarEnabled { get => _taskbarEnabled; set => Set(ref _taskbarEnabled, value); }
+
+        private bool _taskbarHideSystem = true;
+        public bool TaskbarHideSystem { get => _taskbarHideSystem; set => Set(ref _taskbarHideSystem, value); }
+
+        // «center» or «left».
+        private string _taskbarAlign = "center";
+        public string TaskbarAlign { get => _taskbarAlign; set => Set(ref _taskbarAlign, value == "left" ? "left" : "center"); }
+
+        // «glass», «theme», «white» or «mono» — the same choice as the widgets.
+        private string _taskbarStyle = "glass";
+        public string TaskbarStyle { get => _taskbarStyle; set => Set(ref _taskbarStyle, value is "theme" or "white" or "mono" ? value : "glass"); }
+
+        private bool _taskbarSeconds;
+        public bool TaskbarSeconds { get => _taskbarSeconds; set => Set(ref _taskbarSeconds, value); }
+
+        private System.Collections.Generic.List<string> _taskbarPinned = new()
+        {
+            System.IO.Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.Windows), "explorer.exe").ToLowerInvariant(),
+        };
+        public System.Collections.Generic.List<string> TaskbarPinned { get => _taskbarPinned; set => Set(ref _taskbarPinned, value ?? new()); }
+
+        // Crash safety: set while Windows' own taskbar is hidden by Ovira, with
+        // the auto-hide state it had before, so the next start can put it back.
+        private bool _systemTaskbarHidden;
+        public bool SystemTaskbarHidden { get => _systemTaskbarHidden; set => Set(ref _systemTaskbarHidden, value); }
+
+        private int _systemTaskbarState = -1;
+        public int SystemTaskbarState { get => _systemTaskbarState; set => Set(ref _systemTaskbarState, value); }
+
         private string _weatherCity = "";
         public string WeatherCity { get => _weatherCity; set => Set(ref _weatherCity, value ?? ""); }
 
@@ -282,7 +314,8 @@ namespace Ovira.Core
             foreach (var p in typeof(Settings).GetProperties())
             {
                 if (p.CanWrite && p.CanRead && p.Name != nameof(Section) && p.Name != nameof(OpenOnHover) &&
-                    p.Name != nameof(CustomThemes) && p.Name != nameof(LastUpdateCheck) && p.Name != nameof(SavedTracks) && p.Name != nameof(Widgets) && p.Name != nameof(Alarms) && p.Name != nameof(YandexToken) && p.Name != nameof(UserProfiles) && p.Name != nameof(CustomProfile))
+                    p.Name != nameof(CustomThemes) && p.Name != nameof(LastUpdateCheck) && p.Name != nameof(SavedTracks) && p.Name != nameof(Widgets) && p.Name != nameof(Alarms) && p.Name != nameof(YandexToken) && p.Name != nameof(UserProfiles) && p.Name != nameof(CustomProfile) &&
+                    p.Name != nameof(SystemTaskbarHidden) && p.Name != nameof(SystemTaskbarState) && p.Name != nameof(TaskbarPinned))
                     p.SetValue(this, p.GetValue(fresh));
             }
         }

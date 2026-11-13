@@ -206,14 +206,17 @@ namespace Ovira.Widgets
 
         private static SolidColorBrush B(byte a, byte r, byte g, byte b) { var x = new SolidColorBrush(Color.FromArgb(a, r, g, b)); x.Freeze(); return x; }
 
-        public static Look Current()
+        public static Look Current() => For(Settings.Current.WidgetStyle);
+
+        // 0.7.0: the taskbar uses the same four looks with its own choice.
+        public static Look For(string style)
         {
             var s = Settings.Current;
             var tint = App.Current.Media.Track?.Tint ?? Color.FromRgb(0xFF, 0x45, 0x66);
             var theme = Themes.Find(s.Theme, tint);
             var accent = theme.Palette.Length > 0 ? theme.Palette[0] : Color.FromRgb(0x3D, 0x85, 0xFF);
             var look = new Look { AccentColor = accent };
-            switch (s.WidgetStyle)
+            switch (style)
             {
                 case "theme":
                 {

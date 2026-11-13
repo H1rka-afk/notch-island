@@ -25,7 +25,7 @@ namespace Ovira
 
         // 0.4.2: no global 240 fps for every animation any more — it kept the
         // processor busy. The island's springs follow the screen by themselves.
-        public static string Version => "0.6.4";
+        public static string Version => "0.7.0";
 
         public UpdateService Updates { get; } = new UpdateService();
         public EyeBreakService EyeBreak { get; } = new EyeBreakService();
@@ -104,6 +104,8 @@ namespace Ovira
             // 0.6.4: the desktop widgets come up together with the island,
             // not after the music service has woken up.
             Ovira.Widgets.WidgetManager.Start();
+            // 0.7.0: Ovira's own taskbar (off unless turned on in the settings).
+            Ovira.Taskbar.TaskbarManager.Start();
             await Media.StartAsync();
 
             SetUpTray();
@@ -282,6 +284,7 @@ namespace Ovira
             Keyboard.Stop();
             Stats.Stop();
             Ovira.Widgets.WidgetManager.CloseAll();
+            Ovira.Taskbar.TaskbarManager.Stop();
             _volumeKeys?.Release();
             Shutdown();
             // 0.4.13: nothing left in the background may keep Ovira running
