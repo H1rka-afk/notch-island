@@ -307,8 +307,7 @@ namespace Ovira.Widgets
         public void ToBottom()
         {
             var hwnd = new WindowInteropHelper(this).Handle;
-            if (hwnd != IntPtr.Zero)
-                Native.SetWindowPos(hwnd, new IntPtr(1) /* HWND_BOTTOM */, 0, 0, 0, 0, Native.SWP_NOMOVE | Native.SWP_NOSIZE | Native.SWP_NOACTIVATE);
+            Native.PlaceOnDesktop(hwnd);
         }
 
         public void Build()
@@ -569,11 +568,12 @@ namespace Ovira.Widgets
         private static void TickAll()
         {
             // Over a full-screen game nothing is drawn.
-            bool hide = Native.FullscreenAppInFront();
+            bool hide = Native.GameCoversDesktop();
             if (hide != _hidden)
             {
                 _hidden = hide;
                 foreach (var w in Live) w.Visibility = hide ? Visibility.Hidden : Visibility.Visible;
+                if (!hide) foreach (var w in Live) w.ToBottom();
             }
             if (hide) return;
             foreach (var w in Live.ToList()) w.Tick();

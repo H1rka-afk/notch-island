@@ -25,7 +25,7 @@ namespace Ovira
 
         // 0.4.2: no global 240 fps for every animation any more — it kept the
         // processor busy. The island's springs follow the screen by themselves.
-        public static string Version => "0.6.3";
+        public static string Version => "0.6.4";
 
         public UpdateService Updates { get; } = new UpdateService();
         public EyeBreakService EyeBreak { get; } = new EyeBreakService();
@@ -101,6 +101,9 @@ namespace Ovira
             _island = new IslandWindow(Media, Audio, Power);
             _island.Show();
             _island.Begin();
+            // 0.6.4: the desktop widgets come up together with the island,
+            // not after the music service has woken up.
+            Ovira.Widgets.WidgetManager.Start();
             await Media.StartAsync();
 
             SetUpTray();
@@ -126,7 +129,6 @@ namespace Ovira
             Stats.InCall = () => Calls.Current != null;
             Calls.Changed += () => { if (Calls.Current != null && !_inCall) Stats.Record(StatEvent.Call); _inCall = Calls.Current != null; };
             Stats.Start();
-            Ovira.Widgets.WidgetManager.Start();
             if (firstRun)
             {
                 Settings.Current.Save();

@@ -25,6 +25,45 @@ namespace Ovira.Core
         [return: MarshalAs(UnmanagedType.Bool)]
         public static extern bool SetWindowPos(IntPtr hWnd, IntPtr hWndInsertAfter, int x, int y, int cx, int cy, uint uFlags);
 
+        [DllImport("user32.dll")]
+        private static extern IntPtr GetTopWindow(IntPtr hWnd);
+
+        [DllImport("user32.dll")]
+        private static extern IntPtr GetWindow(IntPtr hWnd, uint cmd);
+
+        [DllImport("user32.dll", CharSet = CharSet.Unicode)]
+        private static extern int GetClassName(IntPtr hWnd, System.Text.StringBuilder name, int max);
+
+        [DllImport("user32.dll")]
+        [return: MarshalAs(UnmanagedType.Bool)]
+        private static extern bool IsWindowVisible(IntPtr hWnd);
+
+        // 0.6.4: a desktop widget sits right on top of the wallpaper — just
+        // above the desktop window (Progman, or the WorkerW that some wallpaper
+        // apps put in front of it), under every ordinary window. HWND_BOTTOM
+        // used to push it *under* the desktop, so it was invisible until
+        // something reordered the windows.
+        public static void PlaceOnDesktop(IntPtr hwnd)
+        {
+            if (hwnd == IntPtr.Zero) return;
+            const uint GW_HWNDNEXT = 2, GW_HWNDPREV = 3;
+            var name = new System.Text.StringBuilder(64);
+            IntPtr desktop = IntPtr.Zero;
+            for (var w = GetTopWindow(IntPtr.Zero); w != IntPtr.Zero; w = GetWindow(w, GW_HWNDNEXT))
+            {
+                if (w == hwnd || !IsWindowVisible(w)) continue;
+                name.Clear();
+                GetClassName(w, name, name.Capacity);
+                var cls = name.ToString();
+                if (cls == "Progman" || cls == "WorkerW") { desktop = w; break; }
+            }
+            if (desktop == IntPtr.Zero) return;
+            var above = GetWindow(desktop, GW_HWNDPREV);
+            if (above == hwnd) return;                          // already there
+            var after = above == IntPtr.Zero ? IntPtr.Zero /* HWND_TOP */ : above;
+            SetWindowPos(hwnd, after, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE);
+        }
+
         public static void AddExStyle(IntPtr hwnd, int flags)
         {
             var style = GetWindowLongPtr(hwnd, GWL_EXSTYLE).ToInt64();
@@ -46,6 +85,53 @@ namespace Ovira.Core
             if (SHQueryUserNotificationState(out var state) != 0) return false;
             // 2 = busy (full-screen app), 3 = Direct3D full screen, 4 = presentation mode
             return state == 2 || state == 3 || state == 4;
+        }
+
+        [DllImport("user32.dll")]
+        private static extern IntPtr GetForegroundWindow();
+
+        [DllImport("user32.dll")]
+        private static extern uint GetWindowThreadProcessId(IntPtr hWnd, out uint pid);
+
+        [StructLayout(LayoutKind.Sequential)]
+        private struct WinRect { public int Left, Top, Right, Bottom; }
+
+        [DllImport("user32.dll")]
+        [return: MarshalAs(UnmanagedType.Bool)]
+        private static extern bool GetWindowRect(IntPtr hWnd, out WinRect rect);
+
+        [DllImport("user32.dll")]
+        private static extern IntPtr MonitorFromWindow(IntPtr hwnd, uint flags);
+
+        [StructLayout(LayoutKind.Sequential)]
+        private struct MonitorInfo { public int cbSize; public WinRect Monitor, Work; public uint Flags; }
+
+        [DllImport("user32.dll")]
+        [return: MarshalAs(UnmanagedType.Bool)]
+        private static extern bool GetMonitorInfo(IntPtr monitor, ref MonitorInfo info);
+
+        // 0.6.4: stricter than FullscreenAppInFront for the desktop widgets.
+        // Windows also says «busy» while the desktop itself (a full-screen
+        // window too) has the focus, and the widgets used to hide right then —
+        // they came back only when another window, e.g. the settings, opened.
+        public static bool GameCoversDesktop()
+        {
+            if (SHQueryUserNotificationState(out var state) != 0) return false;
+            if (state == 3 || state == 4) return true;
+            if (state != 2) return false;
+            var fg = GetForegroundWindow();
+            if (fg == IntPtr.Zero) return false;
+            GetWindowThreadProcessId(fg, out var pid);
+            if (pid == (uint)Environment.ProcessId) return false;
+            var name = new System.Text.StringBuilder(64);
+            GetClassName(fg, name, name.Capacity);
+            var cls = name.ToString();
+            if (cls is "Progman" or "WorkerW" or "Shell_TrayWnd" or "Shell_SecondaryTrayWnd") return false;
+            if (!GetWindowRect(fg, out var r)) return false;
+            var info = new MonitorInfo { cbSize = Marshal.SizeOf<MonitorInfo>() };
+            if (!GetMonitorInfo(MonitorFromWindow(fg, 2), ref info)) return false;
+            var m = info.Monitor;
+            return r.Left <= m.Left && r.Top <= m.Top && r.Right >= m.Right && r.Bottom >= m.Bottom;
         }
 
         // Windows 11 window backdrop (Mica) and dark title bar.

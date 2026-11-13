@@ -65,6 +65,62 @@ namespace Ovira.Widgets
             return element;
         }
 
+        // 0.6.4: the player buttons press exactly like the island's expanded
+        // player (the IslandButton style): a soft circle grows in behind the
+        // glyph, the glyph dips to 86 % and springs back when let go.
+        private static FrameworkElement PlayerButton(FrameworkElement glyph, double width, double height, double circle, Look L, Action action)
+        {
+            var fg = (L.Fg as SolidColorBrush)?.Color ?? Colors.White;
+            var ring = new System.Windows.Shapes.Ellipse
+            {
+                Width = circle, Height = circle, Opacity = 0, IsHitTestVisible = false,
+                Fill = new SolidColorBrush(Color.FromArgb(0x26, fg.R, fg.G, fg.B)),
+                RenderTransformOrigin = new Point(0.5, 0.5), RenderTransform = new ScaleTransform(0.7, 0.7),
+            };
+            var glyphScale = new ScaleTransform(1, 1);
+            glyph.RenderTransformOrigin = new Point(0.5, 0.5);
+            glyph.RenderTransform = glyphScale;
+            glyph.HorizontalAlignment = HorizontalAlignment.Center;
+            glyph.VerticalAlignment = VerticalAlignment.Center;
+            var host = new Grid { Width = width, Height = height, Background = Brushes.Transparent, Tag = "click", Cursor = Cursors.Hand };
+            host.Children.Add(ring);
+            host.Children.Add(glyph);
+            var ringScale = (ScaleTransform)ring.RenderTransform;
+            bool down = false;
+            static System.Windows.Media.Animation.DoubleAnimation A(double to, double s, double delay = 0, System.Windows.Media.Animation.IEasingFunction? ease = null) =>
+                new System.Windows.Media.Animation.DoubleAnimation(to, TimeSpan.FromSeconds(s)) { BeginTime = TimeSpan.FromSeconds(delay), EasingFunction = ease };
+            void Press()
+            {
+                ring.BeginAnimation(UIElement.OpacityProperty, A(1, 0.12));
+                ringScale.BeginAnimation(ScaleTransform.ScaleXProperty, A(1, 0.12));
+                ringScale.BeginAnimation(ScaleTransform.ScaleYProperty, A(1, 0.12));
+                glyphScale.BeginAnimation(ScaleTransform.ScaleXProperty, A(0.86, 0.1));
+                glyphScale.BeginAnimation(ScaleTransform.ScaleYProperty, A(0.86, 0.1));
+            }
+            void Release()
+            {
+                var spring = new System.Windows.Media.Animation.ElasticEase { Oscillations = 1, Springiness = 6, EasingMode = System.Windows.Media.Animation.EasingMode.EaseOut };
+                ring.BeginAnimation(UIElement.OpacityProperty, A(0, 0.34, 0.12));
+                ringScale.BeginAnimation(ScaleTransform.ScaleXProperty, A(0.7, 0.01, 0.46));
+                ringScale.BeginAnimation(ScaleTransform.ScaleYProperty, A(0.7, 0.01, 0.46));
+                glyphScale.BeginAnimation(ScaleTransform.ScaleXProperty, A(1, 0.4, 0, spring));
+                glyphScale.BeginAnimation(ScaleTransform.ScaleYProperty, A(1, 0.4, 0, spring));
+            }
+            host.MouseLeftButtonDown += (_, e) => { down = true; host.CaptureMouse(); Press(); e.Handled = true; };
+            host.MouseLeftButtonUp += (_, e) =>
+            {
+                if (!down) return;
+                down = false;
+                host.ReleaseMouseCapture();
+                Release();
+                e.Handled = true;
+                var p = e.GetPosition(host);
+                if (p.X >= 0 && p.Y >= 0 && p.X <= host.ActualWidth && p.Y <= host.ActualHeight) action();
+            };
+            host.LostMouseCapture += (_, _) => { if (down) { down = false; Release(); } };
+            return host;
+        }
+
         private static FrameworkElement Header(string icon, string title, Look L)
         {
             var row = new StackPanel { Orientation = Orientation.Horizontal };
@@ -130,7 +186,16 @@ namespace Ovira.Widgets
             var title = T("Ничего не играет", small ? 13 : 15, FontWeights.Bold, L.Fg, true);
             var artist = T("", 12, FontWeights.Medium, L.Fg2);
             var bars = new SpectrumBars { BarWidth = 3, BarSpacing = 2.3, BarMaxHeight = 22, Width = 6 * 3 + 5 * 2.3, Height = 22, HorizontalAlignment = HorizontalAlignment.Right, VerticalAlignment = VerticalAlignment.Top };
-            var play = Icon("play", 22, L.Fg);
+            // 0.6.4: the island's own glyphs — ⏯ swaps with a spring, ⏪ ⏩ step.
+            var play = new PlayPauseGlyph { Width = small ? 22 : 25, Height = small ? 22 : 25, GlyphFill = L.Fg };
+            void TogglePlay()
+            {
+                media.PlayPause();
+                if (media.Track == null) return;
+                // Like the island: the glyph answers at once, before the app does.
+                media.Track.Playing = !media.Track.Playing;
+                play.Set(media.Track.Playing);
+            }
             var (bar, setBar) = Bar(L, 4, L.Fg);
             var root = Pad();
             if (small)
@@ -140,7 +205,10 @@ namespace Ovira.Widgets
                 var text = new StackPanel { VerticalAlignment = VerticalAlignment.Bottom, Margin = new Thickness(0, 0, 34, 0) };
                 text.Children.Add(title); text.Children.Add(artist);
                 root.Children.Add(text);
-                var button = Click(new Border { Width = 30, Height = 30, Background = Brushes.Transparent, Child = play, HorizontalAlignment = HorizontalAlignment.Right, VerticalAlignment = VerticalAlignment.Bottom }, media.PlayPause);
+                var button = PlayerButton(play, 36, 36, 36, L, TogglePlay);
+                button.HorizontalAlignment = HorizontalAlignment.Right;
+                button.VerticalAlignment = VerticalAlignment.Bottom;
+                button.Margin = new Thickness(0, 0, -3, -3);
                 root.Children.Add(button);
             }
             else
@@ -157,10 +225,12 @@ namespace Ovira.Widgets
                 bottom.Children.Add(bar);
                 var controls = new StackPanel { Orientation = Orientation.Horizontal, HorizontalAlignment = HorizontalAlignment.Center };
                 Grid.SetRow(controls, 1);
-                FrameworkElement Hit(FrameworkElement glyph, Action a) => Click(new Border { Width = 44, Height = 28, Background = Brushes.Transparent, Child = glyph }, a);
-                controls.Children.Add(Hit(Icon("backward", 20, L.Fg), media.Previous));
-                controls.Children.Add(Hit(play, media.PlayPause));
-                controls.Children.Add(Hit(Icon("forward", 20, L.Fg), media.Next));
+                var prev = new SkipGlyph { Forward = false, GlyphSize = 19, GlyphFill = L.Fg };
+                var next = new SkipGlyph { Forward = true, GlyphSize = 19, GlyphFill = L.Fg };
+                controls.Margin = new Thickness(0, -8, 0, -8);
+                controls.Children.Add(PlayerButton(prev, 48, 40, 40, L, () => { prev.Pulse(); media.Previous(); }));
+                controls.Children.Add(PlayerButton(play, 48, 40, 40, L, TogglePlay));
+                controls.Children.Add(PlayerButton(next, 48, 40, 40, L, () => { next.Pulse(); media.Next(); }));
                 bottom.Children.Add(controls);
                 root.Children.Add(bottom);
             }
@@ -170,7 +240,7 @@ namespace Ovira.Widgets
                 var t = media.Track;
                 title.Text = t?.Title is { Length: > 0 } name ? name : "Ничего не играет";
                 artist.Text = t?.Artist ?? "";
-                play.Icon = t?.Playing == true ? "pause" : "play";
+                play.Set(t?.Playing == true, animated: play.IsLoaded);
                 bars.Playing = t?.Playing == true;
                 bars.Visibility = t != null ? Visibility.Visible : Visibility.Hidden;
                 if (!ReferenceEquals(shown, t?.Artwork))
