@@ -49,6 +49,7 @@ namespace Ovira.Widgets
         private readonly StackPanel _sizeBar = new StackPanel { Orientation = Orientation.Horizontal, Visibility = Visibility.Collapsed };
         private readonly DispatcherTimer _tick = new DispatcherTimer { Interval = TimeSpan.FromSeconds(1) };
         private readonly Random _random = new Random();
+        private readonly List<Action?> _galleryUpdates = new();
         private Look _look;
         private Item? _selected, _dragged;
         private Point _grab;
@@ -76,6 +77,8 @@ namespace Ovira.Widgets
             Left = 0; Top = 0;
             Width = SystemParameters.PrimaryScreenWidth;
             Height = SystemParameters.PrimaryScreenHeight;
+            // 0.6.3: exactly the screen, whatever its size and scale.
+            SourceInitialized += (_, _) => WindowState = WindowState.Maximized;
             Background = Brushes.Black;
             Title = "Ovira — виджеты";
             FontFamily = new FontFamily("Segoe UI Variable Text, Segoe UI");
@@ -111,11 +114,15 @@ namespace Ovira.Widgets
                 _root.Opacity = 0;
                 _root.BeginAnimation(OpacityProperty, new DoubleAnimation(0, 1, TimeSpan.FromSeconds(0.25)));
                 _drawerShift.X = _panel.Width + 16;
-                _cells.Visibility = Snap ? Visibility.Visible : Visibility.Collapsed;
+                _cells.Opacity = Snap ? 1 : 0;
                 Activate();
                 Focus();
             };
-            _tick.Tick += (_, _) => { foreach (var i in _items) { try { i.Update?.Invoke(); } catch { } } };
+            _tick.Tick += (_, _) =>
+            {
+                foreach (var i in _items) { try { i.Update?.Invoke(); } catch { } }
+                if (_galleryOpen) foreach (var u in _galleryUpdates) { try { u?.Invoke(); } catch { } }
+            };
             _tick.Start();
             KeyDown += (_, e) =>
             {
@@ -174,22 +181,24 @@ namespace Ovira.Widgets
         private void DrawCells()
         {
             _cells.Children.Clear();
-            var a = WidgetGrid.Area;
-            double cell = WidgetGrid.Cell, unit = WidgetCatalog.Unit;
-            for (double y = a.Top + WidgetGrid.Margin; y + unit <= a.Bottom - WidgetGrid.Margin + 0.5; y += cell)
-                for (double x = a.Left + WidgetGrid.Margin; x + unit <= a.Right - WidgetGrid.Margin + 0.5; x += cell)
+            double unit = WidgetCatalog.Unit;
+            foreach (var cell in WidgetGrid.Cells())
+            {
+                var r = new Rectangle
                 {
-                    var r = new Rectangle
-                    {
-                        Width = unit, Height = unit, RadiusX = 24, RadiusY = 24,
-                        Fill = new SolidColorBrush(Color.FromArgb(0x14, 0xFF, 0xFF, 0xFF)),
-                        Stroke = new SolidColorBrush(Color.FromArgb(0x40, 0xFF, 0xFF, 0xFF)), StrokeThickness = 1,
-                        StrokeDashArray = new DoubleCollection { 4, 4 }
-                    };
-                    Canvas.SetLeft(r, x); Canvas.SetTop(r, y);
-                    _cells.Children.Add(r);
-                }
+                    Width = unit, Height = unit, RadiusX = 24, RadiusY = 24,
+                    Fill = new SolidColorBrush(Color.FromArgb(0x14, 0xFF, 0xFF, 0xFF)),
+                    Stroke = new SolidColorBrush(Color.FromArgb(0x40, 0xFF, 0xFF, 0xFF)), StrokeThickness = 1,
+                    StrokeDashArray = new DoubleCollection { 4, 4 }
+                };
+                Canvas.SetLeft(r, cell.X); Canvas.SetTop(r, cell.Y);
+                _cells.Children.Add(r);
+            }
         }
+
+        // 0.6.3: the grid fades in and out with the switch.
+        private void FadeCells(bool show) =>
+            _cells.BeginAnimation(OpacityProperty, new DoubleAnimation(show ? 1 : 0, TimeSpan.FromSeconds(0.35)) { EasingFunction = new CubicEase { EasingMode = EasingMode.EaseInOut } });
 
         // ---- the widgets on the board ----
 
@@ -504,7 +513,7 @@ namespace Ovira.Widgets
                 Settings.Current.WidgetsSnap = !Snap;
                 knobShift.BeginAnimation(TranslateTransform.XProperty, new DoubleAnimation(Snap ? 18 : 0, TimeSpan.FromSeconds(0.2)) { EasingFunction = new CubicEase { EasingMode = EasingMode.EaseOut } });
                 track.Background = new SolidColorBrush(Snap ? Color.FromRgb(0x34, 0xC7, 0x59) : Color.FromArgb(0x52, 0xFF, 0xFF, 0xFF));
-                _cells.Visibility = Snap ? Visibility.Visible : Visibility.Collapsed;
+                FadeCells(Snap);
                 e.Handled = true;
             };
             var row = new Grid { Margin = new Thickness(0, 12, 0, 0) };
@@ -540,7 +549,7 @@ namespace Ovira.Widgets
             head.Children.Add(new TextBlock { Text = "Виджеты", FontSize = 24, FontWeight = FontWeights.Bold, Foreground = Brushes.White, FontFamily = new FontFamily("Segoe UI Variable Display, Segoe UI") });
             head.Children.Add(new TextBlock
             {
-                Text = "Зажми размер виджета и перетащи его на рабочий стол. Нажми на виджет на столе, чтобы сменить размер или убрать.",
+                Text = "Зажми виджет и перетащи его на рабочий стол. Нажми на виджет на столе, чтобы сменить размер или убрать.",
                 FontSize = 12, Foreground = new SolidColorBrush(Color.FromArgb(0xB3, 0xFF, 0xFF, 0xFF)), TextWrapping = TextWrapping.Wrap, Margin = new Thickness(0, 4, 0, 0)
             });
             head.Children.Add(SnapSwitch());
@@ -559,49 +568,44 @@ namespace Ovira.Widgets
             };
         }
 
+        // 0.6.3: each widget as it will look (its first size, scaled to fit
+        // the gallery); press it and drag it onto the desktop.
         private FrameworkElement GalleryRow(WidgetKind kind)
         {
-            var grid = new Grid { Margin = new Thickness(0, 0, 0, 8) };
-            grid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
-            grid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
-            var tile = new Border { Width = 44, Height = 44, CornerRadius = new CornerRadius(12), Background = _look.Card, BorderBrush = _look.Border, BorderThickness = new Thickness(1), VerticalAlignment = VerticalAlignment.Top };
-            tile.Child = new IconView { Icon = kind.Icon, Width = 20, Height = 20, Fill = _look.Accent };
-            grid.Children.Add(tile);
-            var text = new StackPanel { Margin = new Thickness(12, 0, 0, 0) };
-            Grid.SetColumn(text, 1);
-            text.Children.Add(new TextBlock { Text = kind.Title, FontSize = 14, FontWeight = FontWeights.SemiBold, Foreground = Brushes.White });
-            text.Children.Add(new TextBlock { Text = kind.About, FontSize = 11.5, Foreground = new SolidColorBrush(Color.FromArgb(0xA6, 0xFF, 0xFF, 0xFF)), TextWrapping = TextWrapping.Wrap, Margin = new Thickness(0, 1, 0, 6) });
-            var sizes = new WrapPanel();
-            foreach (var size in new[] { "s", "m", "l" }.Where(s => kind.Sizes.Contains(s)))
+            var size = kind.Sizes[0];
+            var dims = WidgetCatalog.Dimensions(size);
+            var state = new WidgetState { Kind = kind.Id, Size = size };
+            var (card, update) = WidgetCard.Make(state, _look, null);
+            try { update?.Invoke(); } catch { }
+            card.IsHitTestVisible = false;
+            double scale = Math.Min(1, 300 / dims.Width);
+            var preview = new Border
             {
-                var s = size;
-                var chip = new Border
-                {
-                    CornerRadius = new CornerRadius(11), Padding = new Thickness(10, 3, 10, 4), Margin = new Thickness(0, 0, 6, 0), Cursor = Cursors.Hand,
-                    Background = new SolidColorBrush(Color.FromArgb(0x26, 0xFF, 0xFF, 0xFF)),
-                    Child = new TextBlock { Text = WidgetCatalog.SizeName(s), FontSize = 11.5, FontWeight = FontWeights.SemiBold, Foreground = Brushes.White },
-                    ToolTip = "Зажми и перетащи на рабочий стол"
-                };
-                chip.MouseEnter += (_, _) => chip.Background = new SolidColorBrush(Color.FromArgb(0x40, 0xFF, 0xFF, 0xFF));
-                chip.MouseLeave += (_, _) => chip.Background = new SolidColorBrush(Color.FromArgb(0x26, 0xFF, 0xFF, 0xFF));
-                chip.MouseLeftButtonDown += (_, e) =>
-                {
-                    _pressInGallery = true;
-                    _pressAt = e.GetPosition(_root);
-                    _ghostKind = kind.Id;
-                    _ghostSize = s;
-                    Mouse.Capture(this);
-                    e.Handled = true;
-                };
-                sizes.Children.Add(chip);
-            }
-            text.Children.Add(sizes);
-            grid.Children.Add(text);
-            return new Border
-            {
-                Child = grid, Padding = new Thickness(10), CornerRadius = new CornerRadius(16),
-                Background = new SolidColorBrush(Color.FromArgb(0x14, 0xFF, 0xFF, 0xFF)), Margin = new Thickness(0, 0, 0, 8)
+                Width = dims.Width, Height = dims.Height, Child = card,
+                LayoutTransform = new ScaleTransform(scale, scale),
+                Effect = new DropShadowEffect { BlurRadius = 14, ShadowDepth = 3, Direction = 270, Opacity = 0.35 }
             };
+            var holder = new Grid { Cursor = Cursors.SizeAll, Background = Brushes.Transparent, HorizontalAlignment = HorizontalAlignment.Center };
+            holder.Children.Add(preview);
+            holder.ToolTip = "Зажми и перетащи на рабочий стол";
+            holder.MouseEnter += (_, _) => holder.Opacity = 0.85;
+            holder.MouseLeave += (_, _) => holder.Opacity = 1;
+            holder.MouseLeftButtonDown += (_, e) =>
+            {
+                _pressInGallery = true;
+                _pressAt = e.GetPosition(_root);
+                _ghostKind = kind.Id;
+                _ghostSize = size;
+                Mouse.Capture(this);
+                e.Handled = true;
+            };
+            _galleryUpdates.Add(update);
+
+            var stack = new StackPanel { Margin = new Thickness(0, 6, 0, 14) };
+            stack.Children.Add(holder);
+            stack.Children.Add(new TextBlock { Text = kind.Title, FontSize = 13, FontWeight = FontWeights.SemiBold, Foreground = Brushes.White, HorizontalAlignment = HorizontalAlignment.Center, Margin = new Thickness(0, 8, 0, 0) });
+            stack.Children.Add(new TextBlock { Text = kind.About, FontSize = 11, Foreground = new SolidColorBrush(Color.FromArgb(0xA6, 0xFF, 0xFF, 0xFF)), HorizontalAlignment = HorizontalAlignment.Center, TextAlignment = TextAlignment.Center, TextWrapping = TextWrapping.Wrap });
+            return stack;
         }
 
         // ---- «Отмена» / «Готово» ----

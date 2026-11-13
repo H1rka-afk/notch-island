@@ -59,23 +59,35 @@ namespace Ovira.Widgets
     // screen.
     public static class WidgetGrid
     {
-        public const double Margin = 24, Magnet = 18;
+        // 0.6.3: the grid fits the screen — as many whole cells as the work
+        // area takes, centred, so the space left over is the same on every side.
+        public const double MinMargin = 16, Magnet = 18;
         public static double Cell => WidgetCatalog.Unit + WidgetCatalog.Gap;
+        private static double Gap => WidgetCatalog.Gap;
 
         public static Rect Area => SystemParameters.WorkArea;
+        public static int Cols => Math.Max(1, (int)Math.Floor((Area.Width - 2 * MinMargin + Gap) / Cell));
+        public static int Rows => Math.Max(1, (int)Math.Floor((Area.Height - 2 * MinMargin + Gap) / Cell));
+        public static double OX => Area.Left + (Area.Width - (Cols * Cell - Gap)) / 2;
+        public static double OY => Area.Top + (Area.Height - (Rows * Cell - Gap)) / 2;
+        private static double Right => OX + Cols * Cell - Gap;
+        private static double Bottom => OY + Rows * Cell - Gap;
 
-        // The nearest cell corner to a point (in the primary work area).
+        public static IEnumerable<Point> Cells()
+        {
+            for (int r = 0; r < Rows; r++)
+                for (int c = 0; c < Cols; c++)
+                    yield return new Point(OX + c * Cell, OY + r * Cell);
+        }
+
+        // The nearest cell corner to a point, keeping the widget inside the grid.
         public static Point Cellular(Point p, Size size)
         {
-            var a = Area;
-            double x = a.Left + Margin + Math.Round((p.X - a.Left - Margin) / Cell) * Cell;
-            double y = a.Top + Margin + Math.Round((p.Y - a.Top - Margin) / Cell) * Cell;
-            x = Math.Clamp(x, a.Left + Margin, Math.Max(a.Left + Margin, a.Right - Margin - size.Width));
-            y = Math.Clamp(y, a.Top + Margin, Math.Max(a.Top + Margin, a.Bottom - Margin - size.Height));
-            // Keep it on the grid after clamping to the right / bottom edge.
-            x = a.Left + Margin + Math.Floor((x - a.Left - Margin) / Cell + 1e-6) * Cell;
-            y = a.Top + Margin + Math.Floor((y - a.Top - Margin) / Cell + 1e-6) * Cell;
-            return new Point(x, y);
+            int spanX = (int)Math.Round((size.Width + Gap) / Cell), spanY = (int)Math.Round((size.Height + Gap) / Cell);
+            int c = (int)Math.Round((p.X - OX) / Cell), r = (int)Math.Round((p.Y - OY) / Cell);
+            c = Math.Clamp(c, 0, Math.Max(0, Cols - spanX));
+            r = Math.Clamp(r, 0, Math.Max(0, Rows - spanY));
+            return new Point(OX + c * Cell, OY + r * Cell);
         }
 
         public static bool InArea(Point p, Size size)
@@ -84,19 +96,18 @@ namespace Ovira.Widgets
             return p.X + size.Width / 2 >= a.Left && p.X + size.Width / 2 <= a.Right && p.Y + size.Height / 2 >= a.Top && p.Y + size.Height / 2 <= a.Bottom;
         }
 
-        // While dragging: the grid lines, the screen's edges and the other
-        // widgets' edges pull a widget that comes within 18 px.
+        // While dragging: the cells, the grid's edges and the other widgets'
+        // edges pull a widget that comes within 18 px.
         public static Point Magnetic(Point p, Size size, IEnumerable<Rect> others)
         {
-            var a = Area;
-            var xs = new List<double> { a.Left + Margin, a.Right - Margin - size.Width };
-            var ys = new List<double> { a.Top + Margin, a.Bottom - Margin - size.Height };
+            var xs = new List<double> { OX, Right - size.Width };
+            var ys = new List<double> { OY, Bottom - size.Height };
             var cell = Cellular(p, size);
             xs.Add(cell.X); ys.Add(cell.Y);
             foreach (var o in others)
             {
-                xs.Add(o.Left); xs.Add(o.Right + WidgetCatalog.Gap); xs.Add(o.Left - WidgetCatalog.Gap - size.Width); xs.Add(o.Right - size.Width);
-                ys.Add(o.Top); ys.Add(o.Bottom + WidgetCatalog.Gap); ys.Add(o.Top - WidgetCatalog.Gap - size.Height); ys.Add(o.Bottom - size.Height);
+                xs.Add(o.Left); xs.Add(o.Right + Gap); xs.Add(o.Left - Gap - size.Width); xs.Add(o.Right - size.Width);
+                ys.Add(o.Top); ys.Add(o.Bottom + Gap); ys.Add(o.Top - Gap - size.Height); ys.Add(o.Bottom - size.Height);
             }
             double Pull(double v, List<double> targets)
             {
@@ -107,47 +118,42 @@ namespace Ovira.Widgets
             return new Point(Pull(p.X, xs), Pull(p.Y, ys));
         }
 
+        private static bool Free(Point q, Size size, IList<Rect> others)
+        {
+            var r = new Rect(q, size);
+            r.Inflate(-2, -2);
+            return !others.Any(o => o.IntersectsWith(r));
+        }
+
+        private static IEnumerable<Point> Fits(Size size)
+        {
+            foreach (var q in Cells())
+                if (q.X + size.Width <= Right + 0.5 && q.Y + size.Height <= Bottom + 0.5) yield return q;
+        }
+
         // Let go: into a cell; if that cell is taken, the nearest free one.
         public static Point Settle(Point p, Size size, IList<Rect> others)
         {
             if (!InArea(p, size)) return p;
             var start = Cellular(p, size);
-            bool Free(Point q)
-            {
-                var r = new Rect(q, size);
-                r.Inflate(-2, -2);
-                return !others.Any(o => o.IntersectsWith(r));
-            }
-            if (Free(start)) return start;
-            var a = Area;
+            if (Free(start, size, others)) return start;
             Point? best = null;
             double bestDistance = double.MaxValue;
-            for (double y = a.Top + Margin; y + size.Height <= a.Bottom - Margin + 0.5; y += Cell)
-                for (double x = a.Left + Margin; x + size.Width <= a.Right - Margin + 0.5; x += Cell)
-                {
-                    var q = new Point(x, y);
-                    if (!Free(q)) continue;
-                    double d = (q - start).LengthSquared;
-                    if (d < bestDistance) { bestDistance = d; best = q; }
-                }
+            foreach (var q in Fits(size))
+            {
+                if (!Free(q, size, others)) continue;
+                double d = (q - start).LengthSquared;
+                if (d < bestDistance) { bestDistance = d; best = q; }
+            }
             return best ?? start;
         }
 
         // The first free cell from the top right — where a new widget goes.
         public static Point FirstFree(Size size, IList<Rect> others)
         {
-            var a = Area;
-            for (double x = a.Right - Margin - size.Width; x >= a.Left + Margin - 0.5; x -= Cell)
-            {
-                double gx = a.Left + Margin + Math.Floor((x - a.Left - Margin) / Cell + 1e-6) * Cell;
-                for (double y = a.Top + Margin; y + size.Height <= a.Bottom - Margin + 0.5; y += Cell)
-                {
-                    var r = new Rect(gx, y, size.Width, size.Height);
-                    r.Inflate(-2, -2);
-                    if (!others.Any(o => o.IntersectsWith(r))) return new Point(gx, y);
-                }
-            }
-            return new Point(a.Right - Margin - size.Width, a.Top + Margin);
+            var cells = Fits(size).OrderByDescending(q => q.X).ThenBy(q => q.Y);
+            foreach (var q in cells) if (Free(q, size, others)) return q;
+            return new Point(Right - size.Width, OY);
         }
     }
 
@@ -457,6 +463,7 @@ namespace Ovira.Widgets
         private static readonly DispatcherTimer Clock = new DispatcherTimer { Interval = TimeSpan.FromSeconds(1) };
         private static bool _started;
         private static bool _hidden;
+        private static Color _lastTint = Colors.Transparent;
 
         public static void Start()
         {
@@ -470,9 +477,17 @@ namespace Ovira.Widgets
                 if (e.PropertyName is nameof(Settings.WidgetStyle) or nameof(Settings.Theme) or nameof(Settings.CustomThemes) or nameof(Settings.WeatherCity))
                     RebuildAll();
             };
-            App.Current.Media.Changed += _ => App.Current.Dispatcher.BeginInvoke(new Action(() =>
+            // 0.6.3: the cards are rebuilt only when the cover's colour really
+            // changes — a pause used to rebuild them, and the music widget's
+            // bars dropped to nothing at once instead of settling softly.
+            App.Current.Media.Changed += t => App.Current.Dispatcher.BeginInvoke(new Action(() =>
             {
-                if (Settings.Current.Theme == "cover" && Settings.Current.WidgetStyle != "mono") RebuildKinds(null);
+                var tint = t?.Tint ?? Colors.Transparent;
+                if (Settings.Current.Theme == "cover" && Settings.Current.WidgetStyle != "mono" && tint != _lastTint)
+                {
+                    _lastTint = tint;
+                    RebuildKinds(null);
+                }
                 else TickAll();
             }), DispatcherPriority.Background);
             App.Current.Clock.Changed += TickAll;

@@ -1,3 +1,4 @@
+using System.Linq;
 using System;
 using System.Threading;
 using NAudio.CoreAudioApi;
@@ -305,7 +306,10 @@ namespace Ovira.Services
                     double l = live && i < levels.Length ? Math.Clamp(levels[i], 0, 1) : Synthetic(i, time) * 0.85;
                     target = live && l <= 0.01 ? 0.04 : Math.Clamp(IphoneFloor[i] + IphoneGain[i] * Math.Pow(l, 0.85) * (1 - IphoneFloor[i]), 0, 1);
                 }
-                double tau = playing ? 0.045 : 0.12;
+                // Silence while «playing» (a pause the player has not reported
+                // yet) settles softly, not at the quick music pace.
+                bool silent = live && levels.Take(BarCount).All(v => v <= 0.01);
+                double tau = playing && !silent ? 0.045 : 0.16;
                 Heights[i] += (target - Heights[i]) * (1 - Math.Exp(-dt / tau));
                 if (!playing && Heights[i] < 0.003) Heights[i] = 0;
             }
