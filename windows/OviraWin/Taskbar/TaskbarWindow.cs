@@ -16,29 +16,59 @@ using Ovira.Widgets;
 
 namespace Ovira.Taskbar
 {
-    // How the dock and the clock capsule look in each of the four styles.
+    // How the dock and the clock capsule look in each style.
     internal sealed class DockLook
     {
         public Brush Back = Brushes.Black, Rim = Brushes.Transparent, Fg = Brushes.White, Fg2 = Brushes.Gray, Hover = Brushes.Transparent, Dot = Brushes.Gray, Accent = Brushes.White;
         public Brush? Gloss;
         public Look Base = null!;
+        public Color Main;                         // the main colour: theme, music or your own
         public Color[] Palette = Array.Empty<Color>();
+        public ImageSource? Art;                   // «Обложка»: the cover behind the dock
+        public bool Shadow = true;
 
         private static SolidColorBrush B(byte a, byte r, byte g, byte b) { var x = new SolidColorBrush(Color.FromArgb(a, r, g, b)); x.Freeze(); return x; }
+        private static SolidColorBrush B(byte a, Color c) => B(a, c.R, c.G, c.B);
 
-        public static DockLook Current()
+        // 0.7.2: the main colour.
+        public static Color MainColor()
         {
             var s = Settings.Current;
-            var L = Look.For(s.TaskbarStyle);
-            var tint = App.Current.Media.Track?.Tint ?? Color.FromRgb(0xFF, 0x45, 0x66);
-            var theme = Themes.Find(s.Theme, tint);
-            var d = new DockLook { Base = L, Accent = L.Accent, Palette = theme.Palette };
-            switch (s.TaskbarStyle)
+            var track = App.Current.Media.Track;
+            var tint = track?.Tint ?? Color.FromRgb(0xFF, 0x45, 0x66);
+            switch (s.TaskbarColor)
+            {
+                case "cover":
+                    return track != null ? tint : Themes.Find(s.Theme, tint).Palette.FirstOrDefault(Color.FromRgb(0x3D, 0x85, 0xFF));
+                case "custom":
+                    try { return Themes.ParseHex(s.TaskbarCustomColor); } catch { return Color.FromRgb(0x3D, 0x85, 0xFF); }
+                default:
+                    var p = Themes.Find(s.Theme, tint).Palette;
+                    return p.Length > 0 ? p[0] : Color.FromRgb(0x3D, 0x85, 0xFF);
+            }
+        }
+
+        public static DockLook Current() => For(Settings.Current.TaskbarStyle);
+
+        public static DockLook For(string style)
+        {
+            var main = MainColor();
+            Themes.ToHsv(main, out var h, out var sat, out var v);
+            var second = Themes.FromHsv((h + 0.08) % 1, Math.Min(1, sat * 0.9 + 0.1), Math.Max(0.55, v));
+            var d = new DockLook
+            {
+                Base = Look.For(style == "white" ? "white" : "mono"),
+                Main = main,
+                Palette = new[] { main, second },
+                Accent = new SolidColorBrush(Themes.MixWhite(main, 0.2)),
+            };
+            switch (style)
             {
                 case "white":
                     d.Back = B(0xF0, 0xF7, 0xF7, 0xF9); d.Rim = B(0x1F, 0, 0, 0);
                     d.Fg = B(0xFF, 0x1C, 0x1C, 0x1E); d.Fg2 = B(0x8C, 0x3C, 0x3C, 0x43);
                     d.Hover = B(0x12, 0, 0, 0); d.Dot = B(0x73, 0, 0, 0);
+                    d.Accent = new SolidColorBrush(Themes.Scale(main, 0.9));
                     break;
                 case "mono":
                     d.Back = B(0xFF, 0x1C, 0x1C, 0x1E); d.Rim = B(0x1F, 0xFF, 0xFF, 0xFF);
@@ -46,15 +76,39 @@ namespace Ovira.Taskbar
                     d.Hover = B(0x1A, 0xFF, 0xFF, 0xFF); d.Dot = B(0x8C, 0xFF, 0xFF, 0xFF);
                     break;
                 case "theme":
-                    d.Back = L.Card; d.Rim = B(0x40, 0xFF, 0xFF, 0xFF);
+                {
+                    // «Цвет»: a gradient of the main colour, deep enough for white icons
+                    var g = new LinearGradientBrush(Themes.Scale(main, 0.62), Themes.Scale(second, 0.45), new Point(0, 0), new Point(1, 1));
+                    g.Freeze();
+                    d.Back = g; d.Rim = B(0x40, 0xFF, 0xFF, 0xFF);
                     d.Fg = Brushes.White; d.Fg2 = B(0xC7, 0xFF, 0xFF, 0xFF);
                     d.Hover = B(0x26, 0xFF, 0xFF, 0xFF); d.Dot = B(0xB3, 0xFF, 0xFF, 0xFF);
+                    d.Accent = Brushes.White;
                     d.Gloss = GlossBrush();
                     break;
+                }
+                case "cover":
+                    // «Обложка»: the playing music's cover, blurred, under a dark veil
+                    d.Art = App.Current.Media.Track?.Artwork;
+                    d.Back = d.Art != null ? B(0x66, 0x10, 0x10, 0x14) : B(0xD9, Themes.Scale(main, 0.35));
+                    d.Rim = B(0x38, 0xFF, 0xFF, 0xFF);
+                    d.Fg = Brushes.White; d.Fg2 = B(0xC7, 0xFF, 0xFF, 0xFF);
+                    d.Hover = B(0x26, 0xFF, 0xFF, 0xFF); d.Dot = B(0xB3, 0xFF, 0xFF, 0xFF);
+                    d.Accent = Brushes.White;
+                    d.Gloss = GlossBrush();
+                    break;
+                case "clear":
+                    // «Прозрачный»: just the icons. Almost-zero alpha keeps the
+                    // gaps clickable (fully clear pixels let clicks through).
+                    d.Back = B(0x01, 0, 0, 0); d.Rim = Brushes.Transparent;
+                    d.Fg = Brushes.White; d.Fg2 = B(0xD9, 0xFF, 0xFF, 0xFF);
+                    d.Hover = B(0x26, 0xFF, 0xFF, 0xFF); d.Dot = B(0xE6, 0xFF, 0xFF, 0xFF);
+                    d.Shadow = false;
+                    break;
                 default:
-                    // «Стекло» — smoked glass, darker than the widgets, because
-                    // windows pass under it
-                    d.Back = B(0xC7, 0x1E, 0x1E, 0x24); d.Rim = B(0x38, 0xFF, 0xFF, 0xFF);
+                    // «Стекло» — smoked glass with a breath of the main colour
+                    var glass = Color.FromRgb((byte)(0x1E + main.R / 20), (byte)(0x1E + main.G / 20), (byte)(0x24 + main.B / 20));
+                    d.Back = B(0xC7, glass); d.Rim = B(0x38, 0xFF, 0xFF, 0xFF);
                     d.Fg = Brushes.White; d.Fg2 = B(0xB3, 0xFF, 0xFF, 0xFF);
                     d.Hover = B(0x1F, 0xFF, 0xFF, 0xFF); d.Dot = B(0x99, 0xFF, 0xFF, 0xFF);
                     d.Gloss = GlossBrush();
@@ -99,6 +153,8 @@ namespace Ovira.Taskbar
         private readonly Border _shadow = new();
         private readonly Border _capsule = new();
         private readonly Border _gloss = new() { IsHitTestVisible = false };
+        private readonly Grid _artBox = new() { IsHitTestVisible = false, ClipToBounds = true, VerticalAlignment = VerticalAlignment.Bottom };
+        private readonly Image _art = new() { Stretch = Stretch.UniformToFill, Margin = new Thickness(-40), Effect = new BlurEffect { Radius = 34, RenderingBias = RenderingBias.Performance }, CacheMode = new BitmapCache() };
         private readonly StackPanel _row = new() { Orientation = Orientation.Horizontal, Margin = new Thickness(7, 0, 7, 0), VerticalAlignment = VerticalAlignment.Bottom };
         private readonly StackPanel _apps = new() { Orientation = Orientation.Horizontal };
         private readonly Border _divider = new() { Width = 1, Height = 30, Margin = new Thickness(6, 0, 6, (Capsule - 30) / 2), VerticalAlignment = VerticalAlignment.Bottom };
@@ -145,16 +201,23 @@ namespace Ovira.Taskbar
             _shadow.CacheMode = new BitmapCache();
             _capsule.BorderThickness = new Thickness(1);
             _gloss.Margin = new Thickness(1);
+            _artBox.Height = Capsule;
+            _artBox.Children.Add(_art);
+            _dock.SizeChanged += (_, _) => _artBox.Clip = new RectangleGeometry(new Rect(0, 0, _dock.ActualWidth, Capsule), 19, 19);
             _dock.Children.Add(_shadow);
+            _dock.Children.Add(_artBox);
             _dock.Children.Add(_capsule);
             _dock.Children.Add(_gloss);
             _dock.Children.Add(_row);
 
             _start = new DockItem(null, D) { Glyph = new StartGlyph() };
-            _start.Click += _ => TB.Shortcut(TB.VK_LWIN);
+            // 0.7.2: a second press closes Start or search instead of opening them again
+            _start.Down += _ => _startWasOpen = ShellOpen("startmenuexperiencehost.exe");
+            _start.Click += _ => Toggle(_startWasOpen, "startmenuexperiencehost.exe", () => TB.Shortcut(TB.VK_LWIN));
             _start.Name2 = "Пуск";
             _search = new DockItem(null, D) { Glyph = new IconView { Icon = "magnifier", Width = 24, Height = 24 } };
-            _search.Click += _ => TB.Shortcut(TB.VK_LWIN, 0x53 /* S */);
+            _search.Down += _ => _searchWasOpen = ShellOpen("searchhost.exe", "searchapp.exe");
+            _search.Click += _ => Toggle(_searchWasOpen, "searchhost.exe|searchapp.exe", () => TB.Shortcut(TB.VK_LWIN, 0x53 /* S */));
             _search.Name2 = "Поиск";
             foreach (var item in new[] { _start, _search }) WireHover(item);
             _row.Children.Add(_start);
@@ -204,6 +267,25 @@ namespace Ovira.Taskbar
         }
 
         public DockLook Style2 => D;
+
+        private bool _startWasOpen, _searchWasOpen;
+
+        // Is Start (or search) the window in front right now?
+        private static bool ShellOpen(params string[] exes)
+        {
+            var fg = TB.GetForegroundWindow();
+            if (fg == IntPtr.Zero) return false;
+            TB.GetWindowThreadProcessId(fg, out var pid);
+            var path = TB.ExePath(pid).ToLowerInvariant();
+            return exes.Any(e => path.EndsWith("\\" + e, StringComparison.Ordinal));
+        }
+
+        private static void Toggle(bool wasOpen, string exes, Action open)
+        {
+            if (!wasOpen) { open(); return; }
+            // it was open when pressed: close it if it is still there
+            if (ShellOpen(exes.Split('|'))) TB.Shortcut(0x1B /* Esc */);
+        }
 
         // ================================================================ the app bar
 
@@ -347,11 +429,14 @@ namespace Ovira.Taskbar
             _capsule.BorderBrush = D.Rim;
             _gloss.Background = D.Gloss;
             _divider.Background = D.Hover;
+            _art.Source = D.Art;
+            _artBox.Visibility = D.Art != null ? Visibility.Visible : Visibility.Collapsed;
+            _shadow.Visibility = D.Shadow ? Visibility.Visible : Visibility.Hidden;
             _bubbleCard.Background = D.Fg is SolidColorBrush f && f.Color.R < 0x80 ? new SolidColorBrush(Color.FromArgb(0xF2, 0xFF, 0xFF, 0xFF)) : new SolidColorBrush(Color.FromArgb(0xF0, 0x26, 0x26, 0x2A));
             _bubbleText.Foreground = D.Fg;
             _start.Restyle(D);
             _search.Restyle(D);
-            if (_start.Glyph is StartGlyph sg) sg.Colours = D.Palette;
+            if (_start.Glyph is StartGlyph sg) { sg.Colours = D.Palette; sg.Kind = Settings.Current.TaskbarStartIcon; sg.Shade = D.Shadow ? null : Brushes.Black; }
             if (_search.Glyph is IconView iv) iv.Fill = D.Fg;
             foreach (var b in _buttons.Values) b.Restyle(D);
             _tray?.ApplyLook();
@@ -369,6 +454,7 @@ namespace Ovira.Taskbar
 
         private void Magnify(double x)
         {
+            if (!Settings.Current.TaskbarMagnify) { Relax(); return; }
             _magnified = true;
             foreach (var b in Items())
             {
@@ -598,7 +684,7 @@ namespace Ovira.Taskbar
         private bool _down, _active, _flash;
         private int _count = -1;
 
-        public event Action<DockItem>? Click, MiddleClick, MenuWanted;
+        public event Action<DockItem>? Click, MiddleClick, MenuWanted, Down;
 
         public ImageSource? IconSource { get => _image.Source; set => _image.Source = value; }
 
@@ -638,7 +724,7 @@ namespace Ovira.Taskbar
 
             MouseEnter += (_, _) => Highlight();
             MouseLeave += (_, _) => { Highlight(); if (_down) { _down = false; Press(1); } };
-            MouseLeftButtonDown += (_, e) => { _down = true; Press(0.84, fast: true); e.Handled = true; };
+            MouseLeftButtonDown += (_, e) => { Down?.Invoke(this); _down = true; Press(0.84, fast: true); e.Handled = true; };
             MouseLeftButtonUp += (_, e) =>
             {
                 if (!_down) return;
@@ -743,26 +829,56 @@ namespace Ovira.Taskbar
         }
     }
 
-    // Start: four rounded tiles in the theme's colours.
+    // Start in the main colour (0.7.2: three looks to choose from):
+    // «ovira» — a little island with its camera dot, «tiles» — four rounded
+    // tiles, «dots» — nine dots like an app launcher.
     internal sealed class StartGlyph : FrameworkElement
     {
         private Color[] _colours = Array.Empty<Color>();
+        private string _kind = "ovira";
         public Color[] Colours { get => _colours; set { _colours = value; InvalidateVisual(); } }
+        public string Kind { get => _kind; set { if (_kind != value) { _kind = value; InvalidateVisual(); } } }
+        public Brush? Shade { get; set; }
 
-        public StartGlyph() { Width = 26; Height = 26; }
+        public StartGlyph() { Width = 28; Height = 28; }
 
         protected override void OnRender(DrawingContext dc)
         {
             double s = Math.Min(ActualWidth, ActualHeight);
-            double gap = s * 0.08, t = (s - gap) / 2, r = s * 0.09;
             var a = _colours.Length > 0 ? _colours[0] : Color.FromRgb(0x3D, 0x85, 0xFF);
             var b = _colours.Length > 1 ? _colours[1] : Themes.MixWhite(a, 0.35);
-            var brush = new LinearGradientBrush(Themes.MixWhite(a, 0.15), b, new Point(0, 0), new Point(1, 1));
+            var brush = new LinearGradientBrush(Themes.MixWhite(a, 0.18), b, new Point(0, 0), new Point(1, 1));
             brush.Freeze();
-            for (int i = 0; i < 4; i++)
+            switch (_kind)
             {
-                double x = (i % 2) * (t + gap), y = (i / 2) * (t + gap);
-                dc.DrawRoundedRectangle(brush, null, new Rect(x, y, t, t), r, r);
+                case "tiles":
+                {
+                    double gap = s * 0.09, t = (s - gap) / 2, r = s * 0.1;
+                    for (int i = 0; i < 4; i++)
+                        dc.DrawRoundedRectangle(brush, null, new Rect((i % 2) * (t + gap), (i / 2) * (t + gap), t, t), r, r);
+                    break;
+                }
+                case "dots":
+                {
+                    double d = s * 0.22, step = (s - d) / 2;
+                    for (int i = 0; i < 9; i++)
+                        dc.DrawEllipse(brush, null, new Point(d / 2 + (i % 3) * step, d / 2 + (i / 3) * step), d / 2, d / 2);
+                    break;
+                }
+                default:
+                {
+                    // a rounded square in the main colour with a small island inside
+                    double r = s * 0.28;
+                    dc.DrawRoundedRectangle(brush, null, new Rect(0, 0, s, s), r, r);
+                    double w = s * 0.56, h = s * 0.2;
+                    var island = new Rect((s - w) / 2, s * 0.24, w, h);
+                    dc.DrawRoundedRectangle(Brushes.Black, null, island, h / 2, h / 2);
+                    dc.DrawEllipse(new SolidColorBrush(Color.FromArgb(0x99, 0x5A, 0x6C, 0x8C)), null, new Point(island.Right - h / 2 - 1, island.Top + h / 2), h * 0.22, h * 0.22);
+                    // a soft line below, like a dock under the island
+                    double lw = s * 0.36, lh = s * 0.075;
+                    dc.DrawRoundedRectangle(new SolidColorBrush(Color.FromArgb(0xB3, 0xFF, 0xFF, 0xFF)), null, new Rect((s - lw) / 2, s * 0.66, lw, lh), lh / 2, lh / 2);
+                    break;
+                }
             }
         }
     }

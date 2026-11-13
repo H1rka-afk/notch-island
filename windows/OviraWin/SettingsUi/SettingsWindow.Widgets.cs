@@ -13,15 +13,8 @@ namespace Ovira.SettingsUi
     {
         private void BuildWidgetsPage(StackPanel page)
         {
-            // 0.7.0: Ovira's own taskbar.
-            page.Children.Add(Group("Панель задач", "Своя панель внизу экрана вместо панели Windows: «Пуск», поиск, закреплённые и открытые приложения с живыми миниатюрами окон, раскладка, звук, батарея и часы. Колёсико над значком звука меняет громкость, средняя кнопка открывает новое окно, правая — меню приложения. Панель Windows прячется, пока включена панель Ovira, и всегда возвращается — при выключении, при выходе из Ovira и при следующем запуске, если Ovira закрылась аварийно. Значки из системного трея (Discord, Steam) Windows чужим панелям не отдаёт — их видно, если выключить «Прятать панель Windows».",
-                ToggleRow("Своя панель задач", "Панель Ovira внизу основного экрана", nameof(Settings.TaskbarEnabled), "панель задач таскбар taskbar пуск снизу док"),
-                ToggleRow("Прятать панель Windows", "Иначе панель Ovira встанет над ней", nameof(Settings.TaskbarHideSystem), "прятать скрыть системная панель windows"),
-                SegmentRow("Значки", null, new (string, object)[] { ("По центру", "center"), ("Слева", "left") },
-                           nameof(Settings.TaskbarAlign), "значки центр слева выравнивание панель задач"),
-                SegmentRow("Фон панели", null, new (string, object)[] { ("Стекло", "glass"), ("Цвета темы", "theme"), ("Белый", "white"), ("Монолит", "mono") },
-                           nameof(Settings.TaskbarStyle), "фон панели задач стекло тема белый монолит"),
-                ToggleRow("Секунды в часах", null, nameof(Settings.TaskbarSeconds), "секунды часы панель задач")));
+            // 0.7.0: Ovira's own taskbar (SettingsWindow.Taskbar.cs).
+            BuildTaskbarGroups(page);
 
             // 0.6.1: the editor — your desktop with the grid and the gallery.
             var open = new Button { Content = "Добавить виджеты", Style = (Style)FindResource("MacButton"), FontWeight = FontWeights.SemiBold, Padding = new Thickness(18, 6, 18, 6) };

@@ -211,7 +211,21 @@ namespace Ovira.Core
 
         // «glass», «theme», «white» or «mono» — the same choice as the widgets.
         private string _taskbarStyle = "glass";
-        public string TaskbarStyle { get => _taskbarStyle; set => Set(ref _taskbarStyle, value is "theme" or "white" or "mono" ? value : "glass"); }
+        public string TaskbarStyle { get => _taskbarStyle; set => Set(ref _taskbarStyle, value is "theme" or "cover" or "white" or "mono" or "clear" ? value : "glass"); }
+
+        // 0.7.2: the dock's main colour — «theme», «cover» (the music) or «custom».
+        private string _taskbarColor = "theme";
+        public string TaskbarColor { get => _taskbarColor; set => Set(ref _taskbarColor, value is "cover" or "custom" ? value : "theme"); }
+
+        private string _taskbarCustomColor = "#3D85FF";
+        public string TaskbarCustomColor { get => _taskbarCustomColor; set => Set(ref _taskbarCustomColor, string.IsNullOrWhiteSpace(value) ? "#3D85FF" : value); }
+
+        private bool _taskbarMagnify = true;
+        public bool TaskbarMagnify { get => _taskbarMagnify; set => Set(ref _taskbarMagnify, value); }
+
+        // «ovira», «tiles» or «dots».
+        private string _taskbarStartIcon = "ovira";
+        public string TaskbarStartIcon { get => _taskbarStartIcon; set => Set(ref _taskbarStartIcon, value is "tiles" or "dots" ? value : "ovira"); }
 
         private bool _taskbarSeconds;
         public bool TaskbarSeconds { get => _taskbarSeconds; set => Set(ref _taskbarSeconds, value); }

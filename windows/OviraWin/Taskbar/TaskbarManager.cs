@@ -31,6 +31,9 @@ namespace Ovira.Taskbar
                         if (s.TaskbarHideSystem) SystemTaskbar.Hide(); else SystemTaskbar.Restore();
                         break;
                     case nameof(Settings.TaskbarStyle):
+                    case nameof(Settings.TaskbarColor):
+                    case nameof(Settings.TaskbarCustomColor):
+                    case nameof(Settings.TaskbarStartIcon):
                     case nameof(Settings.TaskbarAlign):
                     case nameof(Settings.Theme):
                     case nameof(Settings.CustomThemes):
@@ -41,6 +44,19 @@ namespace Ovira.Taskbar
                         break;
                 }
             };
+            // the music's colour or cover follows the song
+            object? lastArt = null;
+            var lastTint = System.Windows.Media.Colors.Transparent;
+            App.Current.Media.Changed += t => App.Current.Dispatcher.BeginInvoke(new Action(() =>
+            {
+                if (_bar == null) return;
+                bool follows = s.TaskbarColor == "cover" || s.TaskbarStyle == "cover";
+                var tint = t?.Tint ?? System.Windows.Media.Colors.Transparent;
+                if (!follows || (ReferenceEquals(lastArt, t?.Artwork) && tint == lastTint)) return;
+                lastArt = t?.Artwork;
+                lastTint = tint;
+                _bar.ApplyLook();
+            }), System.Windows.Threading.DispatcherPriority.Background);
             if (s.TaskbarEnabled) Open();
         }
 
