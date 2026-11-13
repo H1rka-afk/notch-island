@@ -170,7 +170,42 @@ namespace Ovira.Taskbar
 
         public static void Minimize(IntPtr h) => TB.ShowWindow(h, TB.SW_MINIMIZE);
 
-        public static void Close(IntPtr h) => TB.PostMessage(h, TB.WM_CLOSE, IntPtr.Zero, IntPtr.Zero);
+        // 0.7.5: the same «close» Windows' own taskbar sends (SC_CLOSE) —
+        // some apps ignore a bare WM_CLOSE from another program.
+        public static void Close(IntPtr h) => TB.PostMessage(h, TB.WM_SYSCOMMAND, new IntPtr(0xF060 /* SC_CLOSE */), IntPtr.Zero);
+
+        // «Завершить задачу»: every process of this app is ended. Explorer
+        // (the desktop itself), Ovira and Store-app frames only get their
+        // windows closed instead.
+        public static void EndTask(string app, List<TaskWindow> windows)
+        {
+            var exe = app.Split('|')[0];
+            var name = Path.GetFileNameWithoutExtension(exe);
+            bool protect = app.Contains('|') ||
+                           name.Equals("explorer", StringComparison.OrdinalIgnoreCase) ||
+                           name.Equals("applicationframehost", StringComparison.OrdinalIgnoreCase) ||
+                           exe.Equals((Environment.ProcessPath ?? "").ToLowerInvariant(), StringComparison.Ordinal);
+            if (protect)
+            {
+                foreach (var w in windows) Close(w.Handle);
+                return;
+            }
+            int ended = 0;
+            foreach (var p in System.Diagnostics.Process.GetProcessesByName(name))
+            {
+                try
+                {
+                    if (p.Id == Environment.ProcessId) continue;
+                    if (!TB.ExePath((uint)p.Id).Equals(exe, StringComparison.OrdinalIgnoreCase)) continue;
+                    p.Kill();
+                    ended++;
+                }
+                catch { }
+                finally { p.Dispose(); }
+            }
+            // could not end it (e.g. it runs as administrator) — at least close the windows
+            if (ended == 0) foreach (var w in windows) Close(w.Handle);
+        }
 
         public static void Launch(string app)
         {

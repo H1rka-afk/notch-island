@@ -663,7 +663,9 @@ namespace Ovira.Taskbar
                 var handles = b.Windows.Select(w => w.Handle).ToList();
                 menu.Item("minimize", handles.Count == 1 ? "Свернуть" : "Свернуть все", () => { foreach (var h in handles) AppWindows.Minimize(h); });
                 menu.Separator();
-                menu.Item("xmark", handles.Count == 1 ? "Закрыть окно" : $"Закрыть все окна ({handles.Count})", () => { foreach (var h in handles) AppWindows.Close(h); }, danger: true);
+                // 0.7.5: ends the app itself, like «Снять задачу» in Task Manager
+                var windows = b.Windows.ToList();
+                menu.Item("xmark", "Завершить задачу", () => { AppWindows.EndTask(app, windows); QueueRefresh(); }, danger: true);
             }
             menu.Open(b);
         }
