@@ -33,6 +33,16 @@ namespace Ovira.Island
 
         private Mode _mode = Mode.Hidden;
         private readonly Spring _w = new Spring(120), _h = new Spring(0), _r = new Spring(13), _peek = new Spring(1);
+        // 0.6.2: the island split in two — the music on the left (its right
+        // wing pulled in to the notch), a second small island on the right.
+        private readonly Spring _shift = new Spring(0), _bw = new Spring(0);
+        private bool _split;
+        private double LeftWing => (CompactW - Middle * Scale) / 2;
+        private double RightWingSplit => 8 * Scale;
+        private double SplitW => Middle * Scale + LeftWing + RightWingSplit;
+        private double SplitShift => (RightWingSplit - LeftWing) / 2;
+        private double BubbleW => 98 * Scale;
+        private double BubbleGap => 7 * Scale;
         private readonly Stopwatch _clock = Stopwatch.StartNew();
         private double _lastFrame;
         private bool _animating;
@@ -66,6 +76,8 @@ namespace Ovira.Island
             Island.MouseEnter += (_, _) => PointerEntered();
             Island.MouseLeave += (_, _) => PointerLeft();
             Island.MouseLeftButtonUp += OnIslandClick;
+            // 0.6.2: the second island opens its activity.
+            BubbleLayer.MouseLeftButtonUp += (_, e) => { if (_split && _mode == Mode.Compact) { OpenActivity(); e.Handled = true; } };
 
             _hoverOpen.Tick += (_, _) => { _hoverOpen.Stop(); if (_pointerInside && S.OpenOnHover) Expand(); };
             _hoverClose.Tick += (_, _) => { _hoverClose.Stop(); if (!_pointerInside) Collapse(); };
@@ -179,16 +191,18 @@ namespace Ovira.Island
             {
                 Mode.Expanded => (ExpandedW, ExpandedH, 26.0),
                 Mode.Banner => (BannerW, CompactH, 13.0),
-                Mode.Compact => (CompactW, CompactH, 13.0),
+                Mode.Compact => (_split ? SplitW : CompactW, CompactH, 13.0),
                 Mode.Idle => (IdleW, IdleH, 12.0),
                 _ => (IdleW * 0.8, 0.0, 12.0)
             };
             // 0.4.18: the iPhone style is a capsule when small and a card
             // with big round corners when open.
             if (Floating) r = _mode == Mode.Expanded ? 40.0 : Math.Max(h, CompactH) / 2;
+            bool splitNow = _split && _mode == Mode.Compact;
+            double shift = splitNow ? SplitShift : 0, bubble = splitNow ? BubbleW : 0;
             if (!animated)
             {
-                _w.Snap(w); _h.Snap(h); _r.Snap(r);
+                _w.Snap(w); _h.Snap(h); _r.Snap(r); _shift.Snap(shift); _bw.Snap(bubble);
                 DrawFrame();
                 return;
             }
@@ -197,6 +211,11 @@ namespace Ovira.Island
             _w.To(w, resp, damp);
             _h.To(h, resp, damp);
             _r.To(r, resp, damp);
+            _shift.To(shift, Motion.GrowResponse, Motion.GrowDamping);
+            // The second island comes out of the first a moment later, with a little spring.
+            _bw.To(bubble, splitNow ? 0.5 : 0.3, splitNow ? 0.72 : 1.0);
+            Fade(BubbleLayer, splitNow);
+            CompactBars.BeginAnimation(OpacityProperty, new DoubleAnimation(splitNow ? 0 : 1, TimeSpan.FromSeconds(0.2)));
             StartAnimating();
         }
 
@@ -213,7 +232,7 @@ namespace Ovira.Island
             var now = _clock.Elapsed.TotalSeconds;
             var dt = Math.Min(0.05, Math.Max(0.001, now - _lastFrame));
             _lastFrame = now;
-            bool moving = _w.Step(dt) | _h.Step(dt) | _r.Step(dt) | _peek.Step(dt);
+            bool moving = _w.Step(dt) | _h.Step(dt) | _r.Step(dt) | _peek.Step(dt) | _shift.Step(dt) | _bw.Step(dt);
             DrawFrame();
             if (!moving)
             {
@@ -233,12 +252,40 @@ namespace Ovira.Island
         private void DrawFrame()
         {
             double w = Math.Max(0, _w.Value), h = Math.Max(0, _h.Value);
-            double cx = CanvasWidth / 2;
+            double cx = CanvasWidth / 2 + _shift.Value;
             double r = Math.Max(0, Math.Min(_r.Value, Math.Min(h / 2, w / 2)));
             double flare = Math.Max(0, Math.Min(_mode == Mode.Expanded ? 13 : 7, h - r));
             double l = cx - w / 2, rt = cx + w / 2;
             double top = TopGap;
             Island.RenderTransformOrigin = new Point(0.5, Floating ? (top + h / 2) / Island.Height : 0);
+
+            // The second island: right of the first, the same height, its own shape.
+            double bw = Math.Max(0, _bw.Value), bx = rt + BubbleGap;
+            Geometry? bubble = null;
+            if (bw > 1 && h > 0.5)
+            {
+                double bh = Math.Min(h, CompactH), br = Math.Min(Floating ? bh / 2 : 13, bw / 2);
+                if (Floating) bubble = new RectangleGeometry(new Rect(bx, top, bw, bh), br, br);
+                else
+                {
+                    var sg = new StreamGeometry();
+                    using (var ctx = sg.Open())
+                    {
+                        double f = Math.Min(7, bw / 4);
+                        ctx.BeginFigure(new Point(bx - f, 0), true, true);
+                        ctx.QuadraticBezierTo(new Point(bx, 0), new Point(bx, f), true, true);
+                        ctx.LineTo(new Point(bx, bh - br), true, true);
+                        ctx.ArcTo(new Point(bx + br, bh), new Size(br, br), 0, false, SweepDirection.Counterclockwise, true, true);
+                        ctx.LineTo(new Point(bx + bw - br, bh), true, true);
+                        ctx.ArcTo(new Point(bx + bw, bh - br), new Size(br, br), 0, false, SweepDirection.Counterclockwise, true, true);
+                        ctx.LineTo(new Point(bx + bw, f), true, true);
+                        ctx.QuadraticBezierTo(new Point(bx + bw, 0), new Point(bx + bw + f, 0), true, true);
+                    }
+                    bubble = sg;
+                }
+            }
+            BubbleLayer.Margin = new Thickness(bx, top, 0, 0);
+            BubbleLayer.Width = bw;
 
             if (h < 0.5)
             {
@@ -246,9 +293,16 @@ namespace Ovira.Island
             }
             else if (Floating)
             {
-                var g = new RectangleGeometry(new Rect(l, top, w, h), r, r);
-                g.Freeze();
-                Shape.Data = g;
+                var main = new RectangleGeometry(new Rect(l, top, w, h), r, r);
+                if (bubble != null)
+                {
+                    var both = new GeometryGroup { FillRule = FillRule.Nonzero };
+                    both.Children.Add(main);
+                    both.Children.Add(bubble);
+                    both.Freeze();
+                    Shape.Data = both;
+                }
+                else { main.Freeze(); Shape.Data = main; }
             }
             else
             {
@@ -264,8 +318,15 @@ namespace Ovira.Island
                     ctx.LineTo(new Point(rt, flare), true, true);
                     ctx.QuadraticBezierTo(new Point(rt, 0), new Point(rt + flare, 0), true, true);
                 }
-                g.Freeze();
-                Shape.Data = g;
+                if (bubble != null)
+                {
+                    var both = new GeometryGroup { FillRule = FillRule.Nonzero };
+                    both.Children.Add(g);
+                    both.Children.Add(bubble);
+                    both.Freeze();
+                    Shape.Data = both;
+                }
+                else { g.Freeze(); Shape.Data = g; }
             }
 
             // ContentHost is in a Grid: placed by its margin.
@@ -275,6 +336,13 @@ namespace Ovira.Island
             ContentHost.Clip = new RectangleGeometry(new Rect(0, 0, w, h), r, r);
 
             Place(CompactLayer, CompactW, w);
+            // Split: the cover keeps its place in the left wing while the
+            // right wing is pulled in.
+            if (Math.Abs(SplitShift) > 0.1)
+            {
+                double k = Math.Clamp(_shift.Value / SplitShift, 0, 1);
+                Canvas.SetLeft(CompactLayer, (w - CompactW) / 2 * (1 - k));
+            }
             // 0.4.6: banner contents ride on the island's edges while it grows,
             // so the icon never trails behind the shape.
             Place(BannerLayer, w, w);
@@ -417,6 +485,8 @@ namespace Ovira.Island
                 ShowSaved(animated: false);
                 RefreshFavorite();
                 LivingCover(_mode == Mode.Expanded && !_activityOpen);
+                // Music came or went: the activity moves between the second island and the banner.
+                if (ActivitySource != null) RefreshActivity();
                 FillExpanded();
             }
             else
@@ -830,6 +900,28 @@ namespace Ovira.Island
             if (!_activityTick.IsEnabled) { _activityTick.Tick -= OnActivityTick; _activityTick.Tick += OnActivityTick; }
             var a = ActivitySource?.Invoke();
             _shownActivity = a;
+            // 0.6.2: with music the activity goes to the second island on the
+            // right; a ringing alarm still takes the whole island.
+            bool split = a != null && a.Key != "ring" && HasTrack;
+            if (split)
+            {
+                BubbleText.Text = a!.Right;
+                if (BubbleIcon.Icon != a.Icon) { BubbleIcon.Icon = a.Icon; if (_split) Pop(BubbleIcon); }
+                BubbleIcon.Fill = new SolidColorBrush(Tone(a.Icon, a.Colour));
+            }
+            if (split != _split)
+            {
+                _split = split;
+                if (split && _mode == Mode.Banner && _activityBanner)
+                {
+                    _activityBanner = false;
+                    _bannerTimer.Stop();
+                    Island.Cursor = null;
+                    _rightKind = 0;
+                    SetMode(RestingMode);
+                }
+                else Relayout(animated: true, growing: split);
+            }
             if (a == null)
             {
                 _activityTick.Stop();
@@ -845,6 +937,7 @@ namespace Ovira.Island
                 return;                                   // the player is open — leave it
             }
             if (_mode == Mode.Banner && !_activityBanner) return;   // a short banner is showing
+            if (split) return;                                      // shown in the second island
             if (_mode == Mode.Banner && _activityBanner && _activityKey == a.Key)
             {
                 BannerRight.Text = a.Right;
@@ -1196,7 +1289,7 @@ namespace Ovira.Island
                 Root.BeginAnimation(OpacityProperty, new DoubleAnimation(0, TimeSpan.FromSeconds(0.3)));
             _overGame = false;
             // 0.5.0: back to the running activity (a call, the timer…), if any.
-            if (ActivitySource?.Invoke() is Activity running)
+            if (ActivitySource?.Invoke() is Activity running && !(running.Key != "ring" && HasTrack))
             {
                 _activityBanner = false;
                 ShowActivityBanner(running);

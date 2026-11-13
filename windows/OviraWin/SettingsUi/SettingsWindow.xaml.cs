@@ -445,7 +445,7 @@ namespace Ovira.SettingsUi
         // 0.4.9: like real life — music, a banner, music again, the next
         // banner… so the island grows and shrinks between them.
         private static readonly string[] Cycle =
-            { "music", "volume", "music", "charging", "music", "eye", "music", "keyboard", "music", "output" };
+            { "music", "volume", "music", "call", "music", "charging", "music", "eye", "music", "timer", "music", "keyboard", "music", "output" };
 
         private string StageScene() => _hovered?.Demo ?? Cycle[_stageStep % Cycle.Length];
 
@@ -474,6 +474,10 @@ namespace Ovira.SettingsUi
                 case "charging":
                     icon = "bolt"; colour = Color.FromRgb(0x34, 0xC7, 0x59); word = "76 %";
                     caption = "Зарядка — молния и процент";
+                    break;
+                case "call":
+                    icon = "phone.fill"; colour = Color.FromRgb(0x34, 0xC7, 0x59); word = "12:34";
+                    caption = "Звонок в Discord или VK — время, микрофон и «Отключиться»";
                     break;
                 case "timer":
                     icon = "timer"; colour = Color.FromRgb(0xFF, 0x9F, 0x0A); word = "4:59";
@@ -728,7 +732,8 @@ namespace Ovira.SettingsUi
                         ToggleRow("Устройство вывода звука", "Когда звук переключился на наушники или динамики", nameof(Settings.OutputBanner), "наушники динамики вывод",
                                   () => App.Current.IslandWindow?.DemoOutput())));
                     page.Children.Add(Group("Звонки", "Ovira замечает звонок по тому, что Discord или VK Мессенджер (приложение или вкладка в браузере) включили микрофон. В островке — зелёная трубка и время звонка; нажми на островок: «Микрофон» выключает микрофон Windows целиком — тебя не слышно ни в одной программе, «Отключиться» нажимает кнопку завершения в самом Discord или VK.",
-                        ToggleRow("Звонки в островке", "Discord и VK Мессенджер: время, микрофон и «Отключиться»", nameof(Settings.CallActivity), "звонок discord дискорд vk вк мессенджер микрофон отключиться")));
+                        ToggleRow("Звонки в островке", "Discord и VK Мессенджер: время, микрофон и «Отключиться»", nameof(Settings.CallActivity), "звонок discord дискорд vk вк мессенджер микрофон отключиться",
+                                  () => App.Current.Calls.StartDemo())));
                     page.Children.Add(Group("Steam", "Пока Steam качает игру, островок показывает процент; нажми на островок — прошло, осталось, скорость сейчас и пиковая, запись на диск, как на странице загрузок Steam. Ovira только читает то, что Steam сам записывает (отметку «обновляется» и файл игры в библиотеке), и ничего в Steam не меняет. Скорость — это всё, что компьютер получает из сети: если одновременно идёт видео, цифра чуть выше, чем в Steam.",
                         ToggleRow("Загрузки Steam", "Процент в островке и подробности в раскрытом", nameof(Settings.SteamActivity), "steam стим загрузка скачивание игра скорость")));
                     page.Children.Add(Group("Клавиатура", "Ovira только спрашивает у Windows, включён ли Caps Lock и какой язык ввода у окна впереди. Нажатые клавиши она не видит и не записывает.",

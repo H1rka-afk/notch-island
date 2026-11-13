@@ -35,8 +35,18 @@ namespace Ovira.Services
             _poll.Start();
         }
 
+        // 0.6.2: «Показать» in Settings — a pretend call for 12 seconds.
+        private DateTime _demoUntil;
+        public void StartDemo()
+        {
+            _demoUntil = DateTime.Now.AddSeconds(12);
+            Current = new Call("Discord · показ", DateTime.Now.AddSeconds(-75), "demo");
+            Changed?.Invoke();
+        }
+
         private void Poll()
         {
+            if (DateTime.Now < _demoUntil) return;
             Call? found = Ovira.Core.Settings.Current.CallActivity ? Detect() : null;
             bool changed = (found == null) != (Current == null) || (found != null && Current != null && found.App != Current.App);
             if (found != null && Current != null && found.App == Current.App) found = Current;   // keep the start time
@@ -151,6 +161,7 @@ namespace Ovira.Services
         {
             var call = Current;
             if (call == null) return false;
+            if (call.Process == "demo") { _demoUntil = DateTime.MinValue; return true; }
             for (int attempt = 0; attempt < 2; attempt++)
             {
                 foreach (var hwnd in Windows(call))

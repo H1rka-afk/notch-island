@@ -18,6 +18,16 @@
                  the processor on every frame of the bars -->
             <Path x:Name="Shape" Fill="Black" HorizontalAlignment="Left" VerticalAlignment="Top" />
 
+            <!-- 0.6.2: the second island on the right (a timer, a call… while music plays) -->
+            <Grid x:Name="BubbleLayer" HorizontalAlignment="Left" VerticalAlignment="Top" Height="35" Opacity="0"
+                  Background="Transparent" Cursor="Hand" ClipToBounds="True">
+                <StackPanel Orientation="Horizontal" HorizontalAlignment="Center" VerticalAlignment="Center">
+                    <core:IconView x:Name="BubbleIcon" Icon="timer" Width="16" Height="16" Margin="0,0,6,0" VerticalAlignment="Center" />
+                    <TextBlock x:Name="BubbleText" Foreground="White" FontSize="14" FontWeight="SemiBold" VerticalAlignment="Center"
+                               Typography.NumeralAlignment="Tabular" />
+                </StackPanel>
+            </Grid>
+
             <Canvas x:Name="ContentHost" HorizontalAlignment="Left" VerticalAlignment="Top">
 
                 <!-- Closed: cover in the left wing, the camera space, bars in the right wing (as on the Mac) -->

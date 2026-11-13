@@ -279,6 +279,10 @@ namespace Ovira.Widgets
                 int ex = Native.WS_EX_TOOLWINDOW;
                 if (!Typing) ex |= Native.WS_EX_NOACTIVATE;
                 Native.AddExStyle(hwnd, ex);
+                // 0.6.2: Windows moves the widget itself (it always follows the
+                // cursor); Ovira only bends the path to the magnets and puts it
+                // into a cell when let go.
+                HwndSource.FromHwnd(hwnd)?.AddHook(MoveHook);
                 ToBottom();
             };
             Activated += (_, _) => ToBottom();
@@ -326,53 +330,62 @@ namespace Ovira.Widgets
             var (layers, update) = WidgetCard.Make(State, look, this);
             _update = update;
             Content = layers;
-            layers.MouseLeftButtonDown += (_, e) =>
+            // A press anywhere on the card (except real buttons and text fields)
+            // and a few pixels of movement start the move — so even areas that
+            // react to a click (the cover, a song) can be dragged.
+            layers.PreviewMouseLeftButtonDown += (_, e) =>
             {
-                if (Settings.Current.WidgetsLocked || e.ClickCount > 1) return;
+                _pressed = false;
+                if (e.ClickCount > 1) return;
                 if (e.OriginalSource is DependencyObject d && IsInteractive(d)) return;
-                if (!Settings.Current.WidgetsSnap)
-                {
-                    try { DragMove(); } catch { }
-                    ToBottom();
-                    return;
-                }
-                // 0.6.1: our own drag, with the magnets and the grid.
+                _pressed = true;
                 _grab = e.GetPosition(this);
-                _dragging = true;
-                layers.CaptureMouse();
+            };
+            layers.PreviewMouseMove += (_, e) =>
+            {
+                if (!_pressed || e.LeftButton != MouseButtonState.Pressed) { _pressed = false; return; }
+                if ((e.GetPosition(this) - _grab).Length < 4) return;
+                _pressed = false;
+                _moving = true;
+                try { DragMove(); } catch { }
+                _moving = false;
+                if (Settings.Current.WidgetsSnap)
+                    Glide(WidgetGrid.Settle(new Point(Left, Top), new Size(Width, Height), WidgetManager.OtherRects(State.Id).ToList()));
+                State.X = Left; State.Y = Top;
+                Settings.Current.SaveSoon();
+                ToBottom();
                 e.Handled = true;
             };
-            layers.MouseMove += (_, e) =>
-            {
-                if (!_dragging) return;
-                var screen = PointToScreenDip(e.GetPosition(this));
-                var raw = new Point(screen.X - _grab.X, screen.Y - _grab.Y);
-                var size = new Size(Width, Height);
-                var p = WidgetGrid.InArea(raw, size) ? WidgetGrid.Magnetic(raw, size, WidgetManager.OtherRects(State.Id)) : raw;
-                Left = p.X; Top = p.Y;
-            };
-            layers.MouseLeftButtonUp += (_, _) =>
-            {
-                if (!_dragging) return;
-                _dragging = false;
-                layers.ReleaseMouseCapture();
-                var size = new Size(Width, Height);
-                var target = WidgetGrid.Settle(new Point(Left, Top), size, WidgetManager.OtherRects(State.Id).ToList());
-                Glide(target);
-                ToBottom();
-            };
+            layers.PreviewMouseLeftButtonUp += (_, _) => _pressed = false;
             ContextMenu = Menu(kind);
             _update?.Invoke();
         }
 
         private Point _grab;
-        private bool _dragging;
+        private bool _pressed, _moving;
 
-        private Point PointToScreenDip(Point local)
+        [System.Runtime.InteropServices.StructLayout(System.Runtime.InteropServices.LayoutKind.Sequential)]
+        private struct RECT { public int Left, Top, Right, Bottom; }
+
+        private IntPtr MoveHook(IntPtr hwnd, int msg, IntPtr wParam, IntPtr lParam, ref bool handled)
         {
-            var px = PointToScreen(local);
+            const int WM_MOVING = 0x0216;
+            if (msg != WM_MOVING || !Settings.Current.WidgetsSnap) return IntPtr.Zero;
             var source = PresentationSource.FromVisual(this);
-            return source?.CompositionTarget != null ? source.CompositionTarget.TransformFromDevice.Transform(px) : px;
+            if (source?.CompositionTarget == null) return IntPtr.Zero;
+            var r = System.Runtime.InteropServices.Marshal.PtrToStructure<RECT>(lParam);
+            var toDip = source.CompositionTarget.TransformFromDevice;
+            var toPx = source.CompositionTarget.TransformToDevice;
+            var p = toDip.Transform(new Point(r.Left, r.Top));
+            var size = new Size(Width, Height);
+            if (!WidgetGrid.InArea(p, size)) return IntPtr.Zero;
+            var m = WidgetGrid.Magnetic(p, size, WidgetManager.OtherRects(State.Id));
+            var px = toPx.Transform(m);
+            int dx = (int)Math.Round(px.X) - r.Left, dy = (int)Math.Round(px.Y) - r.Top;
+            r.Left += dx; r.Right += dx; r.Top += dy; r.Bottom += dy;
+            System.Runtime.InteropServices.Marshal.StructureToPtr(r, lParam, false);
+            handled = true;
+            return new IntPtr(1);
         }
 
         // Into the cell with a short glide.
@@ -423,9 +436,9 @@ namespace Ovira.Widgets
                 menu.Items.Add(analog);
             }
             if (menu.Items.Count > 0) menu.Items.Add(new Separator());
-            var locked = new MenuItem { Header = "Закрепить все виджеты", IsChecked = Settings.Current.WidgetsLocked };
-            locked.Click += (_, _) => Settings.Current.WidgetsLocked = !Settings.Current.WidgetsLocked;
-            menu.Items.Add(locked);
+            var edit = new MenuItem { Header = "Расставить виджеты…" };
+            edit.Click += (_, _) => WidgetEditor.Open();
+            menu.Items.Add(edit);
             var settings = new MenuItem { Header = "Настройки виджетов…" };
             settings.Click += (_, _) => { Settings.Current.Section = "widgets"; App.Current.OpenSettings(); };
             menu.Items.Add(settings);
