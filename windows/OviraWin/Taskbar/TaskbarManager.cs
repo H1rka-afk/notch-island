@@ -39,6 +39,9 @@ namespace Ovira.Taskbar
                     case nameof(Settings.CustomThemes):
                         _bar?.ApplyLook();
                         break;
+                    case nameof(Settings.TaskbarSize):
+                        _bar?.ApplySize();
+                        break;
                     case nameof(Settings.TaskbarPinned):
                         _bar?.PinnedChanged();
                         break;

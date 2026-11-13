@@ -136,12 +136,67 @@ namespace Ovira.Taskbar
             _popup.PlacementTarget = target;
             _popup.HorizontalOffset = x - w / 2;
             _popup.VerticalOffset = Pad - 8;
+            Show(host);
+        }
+
+        private void Show(FrameworkElement host)
+        {
             _popup.IsOpen = true;
+            Watch();
             var scale = (ScaleTransform)host.RenderTransform;
             var spring = new BackEase { Amplitude = 0.35, EasingMode = EasingMode.EaseOut };
             scale.BeginAnimation(ScaleTransform.ScaleXProperty, new DoubleAnimation(0.9, 1, TimeSpan.FromSeconds(0.26)) { EasingFunction = spring });
             scale.BeginAnimation(ScaleTransform.ScaleYProperty, new DoubleAnimation(0.9, 1, TimeSpan.FromSeconds(0.26)) { EasingFunction = spring });
             host.BeginAnimation(UIElement.OpacityProperty, new DoubleAnimation(0, 1, TimeSpan.FromSeconds(0.14)));
+        }
+
+        // At the mouse, inside the target (widgets).
+        public void OpenAt(FrameworkElement target, Point at)
+        {
+            var host = (FrameworkElement)_popup.Child;
+            host.Measure(new Size(double.PositiveInfinity, double.PositiveInfinity));
+            _popup.PlacementTarget = target;
+            _popup.Placement = PlacementMode.Relative;
+            _popup.HorizontalOffset = at.X - Pad + 2;
+            _popup.VerticalOffset = at.Y - Pad + 2;
+            host.RenderTransformOrigin = new Point(0, 0);
+            Show(host);
+        }
+
+        // 0.7.3: Windows doesn't tell a window that never takes the focus
+        // (the dock, the widgets) about clicks elsewhere, so the menu looks
+        // itself: a mouse button pressed outside the card closes it. Only the
+        // mouse buttons are read, never the keyboard.
+        [System.Runtime.InteropServices.DllImport("user32.dll")] private static extern short GetAsyncKeyState(int key);
+        [System.Runtime.InteropServices.DllImport("user32.dll")] private static extern bool GetCursorPos(out POINT p);
+        private struct POINT { public int X, Y; }
+        private System.Windows.Threading.DispatcherTimer? _watch;
+        private bool _wasDown = true;
+
+        private void Watch()
+        {
+            _wasDown = true;
+            _watch = new System.Windows.Threading.DispatcherTimer { Interval = TimeSpan.FromMilliseconds(40) };
+            _watch.Tick += (_, _) =>
+            {
+                if (!_popup.IsOpen) { _watch?.Stop(); return; }
+                bool down = (GetAsyncKeyState(0x01) & 0x8000) != 0 || (GetAsyncKeyState(0x02) & 0x8000) != 0 || (GetAsyncKeyState(0x04) & 0x8000) != 0;
+                if (down && !_wasDown && !OverCard()) { _watch?.Stop(); Close(null); }
+                _wasDown = down;
+            };
+            _watch.Start();
+        }
+
+        private bool OverCard()
+        {
+            if (!GetCursorPos(out var p)) return true;
+            try
+            {
+                var topLeft = _card.PointToScreen(new Point(0, 0));
+                var bottomRight = _card.PointToScreen(new Point(_card.ActualWidth, _card.ActualHeight));
+                return p.X >= topLeft.X && p.X <= bottomRight.X && p.Y >= topLeft.Y && p.Y <= bottomRight.Y;
+            }
+            catch { return true; }
         }
 
         private void Close(Action? then)
@@ -150,7 +205,7 @@ namespace Ovira.Taskbar
             _closing = true;
             var host = (FrameworkElement)_popup.Child;
             var fade = new DoubleAnimation(0, TimeSpan.FromSeconds(0.1));
-            fade.Completed += (_, _) => { _popup.IsOpen = false; then?.Invoke(); };
+            fade.Completed += (_, _) => { _popup.IsOpen = false; _watch?.Stop(); then?.Invoke(); };
             host.BeginAnimation(UIElement.OpacityProperty, fade);
         }
     }

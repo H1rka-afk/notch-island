@@ -196,7 +196,19 @@ namespace Ovira.Widgets
                 media.Track.Playing = !media.Track.Playing;
                 play.Set(media.Track.Playing);
             }
-            var (bar, setBar) = Bar(L, 4, L.Fg);
+            // 0.7.3: the progress runs smoothly between the seconds, with the time under it
+            var barScale = new ScaleTransform(0, 1);
+            var bar = new Grid { Height = 4 };
+            bar.Children.Add(new Border { CornerRadius = new CornerRadius(2), Background = L.Faint });
+            bar.Children.Add(new Border { CornerRadius = new CornerRadius(2), Background = L.Fg, RenderTransformOrigin = new Point(0, 0.5), RenderTransform = barScale });
+            var elapsed = T("0:00", 10.5, FontWeights.SemiBold, L.Fg2);
+            var left = T("", 10.5, FontWeights.SemiBold, L.Fg2);
+            left.HorizontalAlignment = HorizontalAlignment.Right;
+            foreach (var x in new[] { elapsed, left }) x.SetValue(Typography.NumeralAlignmentProperty, FontNumeralAlignment.Tabular);
+            var times = new Grid { Margin = new Thickness(0, 4, 0, 2) };
+            times.Children.Add(elapsed);
+            times.Children.Add(left);
+            static string Clock(TimeSpan t) => t.TotalHours >= 1 ? $"{(int)t.TotalHours}:{t.Minutes:00}:{t.Seconds:00}" : $"{(int)t.TotalMinutes}:{t.Seconds:00}";
             var root = Pad();
             if (small)
             {
@@ -221,16 +233,18 @@ namespace Ovira.Widgets
                 var bottom = new Grid { VerticalAlignment = VerticalAlignment.Bottom, Margin = new Thickness(84, 0, 0, 0) };
                 bottom.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
                 bottom.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
-                bar.Margin = new Thickness(0, 0, 0, 10);
+                bottom.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
                 bottom.Children.Add(bar);
+                Grid.SetRow(times, 1);
+                bottom.Children.Add(times);
                 var controls = new StackPanel { Orientation = Orientation.Horizontal, HorizontalAlignment = HorizontalAlignment.Center };
-                Grid.SetRow(controls, 1);
+                Grid.SetRow(controls, 2);
                 var prev = new SkipGlyph { Forward = false, GlyphSize = 19, GlyphFill = L.Fg };
                 var next = new SkipGlyph { Forward = true, GlyphSize = 19, GlyphFill = L.Fg };
                 controls.Margin = new Thickness(0, -8, 0, -8);
-                controls.Children.Add(PlayerButton(prev, 48, 40, 40, L, () => { prev.Pulse(); media.Previous(); }));
+                controls.Children.Add(PlayerButton(prev, 48, 40, 40, L, () => { WidgetManager.HoldMedia(); prev.Pulse(); media.Previous(); }));
                 controls.Children.Add(PlayerButton(play, 48, 40, 40, L, TogglePlay));
-                controls.Children.Add(PlayerButton(next, 48, 40, 40, L, () => { next.Pulse(); media.Next(); }));
+                controls.Children.Add(PlayerButton(next, 48, 40, 40, L, () => { WidgetManager.HoldMedia(); next.Pulse(); media.Next(); }));
                 bottom.Children.Add(controls);
                 root.Children.Add(bottom);
             }
@@ -250,7 +264,31 @@ namespace Ovira.Widgets
                     note.Visibility = t?.Artwork != null ? Visibility.Collapsed : Visibility.Visible;
                     bars.SetCover(t?.Artwork, t?.Tint ?? Colors.White);
                 }
-                setBar(t != null && t.Duration.TotalSeconds > 1 ? t.LivePosition.TotalSeconds / t.Duration.TotalSeconds : 0);
+                double total = t?.Duration.TotalSeconds ?? 0;
+                if (t == null || total <= 1)
+                {
+                    barScale.BeginAnimation(ScaleTransform.ScaleXProperty, null);
+                    barScale.ScaleX = 0;
+                    elapsed.Text = ""; left.Text = "";
+                }
+                else
+                {
+                    double pos = Math.Clamp(t.LivePosition.TotalSeconds, 0, total);
+                    elapsed.Text = Clock(TimeSpan.FromSeconds(pos));
+                    left.Text = "−" + Clock(TimeSpan.FromSeconds(Math.Max(0, total - pos)));
+                    double now = pos / total;
+                    if (t.Playing)
+                    {
+                        // glide to where the song will be a moment later
+                        double ahead = Math.Min(1, (pos + 1.1) / total);
+                        barScale.BeginAnimation(ScaleTransform.ScaleXProperty, new System.Windows.Media.Animation.DoubleAnimation(now, ahead, TimeSpan.FromSeconds(1.1)));
+                    }
+                    else
+                    {
+                        barScale.BeginAnimation(ScaleTransform.ScaleXProperty, null);
+                        barScale.ScaleX = now;
+                    }
+                }
             }
             return (root, Update);
         }
@@ -651,12 +689,13 @@ namespace Ovira.Widgets
         {
             bool wide = st.Size == "m";
             var root = Pad();
-            double width = wide ? 150 : 136;
+            // 0.7.3: the wide one also shows the graphics card — load and temperature
+            double width = wide ? 98 : 136;
             FrameworkElement Block(string title, out TextBlock value, out Polyline line, out TextBlock note, Brush brush)
             {
                 var stack = new StackPanel { Width = width };
                 stack.Children.Add(Caption(title, L));
-                value = T("", wide ? 26 : 20, FontWeights.Bold, L.Fg, true);
+                value = T("", wide ? 22 : 20, FontWeights.Bold, L.Fg, true);
                 stack.Children.Add(value);
                 line = Spark(brush);
                 stack.Children.Add(line);
@@ -665,9 +704,25 @@ namespace Ovira.Widgets
                 return stack;
             }
             var pink = new SolidColorBrush(Color.FromRgb(0xFF, 0x6B, 0x8E));
+            var green = new SolidColorBrush(Color.FromRgb(0x30, 0xD1, 0x58));
             var cpu = Block("Процессор", out var cpuValue, out var cpuLine, out var cpuNote, L.Accent);
             var mem = Block("Память", out var memValue, out var memLine, out var memNote, pink);
-            if (wide) { cpu.HorizontalAlignment = HorizontalAlignment.Left; mem.HorizontalAlignment = HorizontalAlignment.Right; root.Children.Add(cpu); root.Children.Add(mem); }
+            TextBlock? gpuValue = null, gpuNote = null;
+            Polyline? gpuLine = null;
+            if (wide)
+            {
+                var gpu = Block("Видеокарта", out var gv, out var gl, out var gn, green);
+                gpuValue = gv; gpuLine = gl; gpuNote = gn;
+                var grid = new Grid();
+                for (int i = 0; i < 3; i++) grid.ColumnDefinitions.Add(new ColumnDefinition());
+                Grid.SetColumn(mem, 1);
+                Grid.SetColumn(gpu, 2);
+                cpu.HorizontalAlignment = HorizontalAlignment.Left;
+                mem.HorizontalAlignment = HorizontalAlignment.Center;
+                gpu.HorizontalAlignment = HorizontalAlignment.Right;
+                grid.Children.Add(cpu); grid.Children.Add(mem); grid.Children.Add(gpu);
+                root.Children.Add(grid);
+            }
             else
             {
                 var both = new StackPanel();
@@ -685,6 +740,14 @@ namespace Ovira.Widgets
                 memNote.Text = m.UsedGb.ToString("0.0", Ru) + " из " + m.TotalGb.ToString("0", Ru) + " ГБ";
                 Draw(cpuLine, Meters.CpuHistory, width);
                 Draw(memLine, Meters.MemoryHistory, width);
+                if (gpuValue != null && gpuLine != null && gpuNote != null)
+                {
+                    var (load, temp) = GpuMeter.Read();
+                    gpuValue.Text = (int)Math.Round(load * 100) + " %";
+                    gpuNote.Text = double.IsNaN(temp) ? "нагрев —" : (int)Math.Round(temp) + " °C";
+                    gpuNote.Foreground = !double.IsNaN(temp) && temp >= 80 ? new SolidColorBrush(Color.FromRgb(0xFF, 0x6B, 0x5A)) : L.Fg2;
+                    Draw(gpuLine, GpuMeter.History, width);
+                }
             }
             return (root, Update);
         }

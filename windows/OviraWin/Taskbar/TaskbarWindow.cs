@@ -185,8 +185,9 @@ namespace Ovira.Taskbar
             ShowActivated = false;
             Topmost = true;
             UseLayoutRounding = true;
-            SizeToContent = SizeToContent.Width;
-            Height = Capsule + BottomGap + Headroom;
+            SizeToContent = SizeToContent.WidthAndHeight;
+            _root.Height = Capsule + BottomGap + Headroom;
+            _root.LayoutTransform = _zoom;
             Title = "Ovira — панель задач";
             FontFamily = new FontFamily("Segoe UI Variable Text, Segoe UI");
             Left = -10000; Top = -10000;
@@ -268,6 +269,17 @@ namespace Ovira.Taskbar
 
         public DockLook Style2 => D;
 
+        // 0.7.3: the dock's size — «Маленький», «Средний», «Большой».
+        private readonly ScaleTransform _zoom = new(K, K);
+        public static double K => Settings.Current.TaskbarSize switch { "small" => 0.8, "medium" => 0.9, _ => 1.0 };
+
+        public void ApplySize()
+        {
+            _zoom.ScaleX = _zoom.ScaleY = K;
+            _tray?.ApplySize();
+            Place();
+        }
+
         private bool _startWasOpen, _searchWasOpen;
 
         // Is Start (or search) the window in front right now?
@@ -325,7 +337,7 @@ namespace Ovira.Taskbar
             if (_hwnd == IntPtr.Zero) return;
             var screen = Screen;
             var dpi = VisualTreeHelper.GetDpi(this);
-            int h = (int)Math.Round(Reserve * dpi.DpiScaleY);
+            int h = (int)Math.Round(Reserve * K * dpi.DpiScaleY);
             var d = Data();
             d.rc = new TB.RECT { Left = screen.Left, Right = screen.Right, Top = screen.Bottom - h, Bottom = screen.Bottom };
             TB.SHAppBarMessage(TB.ABM_QUERYPOS, ref d);
@@ -349,7 +361,7 @@ namespace Ovira.Taskbar
             int x = Settings.Current.TaskbarAlign == "left" ? screen.Left : screen.Left + (screen.Width - w) / 2;
             int y = BottomPx - h;
             TB.SetWindowPos(_hwnd, TB.HWND_TOPMOST, x, y, 0, 0, TB.SWP_NOSIZE | TB.SWP_NOACTIVATE | TB.SWP_SHOWWINDOW);
-            _barTop = (BottomPx - (Capsule + BottomGap) * dpi.DpiScaleY) / dpi.DpiScaleY;
+            _barTop = (BottomPx - (Capsule + BottomGap) * K * dpi.DpiScaleY) / dpi.DpiScaleY;
         }
 
         private void Detach()
@@ -424,6 +436,8 @@ namespace Ovira.Taskbar
 
         public void ApplyLook()
         {
+            // 0.7.3: the old look fades out over the new one
+            if (IsLoaded) Crossfade.Snapshot(_dock);
             D = DockLook.Current();
             _capsule.Background = D.Back;
             _capsule.BorderBrush = D.Rim;
@@ -584,7 +598,7 @@ namespace Ovira.Taskbar
             var dpi = VisualTreeHelper.GetDpi(this);
             var p = b.PointToScreen(new Point(0, 0));
             var rect = new Rect(p.X / dpi.DpiScaleX, p.Y / dpi.DpiScaleY, b.ActualWidth, b.ActualHeight);
-            _preview.ShowFor(b.App, b.Windows.ToList(), D.Base, rect, _barTop - IconSize * MaxGrow);
+            _preview.ShowFor(b.App, b.Windows.ToList(), D.Base, rect, _barTop - IconSize * MaxGrow * K);
         }
 
         private void OnAppClick(DockItem b)
@@ -898,6 +912,14 @@ namespace Ovira.Taskbar
         private TextBlock _time = null!, _date = null!, _lang = null!, _pct = null!;
         private IconView _speaker = null!, _battery = null!;
         private TrayButton _batteryButton = null!;
+        private Grid? _grid;
+        private readonly ScaleTransform _zoom = new(TaskbarWindow.K, TaskbarWindow.K);
+
+        public void ApplySize()
+        {
+            _zoom.ScaleX = _zoom.ScaleY = TaskbarWindow.K;
+            Position();
+        }
 
         public TrayWindow(TaskbarWindow bar)
         {
@@ -916,6 +938,7 @@ namespace Ovira.Taskbar
             Left = -10000; Top = -10000;
 
             var grid = new Grid { Margin = new Thickness(18, 18, 10, 0), Height = H };
+            _grid = grid;
             _shadow.CornerRadius = _capsule.CornerRadius = _gloss.CornerRadius = new CornerRadius(15);
             _shadow.Background = Brushes.Black;
             _shadow.Opacity = 0.55;
@@ -930,10 +953,13 @@ namespace Ovira.Taskbar
             // the bottom of the capsule lines up with the middle of the dock
             var outer = new Grid { Margin = new Thickness(0, 0, 0, TaskbarWindow.BottomGap + (TaskbarWindow.Capsule - H) / 2) };
             outer.Children.Add(grid);
+            outer.LayoutTransform = _zoom;
             Content = outer;
 
             _lang = new TextBlock { FontSize = 12, FontWeight = FontWeights.SemiBold, VerticalAlignment = VerticalAlignment.Center, HorizontalAlignment = HorizontalAlignment.Center };
-            Add(new TrayButton(_lang, 42), () => TB.Shortcut(TB.VK_LWIN, TB.VK_SPACE));
+            // 0.7.3: the next layout at once, straight to the window in front
+            // (Win+Space waited for its own little menu first)
+            Add(new TrayButton(_lang, 42), () => { var code = Layouts.Next(); if (code.Length > 0) _lang.Text = Layouts.Label(code, _lang.Text); });
 
             _speaker = new IconView { Icon = "speaker.wave", Width = 18, Height = 18 };
             var sound = Add(new TrayButton(_speaker, 38), () => TB.Shortcut(TB.VK_LWIN, 0x41 /* A */));
@@ -961,7 +987,8 @@ namespace Ovira.Taskbar
 
             // show the desktop
             var desk = new IconView { Icon = "minimize", Width = 12, Height = 12 };
-            Add(new TrayButton(desk, 26), () => TB.Shortcut(TB.VK_LWIN, 0x44 /* D */));
+            // 0.7.3: Ovira folds the windows itself — Win+D hid the widgets too
+            Add(new TrayButton(desk, 26), Desktop.Toggle);
 
             _capsule.MouseRightButtonUp += (_, e) => { e.Handled = true; _bar.BarMenu(_capsule, e.GetPosition(_capsule).X); };
             _row.MouseRightButtonUp += (_, e) => { e.Handled = true; _bar.BarMenu(_capsule, e.GetPosition(_capsule).X); };
@@ -1002,6 +1029,7 @@ namespace Ovira.Taskbar
 
         public void ApplyLook()
         {
+            if (IsLoaded && _grid != null) Crossfade.Snapshot(_grid);
             var d = _bar.Style2;
             _capsule.Background = d.Back;
             _capsule.BorderBrush = d.Rim;
@@ -1019,7 +1047,7 @@ namespace Ovira.Taskbar
             _date.Text = now.ToString("d MMM", new System.Globalization.CultureInfo("ru-RU")).TrimEnd('.') + ", " +
                          now.ToString("ddd", new System.Globalization.CultureInfo("ru-RU"));
             var layout = KeyboardWatch.CurrentLayout();
-            _lang.Text = layout switch { "RU" => "РУС", "EN" => "ENG", "UK" => "УКР", "BE" => "БЕЛ", "KK" => "ҚАЗ", "" => _lang.Text, _ => layout };
+            if (DateTime.Now > Layouts.HoldLabel) _lang.Text = Layouts.Label(layout, _lang.Text);
             var audio = App.Current.Audio;
             _speaker.Icon = audio.Muted || audio.Volume < 0.005 ? "speaker.slash" : "speaker.wave";
             bool has = false;
@@ -1075,6 +1103,101 @@ namespace Ovira.Taskbar
                          : new DoubleAnimation(to, TimeSpan.FromSeconds(0.42)) { EasingFunction = new ElasticEase { Oscillations = 1, Springiness = 6, EasingMode = EasingMode.EaseOut } };
             _scale.BeginAnimation(ScaleTransform.ScaleXProperty, a);
             _scale.BeginAnimation(ScaleTransform.ScaleYProperty, a);
+        }
+    }
+}
+
+namespace Ovira.Taskbar
+{
+    // The old look of a capsule laid over the new one as a picture and
+    // faded away — colours, cover and the Start icon change softly.
+    internal static class Crossfade
+    {
+        public static void Snapshot(Grid host)
+        {
+            double w = host.ActualWidth, h = host.ActualHeight;
+            if (w < 1 || h < 1) return;
+            var dpi = VisualTreeHelper.GetDpi(host);
+            var old = host.Children.OfType<Image>().FirstOrDefault(i => Equals(i.Tag, "crossfade"));
+            if (old != null) host.Children.Remove(old);
+            var visual = new DrawingVisual();
+            using (var dc = visual.RenderOpen())
+            {
+                var brush = new VisualBrush(host) { Viewbox = new Rect(0, 0, w, h), ViewboxUnits = BrushMappingMode.Absolute, Stretch = Stretch.Fill };
+                dc.DrawRectangle(brush, null, new Rect(0, 0, w, h));
+            }
+            var bmp = new System.Windows.Media.Imaging.RenderTargetBitmap((int)Math.Ceiling(w * dpi.DpiScaleX), (int)Math.Ceiling(h * dpi.DpiScaleY), 96 * dpi.DpiScaleX, 96 * dpi.DpiScaleY, PixelFormats.Pbgra32);
+            bmp.Render(visual);
+            bmp.Freeze();
+            var image = new Image { Source = bmp, Stretch = Stretch.Fill, IsHitTestVisible = false, Tag = "crossfade", Width = w, Height = h, HorizontalAlignment = HorizontalAlignment.Left, VerticalAlignment = VerticalAlignment.Top };
+            if (host.ColumnDefinitions.Count > 0) Grid.SetColumnSpan(image, host.ColumnDefinitions.Count);
+            if (host.RowDefinitions.Count > 0) Grid.SetRowSpan(image, host.RowDefinitions.Count);
+            host.Children.Add(image);
+            var fade = new DoubleAnimation(1, 0, TimeSpan.FromSeconds(0.55)) { EasingFunction = new CubicEase { EasingMode = EasingMode.EaseInOut } };
+            fade.Completed += (_, _) => host.Children.Remove(image);
+            image.BeginAnimation(UIElement.OpacityProperty, fade);
+        }
+    }
+
+    // The keyboard layout button: the next layout goes straight to the
+    // window in front (the same request Windows' own switch sends).
+    internal static class Layouts
+    {
+        [System.Runtime.InteropServices.DllImport("user32.dll")] private static extern int GetKeyboardLayoutList(int n, IntPtr[]? list);
+        [System.Runtime.InteropServices.DllImport("user32.dll")] private static extern IntPtr GetKeyboardLayout(uint thread);
+        [System.Runtime.InteropServices.DllImport("user32.dll")] private static extern uint GetWindowThreadProcessId(IntPtr hwnd, IntPtr pid);
+
+        public static DateTime HoldLabel;
+
+        public static string Next()
+        {
+            try
+            {
+                int n = GetKeyboardLayoutList(0, null);
+                if (n < 2) return "";
+                var list = new IntPtr[n];
+                GetKeyboardLayoutList(n, list);
+                var fg = TB.GetForegroundWindow();
+                var cur = GetKeyboardLayout(GetWindowThreadProcessId(fg, IntPtr.Zero));
+                int at = Array.IndexOf(list, cur);
+                var next = list[(at + 1) % n];
+                TB.PostMessage(fg == IntPtr.Zero ? TB.FindWindow("Progman", null) : fg, 0x0050 /* WM_INPUTLANGCHANGEREQUEST */, IntPtr.Zero, next);
+                HoldLabel = DateTime.Now.AddSeconds(1.2);
+                int lang = (int)((long)next & 0xFFFF);
+                return new System.Globalization.CultureInfo(lang).TwoLetterISOLanguageName.ToUpperInvariant();
+            }
+            catch { return ""; }
+        }
+
+        public static string Label(string code, string fallback) =>
+            code switch { "RU" => "РУС", "EN" => "ENG", "UK" => "УКР", "BE" => "БЕЛ", "KK" => "ҚАЗ", "DE" => "DEU", "FR" => "FRA", "" => fallback, _ => code };
+    }
+
+    // «Свернуть всё»: the app windows fold down, the widgets stay; a second
+    // press brings the same windows back.
+    internal static class Desktop
+    {
+        [System.Runtime.InteropServices.DllImport("user32.dll")] private static extern bool ShowWindowAsync(IntPtr hwnd, int cmd);
+        private static readonly List<IntPtr> Folded = new();
+
+        public static void Toggle()
+        {
+            Folded.RemoveAll(h => !TB.IsWindow(h));
+            if (Folded.Count > 0 && Folded.All(TB.IsIconic))
+            {
+                for (int i = Folded.Count - 1; i >= 0; i--) ShowWindowAsync(Folded[i], TB.SW_RESTORE);
+                var top = Folded[0];
+                Folded.Clear();
+                TB.SetForegroundWindow(top);
+                return;
+            }
+            Folded.Clear();
+            foreach (var w in AppWindows.List(IntPtr.Zero, IntPtr.Zero))
+            {
+                if (TB.IsIconic(w.Handle)) continue;
+                Folded.Add(w.Handle);
+                ShowWindowAsync(w.Handle, 7 /* SW_SHOWMINNOACTIVE */);
+            }
         }
     }
 }

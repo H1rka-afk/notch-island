@@ -173,7 +173,7 @@ namespace Ovira.Widgets
             new("stats", "Статистика", "chart", new[] { "m" }, "Сегодня и неделя столбиками"),
             new("eyes", "Отдых для глаз", "eye", new[] { "s" }, "Сколько до перерыва"),
             new("battery", "Батарея", "battery", new[] { "s" }, "Заряд и питание"),
-            new("load", "Нагрузка", "waveform", new[] { "s", "m" }, "Процессор и память"),
+            new("load", "Нагрузка", "waveform", new[] { "s", "m" }, "Процессор, память и видеокарта"),
             new("disks", "Диски", "display", new[] { "s", "m" }, "Свободное место"),
             new("network", "Сеть", "arrow.down", new[] { "s" }, "Скорость загрузки и отдачи"),
             new("steam", "Steam", "arrow.down", new[] { "m" }, "Текущая загрузка"),
@@ -365,7 +365,8 @@ namespace Ovira.Widgets
                 e.Handled = true;
             };
             layers.PreviewMouseLeftButtonUp += (_, _) => _pressed = false;
-            ContextMenu = Menu(kind);
+            // 0.7.3: Ovira's own menu, like the taskbar's
+            layers.MouseRightButtonUp += (_, e) => { e.Handled = true; Menu(kind).OpenAt(layers, e.GetPosition(layers)); };
             _update?.Invoke();
         }
 
@@ -427,32 +428,20 @@ namespace Ovira.Widgets
             return false;
         }
 
-        private ContextMenu Menu(WidgetKind kind)
+        private Ovira.Taskbar.OviraMenu Menu(WidgetKind kind)
         {
-            var menu = new ContextMenu();
+            var menu = new Ovira.Taskbar.OviraMenu(Look.Current()).Header(null, kind.Icon, kind.Title, WidgetCatalog.SizeName(State.Size));
             if (kind.Sizes.Length > 1)
                 foreach (var size in new[] { "s", "m", "l" }.Where(x => kind.Sizes.Contains(x)))
-                {
-                    var item = new MenuItem { Header = WidgetCatalog.SizeName(size), IsChecked = State.Size == size };
-                    item.Click += (_, _) => { State.Size = size; Settings.Current.SaveSoon(); Build(); };
-                    menu.Items.Add(item);
-                }
+                    menu.Item(size == "s" ? "minus" : size == "m" ? "grid" : "plus", WidgetCatalog.SizeName(size),
+                              () => { State.Size = size; Settings.Current.SaveSoon(); Build(); }, check: State.Size == size);
             if (State.Kind == "clock")
-            {
-                var analog = new MenuItem { Header = "Стрелочные", IsChecked = State.Variant == "analog" };
-                analog.Click += (_, _) => { State.Variant = State.Variant == "analog" ? "" : "analog"; Settings.Current.SaveSoon(); Build(); };
-                menu.Items.Add(analog);
-            }
-            if (menu.Items.Count > 0) menu.Items.Add(new Separator());
-            var edit = new MenuItem { Header = "Расставить виджеты…" };
-            edit.Click += (_, _) => WidgetEditor.Open();
-            menu.Items.Add(edit);
-            var settings = new MenuItem { Header = "Настройки виджетов…" };
-            settings.Click += (_, _) => { Settings.Current.Section = "widgets"; App.Current.OpenSettings(); };
-            menu.Items.Add(settings);
-            var remove = new MenuItem { Header = "Убрать виджет" };
-            remove.Click += (_, _) => WidgetManager.Remove(State.Id);
-            menu.Items.Add(remove);
+                menu.Item("timer", "Стрелочные", () => { State.Variant = State.Variant == "analog" ? "" : "analog"; Settings.Current.SaveSoon(); Build(); }, check: State.Variant == "analog");
+            menu.Separator();
+            menu.Item("grid", "Расставить виджеты", () => WidgetEditor.Open());
+            menu.Item("gear", "Настройки виджетов", () => { Settings.Current.Section = "widgets"; App.Current.OpenSettings(); });
+            menu.Separator();
+            menu.Item("trash", "Убрать виджет", () => WidgetManager.Remove(State.Id), danger: true);
             return menu;
         }
 
@@ -482,18 +471,46 @@ namespace Ovira.Widgets
             // 0.6.3: the cards are rebuilt only when the cover's colour really
             // changes — a pause used to rebuild them, and the music widget's
             // bars dropped to nothing at once instead of settling softly.
-            App.Current.Media.Changed += t => App.Current.Dispatcher.BeginInvoke(new Action(() =>
-            {
-                var tint = t?.Tint ?? Colors.Transparent;
-                if (Settings.Current.Theme == "cover" && Settings.Current.WidgetStyle != "mono" && tint != _lastTint)
-                {
-                    _lastTint = tint;
-                    RebuildKinds(null);
-                }
-                else TickAll();
-            }), DispatcherPriority.Background);
+            App.Current.Media.Changed += _ => App.Current.Dispatcher.BeginInvoke(new Action(MediaChanged), DispatcherPriority.Background);
             App.Current.Clock.Changed += TickAll;
             App.Current.Steam.Changed += TickAll;
+        }
+
+        // 0.7.3: while a skip animates (⏪ ⏩ in the widget), the new song's
+        // cover and colours wait a moment — redrawing the card right then
+        // made the animation stutter.
+        private static DateTime _holdUntil;
+        private static DispatcherTimer? _holdTimer;
+
+        public static void HoldMedia() => _holdUntil = DateTime.Now.AddSeconds(0.42);
+
+        private static void MediaChanged()
+        {
+            var wait = _holdUntil - DateTime.Now;
+            if (wait > TimeSpan.Zero)
+            {
+                _holdTimer ??= new DispatcherTimer();
+                _holdTimer.Stop();
+                _holdTimer.Interval = wait;
+                _holdTimer.Tick -= HoldTick;
+                _holdTimer.Tick += HoldTick;
+                _holdTimer.Start();
+                return;
+            }
+            var t = App.Current.Media.Track;
+            var tint = t?.Tint ?? Colors.Transparent;
+            if (Settings.Current.Theme == "cover" && Settings.Current.WidgetStyle != "mono" && tint != _lastTint)
+            {
+                _lastTint = tint;
+                RebuildKinds(null);
+            }
+            else TickAll();
+        }
+
+        private static void HoldTick(object? sender, EventArgs e)
+        {
+            _holdTimer?.Stop();
+            MediaChanged();
         }
 
         private static void Open(WidgetState state)
@@ -578,7 +595,7 @@ namespace Ovira.Widgets
                 foreach (var w in Live) w.Visibility = hide ? Visibility.Hidden : Visibility.Visible;
                 if (!hide) foreach (var w in Live) w.ToBottom();
             }
-            if (hide) return;
+            if (hide || DateTime.Now < _holdUntil) return;
             foreach (var w in Live.ToList()) w.Tick();
         }
 

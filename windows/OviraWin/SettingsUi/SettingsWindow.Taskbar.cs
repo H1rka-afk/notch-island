@@ -22,6 +22,8 @@ namespace Ovira.SettingsUi
                 ToggleRow("Прятать панель Windows", "Иначе док встанет над ней", nameof(Settings.TaskbarHideSystem), "прятать скрыть системная панель windows"),
                 SegmentRow("Где док", null, new (string, object)[] { ("По центру", "center"), ("Слева", "left") },
                            nameof(Settings.TaskbarAlign), "значки центр слева выравнивание панель задач"),
+                SegmentRow("Размер", null, new (string, object)[] { ("Маленький", "small"), ("Средний", "medium"), ("Большой", "large") },
+                           nameof(Settings.TaskbarSize), "размер панели задач маленький уменьшить док"),
                 ToggleRow("Увеличение под курсором", "Значки растут, когда ведёшь по ним мышкой, как в Dock на Mac", nameof(Settings.TaskbarMagnify), "увеличение под курсором лупа рост значков док"),
                 StartIconRow(),
                 ToggleRow("Секунды в часах", null, nameof(Settings.TaskbarSeconds), "секунды часы панель задач")));
