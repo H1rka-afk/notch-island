@@ -185,7 +185,7 @@ namespace Ovira.Widgets
             art.Child = note;
             var title = T("Ничего не играет", small ? 13 : 15, FontWeights.Bold, L.Fg, true);
             var artist = T("", 12, FontWeights.Medium, L.Fg2);
-            var bars = new SpectrumBars { BarWidth = 3, BarSpacing = 2.3, BarMaxHeight = 22, Width = 6 * 3 + 5 * 2.3, Height = 22, HorizontalAlignment = HorizontalAlignment.Right, VerticalAlignment = VerticalAlignment.Top };
+            var bars = new SpectrumBars { MaxFps = 30, BarWidth = 3, BarSpacing = 2.3, BarMaxHeight = 22, Width = 6 * 3 + 5 * 2.3, Height = 22, HorizontalAlignment = HorizontalAlignment.Right, VerticalAlignment = VerticalAlignment.Top };
             // 0.6.4: the island's own glyphs — ⏯ swaps with a spring, ⏪ ⏩ step.
             var play = new PlayPauseGlyph { Width = small ? 22 : 25, Height = small ? 22 : 25, GlyphFill = L.Fg };
             void TogglePlay()

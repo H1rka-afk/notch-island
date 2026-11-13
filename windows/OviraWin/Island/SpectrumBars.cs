@@ -59,9 +59,16 @@ namespace Ovira.Island
         protected override Size MeasureOverride(Size availableSize) => new Size(TotalWidth, BarMaxHeight);
 
         // Called by the clock at the chosen frame rate. Returns true when it drew.
+        // 0.7.4: bars outside the island (the music widget) draw at most this
+        // often — every frame of a see-through desktop window is costly.
+        public double MaxFps { get; set; }
+        private double _drawnAt;
+
         internal bool Tick(double time, double[] levels, bool live)
         {
             if (!Active || !IsVisible) return false;
+            if (MaxFps > 0 && time - _drawnAt < 1.0 / MaxFps - 0.002) return Playing || !_physics.Settled;
+            _drawnAt = time;
             bool wasSettled = _physics.Settled;
             _physics.Step(time, levels, Playing, live);
             if (wasSettled && _physics.Settled && !Playing && _brush != null) return false;

@@ -155,6 +155,9 @@ namespace Ovira.Taskbar
         private readonly Border _gloss = new() { IsHitTestVisible = false };
         private readonly Grid _artBox = new() { IsHitTestVisible = false, ClipToBounds = true, VerticalAlignment = VerticalAlignment.Bottom };
         private readonly Image _art = new() { Stretch = Stretch.UniformToFill, Margin = new Thickness(-40), Effect = new BlurEffect { Radius = 34, RenderingBias = RenderingBias.Performance }, CacheMode = new BitmapCache() };
+        // 0.7.4: the previous cover and colours, fading out over the new ones
+        private readonly Image _artOld = new() { Stretch = Stretch.UniformToFill, Margin = new Thickness(-40), Effect = new BlurEffect { Radius = 34, RenderingBias = RenderingBias.Performance }, CacheMode = new BitmapCache(), Opacity = 0 };
+        private readonly Border _capsuleOld = new() { IsHitTestVisible = false, Opacity = 0 };
         private readonly StackPanel _row = new() { Orientation = Orientation.Horizontal, Margin = new Thickness(7, 0, 7, 0), VerticalAlignment = VerticalAlignment.Bottom };
         private readonly StackPanel _apps = new() { Orientation = Orientation.Horizontal };
         private readonly Border _divider = new() { Width = 1, Height = 30, Margin = new Thickness(6, 0, 6, (Capsule - 30) / 2), VerticalAlignment = VerticalAlignment.Bottom };
@@ -173,6 +176,7 @@ namespace Ovira.Taskbar
         private readonly Border _bubbleCard = new() { CornerRadius = new CornerRadius(8), Padding = new Thickness(10, 4, 10, 5) };
         private DockItem? _hovered;
         private bool _refreshQueued, _magnified;
+        private int _pollCount;
         private TrayWindow? _tray;
 
         public TaskbarWindow()
@@ -193,9 +197,10 @@ namespace Ovira.Taskbar
             Left = -10000; Top = -10000;
 
             _dock.Margin = new Thickness(24, 0, 24, BottomGap);
-            _shadow.CornerRadius = _capsule.CornerRadius = _gloss.CornerRadius = new CornerRadius(19);
-            _shadow.Height = _capsule.Height = _gloss.Height = Capsule;
-            _shadow.VerticalAlignment = _capsule.VerticalAlignment = _gloss.VerticalAlignment = VerticalAlignment.Bottom;
+            _shadow.CornerRadius = _capsule.CornerRadius = _capsuleOld.CornerRadius = _gloss.CornerRadius = new CornerRadius(19);
+            _shadow.Height = _capsule.Height = _capsuleOld.Height = _gloss.Height = Capsule;
+            _shadow.VerticalAlignment = _capsule.VerticalAlignment = _capsuleOld.VerticalAlignment = _gloss.VerticalAlignment = VerticalAlignment.Bottom;
+            _capsuleOld.BorderThickness = new Thickness(1);
             _shadow.Background = Brushes.Black;
             _shadow.Opacity = 0.55;
             _shadow.Effect = new DropShadowEffect { BlurRadius = 22, ShadowDepth = 4, Direction = 270, Opacity = 0.45 };
@@ -204,10 +209,12 @@ namespace Ovira.Taskbar
             _gloss.Margin = new Thickness(1);
             _artBox.Height = Capsule;
             _artBox.Children.Add(_art);
+            _artBox.Children.Add(_artOld);
             _dock.SizeChanged += (_, _) => _artBox.Clip = new RectangleGeometry(new Rect(0, 0, _dock.ActualWidth, Capsule), 19, 19);
             _dock.Children.Add(_shadow);
             _dock.Children.Add(_artBox);
             _dock.Children.Add(_capsule);
+            _dock.Children.Add(_capsuleOld);
             _dock.Children.Add(_gloss);
             _dock.Children.Add(_row);
 
@@ -238,7 +245,16 @@ namespace Ovira.Taskbar
             _dock.MouseRightButtonUp += (_, e) => { if (e.Handled) return; e.Handled = true; BarMenu(_capsule, e.GetPosition(_capsule).X); };
             _gloss.IsHitTestVisible = false;
 
-            _poll.Tick += (_, _) => { Refresh(); _tray?.Tick(); SystemTaskbar.KeepHidden(); UpdateFullscreen(); };
+            // 0.7.4: Windows tells the dock about new, closed and activated
+            // windows itself (the shell hook), so the full look-over of all
+            // windows only runs every third second as a safety net.
+            _poll.Tick += (_, _) =>
+            {
+                if (++_pollCount % 3 == 0) Refresh();
+                _tray?.Tick();
+                SystemTaskbar.KeepHidden();
+                UpdateFullscreen();
+            };
             _hoverTimer.Tick += (_, _) => { _hoverTimer.Stop(); if (_hovered != null) ShowPreview(_hovered); };
             _leaveTimer.Tick += (_, _) =>
             {
@@ -437,15 +453,20 @@ namespace Ovira.Taskbar
         public void ApplyLook()
         {
             // 0.7.3: the old look fades out over the new one
-            if (IsLoaded) Crossfade.Snapshot(_dock);
             D = DockLook.Current();
-            _capsule.Background = D.Back;
-            _capsule.BorderBrush = D.Rim;
+            Fade.Swap(_capsule, _capsuleOld, D.Back, D.Rim, IsLoaded);
             _gloss.Background = D.Gloss;
             _divider.Background = D.Hover;
-            _art.Source = D.Art;
-            _artBox.Visibility = D.Art != null ? Visibility.Visible : Visibility.Collapsed;
-            _shadow.Visibility = D.Shadow ? Visibility.Visible : Visibility.Hidden;
+            if (!ReferenceEquals(_art.Source, D.Art))
+            {
+                if (IsLoaded && _art.Source != null)
+                {
+                    _artOld.Source = _art.Source;
+                    _artOld.BeginAnimation(OpacityProperty, Fade.Out());
+                }
+                _art.Source = D.Art;
+            }
+            _shadow.BeginAnimation(OpacityProperty, new DoubleAnimation(D.Shadow ? 0.55 : 0, TimeSpan.FromSeconds(IsLoaded ? 0.5 : 0)));
             _bubbleCard.Background = D.Fg is SolidColorBrush f && f.Color.R < 0x80 ? new SolidColorBrush(Color.FromArgb(0xF2, 0xFF, 0xFF, 0xFF)) : new SolidColorBrush(Color.FromArgb(0xF0, 0x26, 0x26, 0x2A));
             _bubbleText.Foreground = D.Fg;
             _start.Restyle(D);
@@ -769,7 +790,9 @@ namespace Ovira.Taskbar
         private void ApplyDot(bool animated)
         {
             double width = _count <= 0 ? 0 : _active ? 16 : 5;
-            _dot.Background = _flash ? new SolidColorBrush(Color.FromRgb(0xFF, 0x9F, 0x0A)) : _active ? _look.Accent : _look.Dot;
+            var target = _flash ? Color.FromRgb(0xFF, 0x9F, 0x0A) : ((_active ? _look.Accent : _look.Dot) as SolidColorBrush)?.Color ?? Colors.White;
+            if (_dot.Background is not SolidColorBrush own || own.IsFrozen) _dot.Background = own = new SolidColorBrush(target);
+            Fade.To(own, target, animated || IsLoaded);
             if (!animated) { _dot.BeginAnimation(WidthProperty, null); _dot.Width = width; return; }
             _dot.BeginAnimation(WidthProperty, new DoubleAnimation(width, TimeSpan.FromSeconds(0.38)) { EasingFunction = new BackEase { Amplitude = 0.5, EasingMode = EasingMode.EaseOut } });
         }
@@ -850,7 +873,25 @@ namespace Ovira.Taskbar
     {
         private Color[] _colours = Array.Empty<Color>();
         private string _kind = "ovira";
-        public Color[] Colours { get => _colours; set { _colours = value; InvalidateVisual(); } }
+        // 0.7.4: one living gradient — new colours glide in, no redraw needed
+        private readonly GradientStop _s0 = new(Color.FromRgb(0x6A, 0xA5, 0xFF), 0), _s1 = new(Color.FromRgb(0x3D, 0x85, 0xFF), 1);
+        private LinearGradientBrush? _brush;
+        public Color[] Colours
+        {
+            get => _colours;
+            set
+            {
+                _colours = value;
+                var a = value.Length > 0 ? value[0] : Color.FromRgb(0x3D, 0x85, 0xFF);
+                var b = value.Length > 1 ? value[1] : Themes.MixWhite(a, 0.35);
+                bool animated = IsLoaded;
+                foreach (var (stop, c) in new[] { (_s0, Themes.MixWhite(a, 0.18)), (_s1, b) })
+                {
+                    if (!animated) { stop.BeginAnimation(GradientStop.ColorProperty, null); stop.Color = c; }
+                    else stop.BeginAnimation(GradientStop.ColorProperty, new ColorAnimation(c, TimeSpan.FromSeconds(0.5)) { EasingFunction = new CubicEase { EasingMode = EasingMode.EaseInOut } });
+                }
+            }
+        }
         public string Kind { get => _kind; set { if (_kind != value) { _kind = value; InvalidateVisual(); } } }
         public Brush? Shade { get; set; }
 
@@ -859,10 +900,8 @@ namespace Ovira.Taskbar
         protected override void OnRender(DrawingContext dc)
         {
             double s = Math.Min(ActualWidth, ActualHeight);
-            var a = _colours.Length > 0 ? _colours[0] : Color.FromRgb(0x3D, 0x85, 0xFF);
-            var b = _colours.Length > 1 ? _colours[1] : Themes.MixWhite(a, 0.35);
-            var brush = new LinearGradientBrush(Themes.MixWhite(a, 0.18), b, new Point(0, 0), new Point(1, 1));
-            brush.Freeze();
+            _brush ??= new LinearGradientBrush(new GradientStopCollection { _s0, _s1 }, new Point(0, 0), new Point(1, 1));
+            var brush = _brush;
             switch (_kind)
             {
                 case "tiles":
@@ -906,13 +945,15 @@ namespace Ovira.Taskbar
         private const double H = 44;
         private readonly TaskbarWindow _bar;
         private IntPtr _hwnd;
-        private readonly Border _shadow = new(), _capsule = new(), _gloss = new() { IsHitTestVisible = false };
+        private readonly Border _shadow = new(), _capsule = new(), _capsuleOld = new(), _gloss = new() { IsHitTestVisible = false };
         private readonly StackPanel _row = new() { Orientation = Orientation.Horizontal, Margin = new Thickness(4, 0, 4, 0) };
         private readonly List<TrayButton> _buttons = new();
         private TextBlock _time = null!, _date = null!, _lang = null!, _pct = null!;
         private IconView _speaker = null!, _battery = null!;
         private TrayButton _batteryButton = null!;
         private Grid? _grid;
+        private DateTime _batteryCheckedAt = DateTime.MinValue;
+        private bool _hasBattery;
         private readonly ScaleTransform _zoom = new(TaskbarWindow.K, TaskbarWindow.K);
 
         public void ApplySize()
@@ -939,7 +980,10 @@ namespace Ovira.Taskbar
 
             var grid = new Grid { Margin = new Thickness(18, 18, 10, 0), Height = H };
             _grid = grid;
-            _shadow.CornerRadius = _capsule.CornerRadius = _gloss.CornerRadius = new CornerRadius(15);
+            _shadow.CornerRadius = _capsule.CornerRadius = _capsuleOld.CornerRadius = _gloss.CornerRadius = new CornerRadius(15);
+            _capsuleOld.BorderThickness = new Thickness(1);
+            _capsuleOld.IsHitTestVisible = false;
+            _capsuleOld.Opacity = 0;
             _shadow.Background = Brushes.Black;
             _shadow.Opacity = 0.55;
             _shadow.Effect = new DropShadowEffect { BlurRadius = 18, ShadowDepth = 3, Direction = 270, Opacity = 0.4 };
@@ -948,6 +992,7 @@ namespace Ovira.Taskbar
             _gloss.Margin = new Thickness(1);
             grid.Children.Add(_shadow);
             grid.Children.Add(_capsule);
+            grid.Children.Add(_capsuleOld);
             grid.Children.Add(_gloss);
             grid.Children.Add(_row);
             // the bottom of the capsule lines up with the middle of the dock
@@ -1029,10 +1074,9 @@ namespace Ovira.Taskbar
 
         public void ApplyLook()
         {
-            if (IsLoaded && _grid != null) Crossfade.Snapshot(_grid);
             var d = _bar.Style2;
-            _capsule.Background = d.Back;
-            _capsule.BorderBrush = d.Rim;
+            Fade.Swap(_capsule, _capsuleOld, d.Back, d.Rim, IsLoaded);
+            _shadow.BeginAnimation(OpacityProperty, new DoubleAnimation(d.Shadow ? 0.55 : 0, TimeSpan.FromSeconds(IsLoaded ? 0.5 : 0)));
             _gloss.Background = d.Gloss;
             foreach (var b in _buttons) b.Hover = d.Hover;
             _time.Foreground = d.Fg; _date.Foreground = d.Fg2; _lang.Foreground = d.Fg; _pct.Foreground = d.Fg;
@@ -1050,9 +1094,13 @@ namespace Ovira.Taskbar
             if (DateTime.Now > Layouts.HoldLabel) _lang.Text = Layouts.Label(layout, _lang.Text);
             var audio = App.Current.Audio;
             _speaker.Icon = audio.Muted || audio.Volume < 0.005 ? "speaker.slash" : "speaker.wave";
-            bool has = false;
             var power = App.Current.Power;
-            try { has = power.HasBattery; } catch { }
+            if ((DateTime.Now - _batteryCheckedAt).TotalSeconds > 60)
+            {
+                _batteryCheckedAt = DateTime.Now;
+                try { _hasBattery = power.HasBattery; } catch { _hasBattery = false; }
+            }
+            bool has = _hasBattery;
             _batteryButton.Visibility = has ? Visibility.Visible : Visibility.Collapsed;
             if (has)
             {
@@ -1109,33 +1157,31 @@ namespace Ovira.Taskbar
 
 namespace Ovira.Taskbar
 {
-    // The old look of a capsule laid over the new one as a picture and
-    // faded away — colours, cover and the Start icon change softly.
-    internal static class Crossfade
+    // 0.7.4: colour changes fade instead of jumping — the old background
+    // stays on a layer above the new one and fades out. (0.7.3 laid a
+    // picture of the whole dock over it, which left a stripe of the old
+    // cover along the bottom for a moment.)
+    internal static class Fade
     {
-        public static void Snapshot(Grid host)
+        public static DoubleAnimation Out() => new(1, 0, TimeSpan.FromSeconds(0.6)) { EasingFunction = new CubicEase { EasingMode = EasingMode.EaseInOut } };
+
+        public static void Swap(Border live, Border old, Brush back, Brush rim, bool animated)
         {
-            double w = host.ActualWidth, h = host.ActualHeight;
-            if (w < 1 || h < 1) return;
-            var dpi = VisualTreeHelper.GetDpi(host);
-            var old = host.Children.OfType<Image>().FirstOrDefault(i => Equals(i.Tag, "crossfade"));
-            if (old != null) host.Children.Remove(old);
-            var visual = new DrawingVisual();
-            using (var dc = visual.RenderOpen())
+            if (animated && live.Background != null && !ReferenceEquals(live.Background, back))
             {
-                var brush = new VisualBrush(host) { Viewbox = new Rect(0, 0, w, h), ViewboxUnits = BrushMappingMode.Absolute, Stretch = Stretch.Fill };
-                dc.DrawRectangle(brush, null, new Rect(0, 0, w, h));
+                old.Background = live.Background;
+                old.BorderBrush = live.BorderBrush;
+                old.BeginAnimation(UIElement.OpacityProperty, Out());
             }
-            var bmp = new System.Windows.Media.Imaging.RenderTargetBitmap((int)Math.Ceiling(w * dpi.DpiScaleX), (int)Math.Ceiling(h * dpi.DpiScaleY), 96 * dpi.DpiScaleX, 96 * dpi.DpiScaleY, PixelFormats.Pbgra32);
-            bmp.Render(visual);
-            bmp.Freeze();
-            var image = new Image { Source = bmp, Stretch = Stretch.Fill, IsHitTestVisible = false, Tag = "crossfade", Width = w, Height = h, HorizontalAlignment = HorizontalAlignment.Left, VerticalAlignment = VerticalAlignment.Top };
-            if (host.ColumnDefinitions.Count > 0) Grid.SetColumnSpan(image, host.ColumnDefinitions.Count);
-            if (host.RowDefinitions.Count > 0) Grid.SetRowSpan(image, host.RowDefinitions.Count);
-            host.Children.Add(image);
-            var fade = new DoubleAnimation(1, 0, TimeSpan.FromSeconds(0.55)) { EasingFunction = new CubicEase { EasingMode = EasingMode.EaseInOut } };
-            fade.Completed += (_, _) => host.Children.Remove(image);
-            image.BeginAnimation(UIElement.OpacityProperty, fade);
+            live.Background = back;
+            live.BorderBrush = rim;
+        }
+
+        // A colour that glides to its new value.
+        public static void To(SolidColorBrush brush, Color to, bool animated)
+        {
+            if (!animated) { brush.BeginAnimation(SolidColorBrush.ColorProperty, null); brush.Color = to; return; }
+            brush.BeginAnimation(SolidColorBrush.ColorProperty, new ColorAnimation(to, TimeSpan.FromSeconds(0.5)) { EasingFunction = new CubicEase { EasingMode = EasingMode.EaseInOut } });
         }
     }
 
