@@ -13,6 +13,15 @@ namespace Ovira.SettingsUi
     {
         private void BuildWidgetsPage(StackPanel page)
         {
+            // 0.6.1: the editor — your desktop with the grid and the gallery.
+            var open = new Button { Content = "Добавить виджеты", Style = (Style)FindResource("MacButton"), FontWeight = FontWeights.SemiBold, Padding = new Thickness(18, 6, 18, 6) };
+            open.Click += (_, _) => WidgetEditor.Open();
+            var editor = Group("Рабочий стол", "Откроется твой рабочий стол с сеткой, на весь экран. Справа — все виджеты: нажми на размер или перетащи на стол. Виджеты на столе покачиваются, как на iPhone, — их можно двигать по сетке, нажать для смены размера или убрать минусом. «Готово» сохраняет, Esc отменяет.",
+                Row("Расставить виджеты", "Сетка, перетаскивание и галерея", open),
+                ToggleRow("Сетка и прилипание", "Виджеты прилипают к ячейкам, краям экрана и друг к другу", nameof(Settings.WidgetsSnap), "сетка прилипание выравнивание магнит виджеты"));
+            page.Children.Add(editor);
+            Remember("Добавить виджеты", "добавить виджеты рабочий стол сетка галерея расставить", editor);
+
             page.Children.Add(Group("Вид", "«Стекло» — полупрозрачная тёмная карточка, сквозь которую видны обои. «Цвета темы» — градиент выбранной темы настроек. «Белый» — светлая карточка с тёмным текстом. «Монолит» — сплошная тёмная, как тёмные виджеты на iPhone.",
                 SegmentRow("Фон виджетов", null, new (string, object)[] { ("Стекло", "glass"), ("Цвета темы", "theme"), ("Белый", "white"), ("Монолит", "mono") },
                            nameof(Settings.WidgetStyle), "фон виджетов стекло стеклянный тема белый монолит"),

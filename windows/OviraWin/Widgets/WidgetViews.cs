@@ -23,7 +23,7 @@ namespace Ovira.Widgets
         private static readonly FontFamily Display = new FontFamily("Segoe UI Variable Display, Segoe UI");
         private static readonly System.Globalization.CultureInfo Ru = new System.Globalization.CultureInfo("ru-RU");
 
-        public static (FrameworkElement, Action) Build(WidgetState st, Look L, WidgetWindow w) => st.Kind switch
+        public static (FrameworkElement, Action) Build(WidgetState st, Look L, WidgetWindow? w) => st.Kind switch
         {
             "nowplaying" => NowPlaying(st, L),
             "cover" => Cover(st, L),
@@ -757,7 +757,7 @@ namespace Ovira.Widgets
 
         // ---- 16. Список дел ----  (one line each; «[x] » in front means done)
 
-        private static (FrameworkElement, Action) Todo(WidgetState st, Look L, WidgetWindow w)
+        private static (FrameworkElement, Action) Todo(WidgetState st, Look L, WidgetWindow? w)
         {
             var root = Pad();
             var dock = new DockPanel();

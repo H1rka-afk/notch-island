@@ -25,6 +25,130 @@ namespace Ovira.Widgets
         public double Y { get; set; } = double.NaN;
         public string Text { get; set; } = "";         // the note, the to-do lines
         public string Variant { get; set; } = "";      // e.g. «analog» for the clock
+
+        public WidgetState Copy() => new WidgetState { Id = Id, Kind = Kind, Size = Size, X = X, Y = Y, Text = Text, Variant = Variant };
+    }
+
+    // 0.6.1 — one card (background, gloss, content, rim), for the desktop
+    // and for the editor alike.
+    public static class WidgetCard
+    {
+        public static (FrameworkElement Card, Action? Update) Make(WidgetState state, Look look, WidgetWindow? owner)
+        {
+            var (content, update) = WidgetViews.Build(state, look, owner);
+            var layers = new Grid();
+            var shape = new CornerRadius(24);
+            layers.Children.Add(new Border { CornerRadius = shape, Background = look.Card });
+            if (look.Gloss)
+                layers.Children.Add(new Border
+                {
+                    CornerRadius = shape, IsHitTestVisible = false,
+                    Background = new LinearGradientBrush(Color.FromArgb(0x30, 0xFF, 0xFF, 0xFF), Color.FromArgb(0, 0xFF, 0xFF, 0xFF), new Point(0, 0), new Point(0, 0.55))
+                });
+            layers.Children.Add(new Border { CornerRadius = shape, Child = content, ClipToBounds = true });
+            layers.Children.Add(new Border { CornerRadius = shape, BorderBrush = look.Border, BorderThickness = new Thickness(1), IsHitTestVisible = false });
+            System.Windows.Documents.TextElement.SetForeground(layers, look.Fg);
+            return (layers, update);
+        }
+    }
+
+    // 0.6.1 — the grid and the magnets. The desktop is divided into cells the
+    // size of a small widget (with the gap between them), starting 24 px from
+    // the edges of the work area. A widget let go near a cell lands in it;
+    // while dragging it also sticks to the edges of other widgets and of the
+    // screen.
+    public static class WidgetGrid
+    {
+        public const double Margin = 24, Magnet = 18;
+        public static double Cell => WidgetCatalog.Unit + WidgetCatalog.Gap;
+
+        public static Rect Area => SystemParameters.WorkArea;
+
+        // The nearest cell corner to a point (in the primary work area).
+        public static Point Cellular(Point p, Size size)
+        {
+            var a = Area;
+            double x = a.Left + Margin + Math.Round((p.X - a.Left - Margin) / Cell) * Cell;
+            double y = a.Top + Margin + Math.Round((p.Y - a.Top - Margin) / Cell) * Cell;
+            x = Math.Clamp(x, a.Left + Margin, Math.Max(a.Left + Margin, a.Right - Margin - size.Width));
+            y = Math.Clamp(y, a.Top + Margin, Math.Max(a.Top + Margin, a.Bottom - Margin - size.Height));
+            // Keep it on the grid after clamping to the right / bottom edge.
+            x = a.Left + Margin + Math.Floor((x - a.Left - Margin) / Cell + 1e-6) * Cell;
+            y = a.Top + Margin + Math.Floor((y - a.Top - Margin) / Cell + 1e-6) * Cell;
+            return new Point(x, y);
+        }
+
+        public static bool InArea(Point p, Size size)
+        {
+            var a = Area;
+            return p.X + size.Width / 2 >= a.Left && p.X + size.Width / 2 <= a.Right && p.Y + size.Height / 2 >= a.Top && p.Y + size.Height / 2 <= a.Bottom;
+        }
+
+        // While dragging: the grid lines, the screen's edges and the other
+        // widgets' edges pull a widget that comes within 18 px.
+        public static Point Magnetic(Point p, Size size, IEnumerable<Rect> others)
+        {
+            var a = Area;
+            var xs = new List<double> { a.Left + Margin, a.Right - Margin - size.Width };
+            var ys = new List<double> { a.Top + Margin, a.Bottom - Margin - size.Height };
+            var cell = Cellular(p, size);
+            xs.Add(cell.X); ys.Add(cell.Y);
+            foreach (var o in others)
+            {
+                xs.Add(o.Left); xs.Add(o.Right + WidgetCatalog.Gap); xs.Add(o.Left - WidgetCatalog.Gap - size.Width); xs.Add(o.Right - size.Width);
+                ys.Add(o.Top); ys.Add(o.Bottom + WidgetCatalog.Gap); ys.Add(o.Top - WidgetCatalog.Gap - size.Height); ys.Add(o.Bottom - size.Height);
+            }
+            double Pull(double v, List<double> targets)
+            {
+                double best = v, d = Magnet;
+                foreach (var t in targets) if (Math.Abs(t - v) < d) { d = Math.Abs(t - v); best = t; }
+                return best;
+            }
+            return new Point(Pull(p.X, xs), Pull(p.Y, ys));
+        }
+
+        // Let go: into a cell; if that cell is taken, the nearest free one.
+        public static Point Settle(Point p, Size size, IList<Rect> others)
+        {
+            if (!InArea(p, size)) return p;
+            var start = Cellular(p, size);
+            bool Free(Point q)
+            {
+                var r = new Rect(q, size);
+                r.Inflate(-2, -2);
+                return !others.Any(o => o.IntersectsWith(r));
+            }
+            if (Free(start)) return start;
+            var a = Area;
+            Point? best = null;
+            double bestDistance = double.MaxValue;
+            for (double y = a.Top + Margin; y + size.Height <= a.Bottom - Margin + 0.5; y += Cell)
+                for (double x = a.Left + Margin; x + size.Width <= a.Right - Margin + 0.5; x += Cell)
+                {
+                    var q = new Point(x, y);
+                    if (!Free(q)) continue;
+                    double d = (q - start).LengthSquared;
+                    if (d < bestDistance) { bestDistance = d; best = q; }
+                }
+            return best ?? start;
+        }
+
+        // The first free cell from the top right — where a new widget goes.
+        public static Point FirstFree(Size size, IList<Rect> others)
+        {
+            var a = Area;
+            for (double x = a.Right - Margin - size.Width; x >= a.Left + Margin - 0.5; x -= Cell)
+            {
+                double gx = a.Left + Margin + Math.Floor((x - a.Left - Margin) / Cell + 1e-6) * Cell;
+                for (double y = a.Top + Margin; y + size.Height <= a.Bottom - Margin + 0.5; y += Cell)
+                {
+                    var r = new Rect(gx, y, size.Width, size.Height);
+                    r.Inflate(-2, -2);
+                    if (!others.Any(o => o.IntersectsWith(r))) return new Point(gx, y);
+                }
+            }
+            return new Point(a.Right - Margin - size.Width, a.Top + Margin);
+        }
     }
 
     public sealed record WidgetKind(string Id, string Title, string Icon, string[] Sizes, string About);
@@ -199,34 +323,76 @@ namespace Ovira.Widgets
             _placing = false;
 
             var look = Look.Current();
-            var (content, update) = WidgetViews.Build(State, look, this);
+            var (layers, update) = WidgetCard.Make(State, look, this);
             _update = update;
-            var layers = new Grid();
-            var shape = new CornerRadius(24);
-            layers.Children.Add(new Border { CornerRadius = shape, Background = look.Card });
-            if (look.Gloss)
-                layers.Children.Add(new Border
-                {
-                    CornerRadius = shape, IsHitTestVisible = false,
-                    Background = new LinearGradientBrush(Color.FromArgb(0x30, 0xFF, 0xFF, 0xFF), Color.FromArgb(0, 0xFF, 0xFF, 0xFF), new Point(0, 0), new Point(0, 0.55))
-                });
-            layers.Children.Add(new Border { CornerRadius = shape, Child = content, ClipToBounds = true });
-            layers.Children.Add(new Border { CornerRadius = shape, BorderBrush = look.Border, BorderThickness = new Thickness(1), IsHitTestVisible = false });
-            TextElementForeground(layers, look.Fg);
             Content = layers;
             layers.MouseLeftButtonDown += (_, e) =>
             {
                 if (Settings.Current.WidgetsLocked || e.ClickCount > 1) return;
                 if (e.OriginalSource is DependencyObject d && IsInteractive(d)) return;
-                try { DragMove(); } catch { }
+                if (!Settings.Current.WidgetsSnap)
+                {
+                    try { DragMove(); } catch { }
+                    ToBottom();
+                    return;
+                }
+                // 0.6.1: our own drag, with the magnets and the grid.
+                _grab = e.GetPosition(this);
+                _dragging = true;
+                layers.CaptureMouse();
+                e.Handled = true;
+            };
+            layers.MouseMove += (_, e) =>
+            {
+                if (!_dragging) return;
+                var screen = PointToScreenDip(e.GetPosition(this));
+                var raw = new Point(screen.X - _grab.X, screen.Y - _grab.Y);
+                var size = new Size(Width, Height);
+                var p = WidgetGrid.InArea(raw, size) ? WidgetGrid.Magnetic(raw, size, WidgetManager.OtherRects(State.Id)) : raw;
+                Left = p.X; Top = p.Y;
+            };
+            layers.MouseLeftButtonUp += (_, _) =>
+            {
+                if (!_dragging) return;
+                _dragging = false;
+                layers.ReleaseMouseCapture();
+                var size = new Size(Width, Height);
+                var target = WidgetGrid.Settle(new Point(Left, Top), size, WidgetManager.OtherRects(State.Id).ToList());
+                Glide(target);
                 ToBottom();
             };
             ContextMenu = Menu(kind);
             _update?.Invoke();
         }
 
-        private static void TextElementForeground(DependencyObject o, Brush brush) =>
-            System.Windows.Documents.TextElement.SetForeground(o, brush);
+        private Point _grab;
+        private bool _dragging;
+
+        private Point PointToScreenDip(Point local)
+        {
+            var px = PointToScreen(local);
+            var source = PresentationSource.FromVisual(this);
+            return source?.CompositionTarget != null ? source.CompositionTarget.TransformFromDevice.Transform(px) : px;
+        }
+
+        // Into the cell with a short glide.
+        private DispatcherTimer? _glide;
+        private void Glide(Point target)
+        {
+            _glide?.Stop();
+            var from = new Point(Left, Top);
+            var watch = System.Diagnostics.Stopwatch.StartNew();
+            _glide = new DispatcherTimer(DispatcherPriority.Render) { Interval = TimeSpan.FromMilliseconds(15) };
+            _glide.Tick += (_, _) =>
+            {
+                double t = Math.Min(1, watch.Elapsed.TotalSeconds / 0.18);
+                double k = 1 - Math.Pow(1 - t, 3);
+                Left = from.X + (target.X - from.X) * k;
+                Top = from.Y + (target.Y - from.Y) * k;
+                if (t >= 1) _glide!.Stop();
+            };
+            _glide.Start();
+        }
 
         // Buttons, text boxes and anything marked as clickable keep their clicks.
         private static bool IsInteractive(DependencyObject d)
@@ -314,9 +480,33 @@ namespace Ovira.Widgets
 
         public static int Count(string kind) => Settings.Current.Widgets.Count(w => w.Kind == kind);
 
+        public static IEnumerable<Rect> OtherRects(string id) =>
+            Live.Where(w => w.State.Id != id && w.IsVisible).Select(w => new Rect(w.Left, w.Top, w.Width, w.Height));
+
+        // 0.6.1: the editor takes the desktop over for a while.
+        public static void HideAll() { foreach (var w in Live) w.Visibility = Visibility.Hidden; }
+
+        public static void ShowAll()
+        {
+            foreach (var w in Live) w.Visibility = Visibility.Visible;
+            foreach (var w in Live) w.ToBottom();
+        }
+
+        // After the editor: the windows follow the new list.
+        public static void Apply(List<WidgetState> states)
+        {
+            foreach (var w in Live.ToList()) { try { w.Close(); } catch { } }
+            Live.Clear();
+            Settings.Current.Widgets = states;
+            foreach (var state in states) Open(state);
+        }
+
         public static void Add(string kind)
         {
             var state = new WidgetState { Kind = kind, Size = WidgetCatalog.Find(kind).Sizes[0] };
+            var size = WidgetCatalog.Dimensions(state.Size);
+            var place = WidgetGrid.FirstFree(size, Live.Select(w => new Rect(w.Left, w.Top, w.Width, w.Height)).ToList());
+            state.X = place.X; state.Y = place.Y;
             Settings.Current.Widgets = Settings.Current.Widgets.Append(state).ToList();
             Open(state);
         }

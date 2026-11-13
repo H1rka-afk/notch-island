@@ -194,6 +194,10 @@ namespace Ovira.Core
         private bool _widgetsLocked;
         public bool WidgetsLocked { get => _widgetsLocked; set => Set(ref _widgetsLocked, value); }
 
+        // 0.6.1: the grid and the magnets when moving widgets.
+        private bool _widgetsSnap = true;
+        public bool WidgetsSnap { get => _widgetsSnap; set => Set(ref _widgetsSnap, value); }
+
         private string _weatherCity = "";
         public string WeatherCity { get => _weatherCity; set => Set(ref _weatherCity, value ?? ""); }
 
