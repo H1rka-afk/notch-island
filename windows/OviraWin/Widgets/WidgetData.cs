@@ -96,85 +96,178 @@ namespace Ovira.Widgets
     {
         private static readonly HttpClient Http = new HttpClient { Timeout = TimeSpan.FromSeconds(12) };
 
-        public sealed record Day(string Name, string Symbol, int Max, int Min);
-        public sealed record WeatherNow(string City, int Temp, string Text, string Symbol, List<Day> Days);
+        // 0.8.1: hours for the iPhone-style card, today's low and high, and
+        // a weather «kind» drawn as an icon (WeatherIcon) instead of an emoji.
+        public sealed record Day(string Name, string Kind, int Max, int Min);
+        public sealed record Hour(string Label, string Kind, int Temp);
+        public sealed record WeatherNow(string City, int Temp, string Text, string Kind, int Min, int Max, List<Hour> Hours, List<Day> Days, DateTime At);
 
         public static WeatherNow? Weather { get; private set; }
         public static string WeatherNote { get; private set; } = "Загружаю…";
-        private static DateTime _weatherAt;
+        private static DateTime _weatherAt = DateTime.MinValue;
         private static string _weatherCity = "";
         private static bool _weatherBusy;
+        private static int _fails;
+        private static bool _hooked;
+
+        // 0.8.1: the last forecast is kept on disk, so after a restart (or
+        // while the network wakes up after sleep) the card shows it at once
+        // instead of «Нет связи»; a failed try is repeated soon (15 s, 30 s,
+        // 1 min… up to 5 min) and as soon as Windows says the network is back.
+        private static string CacheFile => System.IO.Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "Ovira", "weather.json");
+
+        private static DateTime _okAt = DateTime.MinValue;
+        private static string _cacheTried = "";
 
         public static void NeedWeather()
         {
             var city = (Settings.Current.WeatherCity ?? "").Trim();
             if (city.Length == 0) { Weather = null; WeatherNote = "Укажи город в настройках виджетов"; return; }
+            if (!_hooked)
+            {
+                _hooked = true;
+                System.Net.NetworkInformation.NetworkChange.NetworkAvailabilityChanged += (_, e) => { if (e.IsAvailable) _weatherAt = DateTime.MinValue; };
+            }
+            if (_cacheTried != city) { _cacheTried = city; if (city != _weatherCity) { Weather = null; _okAt = DateTime.MinValue; } LoadCache(city); }
             if (_weatherBusy) return;
-            if (city == _weatherCity && (DateTime.Now - _weatherAt).TotalMinutes < 30) return;
+            double wait;
+            if (city != _weatherCity) wait = 0;
+            else if (_fails > 0) wait = Math.Min(300, 15 * Math.Pow(2, _fails - 1));        // 15 s, 30 s, 1 min … 5 min
+            else wait = _okAt == DateTime.MinValue ? 0 : 30 * 60;
+            var since = (DateTime.Now - (_fails > 0 ? _weatherAt : (_okAt == DateTime.MinValue ? DateTime.MinValue : _okAt))).TotalSeconds;
+            if (city == _weatherCity && since < wait) return;
+            if (city != _weatherCity) _fails = 0;
             _weatherBusy = true;
             _weatherCity = city;
             _weatherAt = DateTime.Now;
             _ = LoadWeather(city);
         }
 
+        private sealed record Cached(string Query, WeatherNow Data, double Lat, double Lon);
+        private static (string Query, double Lat, double Lon)? _place;
+
+        private static void LoadCache(string city)
+        {
+            try
+            {
+                if (!System.IO.File.Exists(CacheFile)) return;
+                var c = JsonSerializer.Deserialize<Cached>(System.IO.File.ReadAllText(CacheFile));
+                if (c == null || !string.Equals(c.Query, city, StringComparison.OrdinalIgnoreCase)) return;
+                _place = (c.Query, c.Lat, c.Lon);
+                if ((DateTime.Now - c.Data.At).TotalHours < 12) { Weather = c.Data; WeatherNote = ""; }
+            }
+            catch { }
+        }
+
         private static async Task LoadWeather(string city)
         {
             try
             {
-                var geo = JsonDocument.Parse(await Http.GetStringAsync(
-                    "https://geocoding-api.open-meteo.com/v1/search?count=1&language=ru&name=" + Uri.EscapeDataString(city)));
-                if (!geo.RootElement.TryGetProperty("results", out var results) || results.GetArrayLength() == 0)
-                {
-                    Weather = null; WeatherNote = "Город не найден"; return;
-                }
-                var place = results[0];
                 var inv = System.Globalization.CultureInfo.InvariantCulture;
-                var lat = place.GetProperty("latitude").GetDouble().ToString(inv);
-                var lon = place.GetProperty("longitude").GetDouble().ToString(inv);
-                var name = place.TryGetProperty("name", out var n) ? n.GetString() ?? city : city;
+                double lat, lon;
+                string name = city;
+                if (_place is { } p && string.Equals(p.Query, city, StringComparison.OrdinalIgnoreCase)) { lat = p.Lat; lon = p.Lon; name = Weather?.City ?? city; }
+                else
+                {
+                    var geo = JsonDocument.Parse(await Http.GetStringAsync(
+                        "https://geocoding-api.open-meteo.com/v1/search?count=1&language=ru&name=" + Uri.EscapeDataString(city)));
+                    if (!geo.RootElement.TryGetProperty("results", out var results) || results.GetArrayLength() == 0)
+                    {
+                        Weather = null; WeatherNote = "Город не найден"; _fails = 0; return;
+                    }
+                    var place = results[0];
+                    lat = place.GetProperty("latitude").GetDouble();
+                    lon = place.GetProperty("longitude").GetDouble();
+                    name = place.TryGetProperty("name", out var n) ? n.GetString() ?? city : city;
+                    _place = (city, lat, lon);
+                }
                 var doc = JsonDocument.Parse(await Http.GetStringAsync(
-                    "https://api.open-meteo.com/v1/forecast?latitude=" + lat + "&longitude=" + lon +
-                    "&current=temperature_2m,weather_code&daily=weather_code,temperature_2m_max,temperature_2m_min&timezone=auto&forecast_days=4"));
+                    "https://api.open-meteo.com/v1/forecast?latitude=" + lat.ToString(inv) + "&longitude=" + lon.ToString(inv) +
+                    "&current=temperature_2m,weather_code,is_day&hourly=temperature_2m,weather_code,is_day" +
+                    "&daily=weather_code,temperature_2m_max,temperature_2m_min&timezone=auto&forecast_days=6"));
                 var root = doc.RootElement;
                 var current = root.GetProperty("current");
                 int code = current.GetProperty("weather_code").GetInt32();
+                bool day = !current.TryGetProperty("is_day", out var isDay) || isDay.GetInt32() == 1;
+                int offset = root.TryGetProperty("utc_offset_seconds", out var off) ? off.GetInt32() : 0;
+                var localNow = DateTime.UtcNow.AddSeconds(offset);
+
+                var hourly = root.GetProperty("hourly");
+                var hours = new List<Hour>();
+                var times = hourly.GetProperty("time");
+                for (int i = 0; i < times.GetArrayLength() && hours.Count < 6; i++)
+                {
+                    var t = DateTime.Parse(times[i].GetString()!, inv);
+                    if (t <= localNow) continue;
+                    bool hDay = hourly.GetProperty("is_day")[i].GetInt32() == 1;
+                    hours.Add(new Hour(t.Hour.ToString(), Describe(hourly.GetProperty("weather_code")[i].GetInt32(), hDay).Kind,
+                                       (int)Math.Round(hourly.GetProperty("temperature_2m")[i].GetDouble())));
+                }
+
                 var daily = root.GetProperty("daily");
                 var days = new List<Day>();
                 var ru = new System.Globalization.CultureInfo("ru-RU");
-                for (int i = 1; i < daily.GetProperty("time").GetArrayLength() && days.Count < 3; i++)
+                int min = 0, max = 0;
+                for (int i = 0; i < daily.GetProperty("time").GetArrayLength(); i++)
                 {
                     var date = DateTime.Parse(daily.GetProperty("time")[i].GetString()!, inv);
-                    days.Add(new Day(ru.DateTimeFormat.GetAbbreviatedDayName(date.DayOfWeek), Describe(daily.GetProperty("weather_code")[i].GetInt32()).Symbol,
-                                     (int)Math.Round(daily.GetProperty("temperature_2m_max")[i].GetDouble()),
-                                     (int)Math.Round(daily.GetProperty("temperature_2m_min")[i].GetDouble())));
+                    int dMax = (int)Math.Round(daily.GetProperty("temperature_2m_max")[i].GetDouble());
+                    int dMin = (int)Math.Round(daily.GetProperty("temperature_2m_min")[i].GetDouble());
+                    if (i == 0) { min = dMin; max = dMax; }
+                    var label = i == 0 ? "Сегодня" : ru.TextInfo.ToTitleCase(ru.DateTimeFormat.GetAbbreviatedDayName(date.DayOfWeek));
+                    days.Add(new Day(label, Describe(daily.GetProperty("weather_code")[i].GetInt32(), true).Kind, dMax, dMin));
                 }
-                var (text, symbol) = Describe(code);
-                Weather = new WeatherNow(name, (int)Math.Round(current.GetProperty("temperature_2m").GetDouble()), text, symbol, days);
+                var (text, kind) = Describe(code, day);
+                Weather = new WeatherNow(name, (int)Math.Round(current.GetProperty("temperature_2m").GetDouble()), text, kind, min, max, hours, days, DateTime.Now);
                 WeatherNote = "";
+                _fails = 0;
+                _okAt = DateTime.Now;
+                try
+                {
+                    System.IO.Directory.CreateDirectory(System.IO.Path.GetDirectoryName(CacheFile)!);
+                    System.IO.File.WriteAllText(CacheFile, JsonSerializer.Serialize(new Cached(city, Weather, lat, lon)));
+                }
+                catch { }
             }
             catch
             {
-                if (Weather == null) WeatherNote = "Нет связи";
-                _weatherAt = DateTime.Now.AddMinutes(-25);     // try again in 5 minutes
+                _fails++;
+                // keep showing the last forecast; only an empty card says so
+                if (Weather == null) WeatherNote = _fails < 3 ? "Загружаю…" : "Нет связи";
             }
             finally { _weatherBusy = false; }
         }
 
-        // WMO weather codes.
-        private static (string Text, string Symbol) Describe(int code) => code switch
+        // WMO weather codes → words (as the iPhone says them) and an icon.
+        public static (string Text, string Kind) Describe(int code, bool day)
         {
-            0 => ("Ясно", "☀"),
-            1 or 2 => ("Малооблачно", "⛅"),
-            3 => ("Пасмурно", "☁"),
-            45 or 48 => ("Туман", "🌫"),
-            >= 51 and <= 57 => ("Морось", "🌦"),
-            >= 61 and <= 67 => ("Дождь", "🌧"),
-            >= 71 and <= 77 => ("Снег", "❄"),
-            >= 80 and <= 82 => ("Ливень", "🌧"),
-            85 or 86 => ("Снегопад", "❄"),
-            >= 95 => ("Гроза", "⛈"),
-            _ => ("Облачно", "☁")
-        };
+            string sky = day ? "sun" : "moon";
+            return code switch
+            {
+                0 => ("Ясно", sky),
+                1 => ("Преимущественно ясно", "cloud." + sky),
+                2 => ("Переменная облачность", "cloud." + sky),
+                3 => ("Облачно", "cloud"),
+                45 or 48 => ("Туман", "fog"),
+                51 or 53 => ("Изморось", "cloud." + sky + ".rain"),
+                55 => ("Изморось", "cloud.drizzle"),
+                56 or 57 => ("Ледяная изморось", "cloud.sleet"),
+                61 => ("Небольшой дождь", "cloud." + sky + ".rain"),
+                63 => ("Дождь", "cloud.rain"),
+                65 => ("Сильный дождь", "cloud.heavyrain"),
+                66 or 67 => ("Ледяной дождь", "cloud.sleet"),
+                71 => ("Небольшой снег", "cloud.snow"),
+                73 => ("Снег", "cloud.snow"),
+                75 => ("Сильный снег", "cloud.snow"),
+                77 => ("Снежная крупа", "cloud.snow"),
+                80 => ("Ливни", "cloud." + sky + ".rain"),
+                81 or 82 => ("Ливень", "cloud.heavyrain"),
+                85 or 86 => ("Снегопад", "cloud.snow"),
+                95 => ("Гроза", "cloud.bolt"),
+                >= 96 => ("Гроза с градом", "cloud.bolt"),
+                _ => ("Облачно", "cloud"),
+            };
+        }
 
         public sealed record Rate(string Code, double Value, double Change);
         public static List<Rate> Rates { get; private set; } = new();

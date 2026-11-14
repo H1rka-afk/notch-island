@@ -961,44 +961,154 @@ namespace Ovira.Widgets
 
         // ---- 17. Погода ----
 
+        // 0.8.1: like the iPhone's weather widget. Small — the city, the
+        // temperature, the sky, today's low and high. Wide — the same on top
+        // and the next six hours below. Large — and five days with their
+        // range bars.
         private static (FrameworkElement, Action) Weather(WidgetState st, Look L)
         {
-            var root = Pad();
+            var root = Pad(st.Size == "s" ? 14 : 16);
+            string T0(int t) => t + "°";
+            var city = T("", st.Size == "s" ? 13 : 14.5, FontWeights.SemiBold, L.Fg);
+            var temp = T("", st.Size == "s" ? 40 : 48, FontWeights.Light, L.Fg, true);
+            temp.Margin = new Thickness(-2, -4, 0, -6);
+            var sky = new WeatherIcon { Width = st.Size == "s" ? 18 : 22, Height = st.Size == "s" ? 18 : 22, Fill = L.Fg };
+            var text = T("", st.Size == "s" ? 12 : 13, FontWeights.SemiBold, L.Fg);
+            var range = T("", st.Size == "s" ? 12 : 13, FontWeights.SemiBold, L.Fg);
+            var note = T("", 12, FontWeights.Medium, L.Fg2);
+            note.TextWrapping = TextWrapping.Wrap;
+
+            var page = new Grid();
+            page.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+            page.RowDefinitions.Add(new RowDefinition { Height = new GridLength(1, GridUnitType.Star) });
+            page.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+            root.Children.Add(page);
+
             var left = new StackPanel();
-            var city = Caption("Погода", L);
-            var temp = T("", 44, FontWeights.SemiBold, L.Fg, true);
-            temp.Margin = new Thickness(0, -2, 0, -4);
-            var text = T("", 13, FontWeights.SemiBold, L.Fg2);
-            text.TextWrapping = TextWrapping.Wrap;
-            left.Children.Add(city); left.Children.Add(temp); left.Children.Add(text);
-            root.Children.Add(left);
-            var symbol = new TextBlock { FontSize = 30, Foreground = L.Accent, FontFamily = new FontFamily("Segoe UI Symbol, Segoe UI Emoji"), HorizontalAlignment = st.Size == "m" ? HorizontalAlignment.Left : HorizontalAlignment.Right, VerticalAlignment = VerticalAlignment.Bottom, Margin = st.Size == "m" ? new Thickness(0) : new Thickness(0, 0, 0, -4) };
-            root.Children.Add(symbol);
-            var days = new StackPanel { Orientation = Orientation.Horizontal, HorizontalAlignment = HorizontalAlignment.Right, VerticalAlignment = VerticalAlignment.Center, Visibility = st.Size == "m" ? Visibility.Visible : Visibility.Collapsed };
-            root.Children.Add(days);
+            left.Children.Add(city);
+            left.Children.Add(temp);
+            left.Children.Add(note);
+            page.Children.Add(left);
+
+            UniformGrid? hours = null;
+            StackPanel? daysList = null;
+            if (st.Size == "s")
+            {
+                var bottom = new StackPanel { VerticalAlignment = VerticalAlignment.Bottom };
+                sky.HorizontalAlignment = HorizontalAlignment.Left;
+                sky.Margin = new Thickness(0, 0, 0, 3);
+                bottom.Children.Add(sky);
+                bottom.Children.Add(text);
+                bottom.Children.Add(range);
+                Grid.SetRow(bottom, 2);
+                page.Children.Add(bottom);
+            }
+            else
+            {
+                var right = new StackPanel { HorizontalAlignment = HorizontalAlignment.Right, VerticalAlignment = VerticalAlignment.Bottom, Margin = new Thickness(0, 0, 0, 4) };
+                sky.HorizontalAlignment = HorizontalAlignment.Right;
+                sky.Margin = new Thickness(0, 0, 0, 6);
+                text.HorizontalAlignment = HorizontalAlignment.Right;
+                range.HorizontalAlignment = HorizontalAlignment.Right;
+                right.Children.Add(sky);
+                right.Children.Add(text);
+                right.Children.Add(range);
+                page.Children.Add(right);
+
+                hours = new UniformGrid { Rows = 1, Columns = 6, Margin = new Thickness(-4, 6, -4, 0), VerticalAlignment = VerticalAlignment.Top };
+                Grid.SetRow(hours, 1);
+                page.Children.Add(hours);
+
+                if (st.Size == "l")
+                {
+                    daysList = new StackPanel { Margin = new Thickness(0, 6, 0, 0) };
+                    var line = new Border { Height = 1, Background = L.Faint, Margin = new Thickness(0, 0, 0, 6) };
+                    var lower = new StackPanel();
+                    lower.Children.Add(line);
+                    lower.Children.Add(daysList);
+                    Grid.SetRow(lower, 2);
+                    page.Children.Add(lower);
+                }
+            }
+
             string key = "?";
             void Update()
             {
                 Online.NeedWeather();
                 var now = Online.Weather;
-                var k = now == null ? Online.WeatherNote : now.City + now.Temp + now.Text + now.Days.Count;
+                var k = now == null ? Online.WeatherNote : now.City + now.Temp + now.Text + now.Kind + now.At.Ticks;
                 if (k == key) return;
                 key = k;
-                if (now == null) { city.Text = "ПОГОДА"; temp.Text = "—"; text.Text = Online.WeatherNote; symbol.Text = ""; days.Children.Clear(); return; }
-                city.Text = now.City.ToUpperInvariant();
-                temp.Text = (now.Temp > 0 ? "+" : "") + now.Temp + "°";
-                text.Text = now.Text;
-                symbol.Text = now.Symbol;
-                days.Children.Clear();
-                foreach (var day in now.Days)
+                if (now == null)
                 {
-                    var column = new StackPanel { Width = 50 };
-                    TextBlock Center(TextBlock t) { t.HorizontalAlignment = HorizontalAlignment.Center; return t; }
-                    column.Children.Add(Center(Caption(day.Name, L)));
-                    column.Children.Add(Center(new TextBlock { Text = day.Symbol, FontSize = 20, Foreground = L.Fg, FontFamily = new FontFamily("Segoe UI Symbol, Segoe UI Emoji"), Margin = new Thickness(0, 4, 0, 4) }));
-                    column.Children.Add(Center(T((day.Max > 0 ? "+" : "") + day.Max + "°", 13, FontWeights.Bold, L.Fg)));
-                    column.Children.Add(Center(T((day.Min > 0 ? "+" : "") + day.Min + "°", 11.5, FontWeights.Medium, L.Fg2)));
-                    days.Children.Add(column);
+                    city.Text = "Погода"; temp.Text = "—"; note.Text = Online.WeatherNote;
+                    note.Visibility = Visibility.Visible;
+                    text.Text = ""; range.Text = ""; sky.Visibility = Visibility.Hidden;
+                    hours?.Children.Clear(); daysList?.Children.Clear();
+                    return;
+                }
+                note.Visibility = Visibility.Collapsed;
+                sky.Visibility = Visibility.Visible;
+                city.Text = now.City;
+                temp.Text = T0(now.Temp);
+                sky.Kind = now.Kind;
+                text.Text = now.Text;
+                range.Text = "↓ " + T0(now.Min) + "  ↑ " + T0(now.Max);
+                if (hours != null)
+                {
+                    hours.Children.Clear();
+                    foreach (var h in now.Hours)
+                    {
+                        var column = new StackPanel { HorizontalAlignment = HorizontalAlignment.Center };
+                        var label = T(h.Label, 12.5, FontWeights.SemiBold, L.Fg); label.HorizontalAlignment = HorizontalAlignment.Center;
+                        var icon = new WeatherIcon { Kind = h.Kind, Width = 22, Height = 22, Fill = L.Fg, Margin = new Thickness(0, 4, 0, 4) };
+                        var t = T(T0(h.Temp), 13.5, FontWeights.SemiBold, L.Fg); t.HorizontalAlignment = HorizontalAlignment.Center;
+                        column.Children.Add(label); column.Children.Add(icon); column.Children.Add(t);
+                        hours.Children.Add(column);
+                    }
+                }
+                if (daysList != null)
+                {
+                    daysList.Children.Clear();
+                    var days = now.Days.Take(5).ToList();
+                    if (days.Count == 0) return;
+                    int lo = days.Min(d => d.Min), hi = Math.Max(lo + 1, days.Max(d => d.Max));
+                    foreach (var d in days)
+                    {
+                        var row = new Grid { Height = 27 };
+                        row.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(74) });
+                        row.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(30) });
+                        row.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(34) });
+                        row.ColumnDefinitions.Add(new ColumnDefinition());
+                        row.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(34) });
+                        var name = T(d.Name, 13, FontWeights.SemiBold, L.Fg); name.VerticalAlignment = VerticalAlignment.Center;
+                        row.Children.Add(name);
+                        var icon = new WeatherIcon { Kind = d.Kind, Width = 18, Height = 18, Fill = L.Fg, HorizontalAlignment = HorizontalAlignment.Left };
+                        Grid.SetColumn(icon, 1); row.Children.Add(icon);
+                        var min = T(T0(d.Min), 13, FontWeights.SemiBold, L.Fg2); min.HorizontalAlignment = HorizontalAlignment.Right; min.VerticalAlignment = VerticalAlignment.Center; min.Margin = new Thickness(0, 0, 8, 0);
+                        Grid.SetColumn(min, 2); row.Children.Add(min);
+                        // the day's range on the week's scale, like the iPhone
+                        var track = new Grid { Height = 4, VerticalAlignment = VerticalAlignment.Center };
+                        track.Children.Add(new Border { CornerRadius = new CornerRadius(2), Background = L.Faint });
+                        double from = (d.Min - lo) / (double)(hi - lo), to = (d.Max - lo) / (double)(hi - lo);
+                        var fill = new Border
+                        {
+                            CornerRadius = new CornerRadius(2),
+                            Background = new LinearGradientBrush(Color.FromRgb(0x5A, 0xC8, 0xFA), Color.FromRgb(0xFF, 0xCC, 0x00), 0),
+                            HorizontalAlignment = HorizontalAlignment.Stretch,
+                        };
+                        var span = new Grid();
+                        span.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(Math.Max(0.001, from), GridUnitType.Star) });
+                        span.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(Math.Max(0.06, to - from), GridUnitType.Star) });
+                        span.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(Math.Max(0.001, 1 - to), GridUnitType.Star) });
+                        Grid.SetColumn(fill, 1);
+                        span.Children.Add(fill);
+                        track.Children.Add(span);
+                        Grid.SetColumn(track, 3); row.Children.Add(track);
+                        var max = T(T0(d.Max), 13, FontWeights.SemiBold, L.Fg); max.HorizontalAlignment = HorizontalAlignment.Right; max.VerticalAlignment = VerticalAlignment.Center;
+                        Grid.SetColumn(max, 4); row.Children.Add(max);
+                        daysList.Children.Add(row);
+                    }
                 }
             }
             return (root, Update);

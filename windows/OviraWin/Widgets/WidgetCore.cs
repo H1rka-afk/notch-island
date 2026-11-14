@@ -204,7 +204,7 @@ namespace Ovira.Widgets
             new("steam", "Steam", "arrow.down", new[] { "m" }, "Текущая загрузка"),
             new("note", "Заметка", "sparkles", new[] { "s", "m", "l" }, "Стикер с текстом"),
             new("todo", "Список дел", "checkmark", new[] { "m", "s", "l" }, "Строки, отмечаются кликом"),
-            new("weather", "Погода", "sun", new[] { "s", "m" }, "Сейчас и на 3 дня"),
+            new("weather", "Погода", "sun", new[] { "s", "m", "l" }, "Сейчас, по часам и на 5 дней"),
             new("currency", "Курсы валют", "chart", new[] { "s" }, "Доллар, евро, юань"),
         };
 
