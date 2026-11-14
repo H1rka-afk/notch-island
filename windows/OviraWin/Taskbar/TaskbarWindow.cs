@@ -1004,9 +1004,9 @@ namespace Ovira.Taskbar
             FontFamily = new FontFamily("Segoe UI Variable Text, Segoe UI");
             Left = -10000; Top = -10000;
 
-            bool bar = TaskbarWindow.IsBar;
+            bool flat = TaskbarWindow.IsBar;
             // in «Полоса» the clock sits inside the bar, without a capsule of its own
-            var grid = new Grid { Margin = bar ? new Thickness(0, 18, 4, 0) : new Thickness(18, 18, 10, 0), Height = H };
+            var grid = new Grid { Margin = flat ? new Thickness(0, 18, 4, 0) : new Thickness(18, 18, 10, 0), Height = H };
             _grid = grid;
             _shadow.CornerRadius = _capsule.CornerRadius = _capsuleOld.CornerRadius = _gloss.CornerRadius = new CornerRadius(15);
             _capsuleOld.BorderThickness = new Thickness(1);
@@ -1025,7 +1025,7 @@ namespace Ovira.Taskbar
             grid.Children.Add(_row);
             // the bottom of the capsule lines up with the middle of the dock
             var outer = new Grid { Margin = new Thickness(0, 0, 0, TaskbarWindow.BottomGap + (TaskbarWindow.Capsule - H) / 2) };
-            if (bar) _shadow.Visibility = Visibility.Collapsed;
+            if (flat) _shadow.Visibility = Visibility.Collapsed;
             outer.Children.Add(grid);
             outer.LayoutTransform = _zoom;
             Content = outer;
