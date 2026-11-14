@@ -6,6 +6,7 @@ using System.Windows;
 using System.Windows.Interop;
 using System.Windows.Media;
 using System.Windows.Media.Imaging;
+using Ovira.Core;
 
 namespace Ovira.Taskbar
 {
@@ -15,6 +16,7 @@ namespace Ovira.Taskbar
         public string Title = "";
         public string App = "";          // the exe path, lower case — the group
         public uint Pid;
+        public string AppId = "";        // 0.7.6: the app's AppUserModelID, if it has one
     }
 
     // The windows that belong on a taskbar — the same rules as Alt+Tab:
@@ -38,7 +40,9 @@ namespace Ovira.Taskbar
                     var title = TB.Text(h);
                     var app = AppOf(h, pid);
                     if (app.Length == 0) return true;
-                    list.Add(new TaskWindow { Handle = h, Title = title, App = app, Pid = pid });
+                    var id = AppIdOf(h);
+                    if (id.Length > 0) AppIds[app] = id;
+                    list.Add(new TaskWindow { Handle = h, Title = title, App = app, Pid = pid, AppId = id });
                 }
                 catch { }
                 return true;
@@ -117,14 +121,21 @@ namespace Ovira.Taskbar
             return n;
         }
 
-        // The app's own icon from its .exe, large; the window's icon if the
-        // file has none (Store apps).
+        // 0.7.6: icons the way Windows' own taskbar and Start show them —
+        // through the shell, large (the 256 px «jumbo» image scaled down), with
+        // soft edges. Store apps such as «Параметры» get their real round
+        // icon from their package instead of a small square from the .exe.
         public static ImageSource? IconOf(string app, IntPtr window)
         {
             if (Icons.TryGetValue(app, out var cached) && cached != null) return cached;
             ImageSource? image = null;
             var exe = app.Split('|')[0];
-            if (!exe.EndsWith("\\applicationframehost.exe", StringComparison.Ordinal))
+            AppIds.TryGetValue(app, out var id);
+            if (string.IsNullOrEmpty(id) && Settings.Current.TaskbarAppIds.TryGetValue(app, out var saved)) id = saved;
+            if (!string.IsNullOrEmpty(id)) image = ShellIcon.Get("shell:AppsFolder\\" + id, 96);
+            if (image == null && !exe.EndsWith("\\applicationframehost.exe", StringComparison.Ordinal) && File.Exists(exe))
+                image = ShellIcon.Get(exe, 96);
+            if (image == null && !exe.EndsWith("\\applicationframehost.exe", StringComparison.Ordinal))
             {
                 try
                 {
@@ -148,6 +159,58 @@ namespace Ovira.Taskbar
             Icons[app] = image;
             return image;
         }
+
+        // ---- AppUserModelID of a window ----
+
+        public static readonly Dictionary<string, string> AppIds = new();
+        private static readonly Dictionary<IntPtr, string> IdCache = new();
+
+        private static string AppIdOf(IntPtr hwnd)
+        {
+            if (IdCache.TryGetValue(hwnd, out var id)) return id;
+            id = "";
+            try
+            {
+                var iid = new Guid("886d8eeb-8cf2-4446-8d02-cdba1dbdcf99");
+                if (SHGetPropertyStoreForWindow(hwnd, ref iid, out var store) == 0 && store != null)
+                {
+                    var key = new PropertyKey { fmtid = new Guid("9F4C2855-9F79-4B39-A8D0-E1D42DE1D5F3"), pid = 5 };
+                    if (store.GetValue(ref key, out var pv) == 0)
+                    {
+                        if (pv.vt == 31 /* VT_LPWSTR */ && pv.p != IntPtr.Zero) id = System.Runtime.InteropServices.Marshal.PtrToStringUni(pv.p) ?? "";
+                        PropVariantClear(ref pv);
+                    }
+                    System.Runtime.InteropServices.Marshal.ReleaseComObject(store);
+                }
+            }
+            catch { }
+            if (IdCache.Count > 500) IdCache.Clear();
+            IdCache[hwnd] = id;
+            return id;
+        }
+
+        [System.Runtime.InteropServices.StructLayout(System.Runtime.InteropServices.LayoutKind.Sequential)]
+        private struct PropertyKey { public Guid fmtid; public uint pid; }
+
+        [System.Runtime.InteropServices.StructLayout(System.Runtime.InteropServices.LayoutKind.Sequential)]
+        private struct PropVariant { public ushort vt; public ushort r1, r2, r3; public IntPtr p; public IntPtr p2; }
+
+        [System.Runtime.InteropServices.ComImport, System.Runtime.InteropServices.Guid("886d8eeb-8cf2-4446-8d02-cdba1dbdcf99"),
+         System.Runtime.InteropServices.InterfaceType(System.Runtime.InteropServices.ComInterfaceType.InterfaceIsIUnknown)]
+        private interface IPropertyStore
+        {
+            [System.Runtime.InteropServices.PreserveSig] int GetCount(out uint count);
+            [System.Runtime.InteropServices.PreserveSig] int GetAt(uint index, out PropertyKey key);
+            [System.Runtime.InteropServices.PreserveSig] int GetValue(ref PropertyKey key, out PropVariant value);
+            [System.Runtime.InteropServices.PreserveSig] int SetValue(ref PropertyKey key, ref PropVariant value);
+            [System.Runtime.InteropServices.PreserveSig] int Commit();
+        }
+
+        [System.Runtime.InteropServices.DllImport("shell32.dll")]
+        private static extern int SHGetPropertyStoreForWindow(IntPtr hwnd, ref Guid iid, [System.Runtime.InteropServices.MarshalAs(System.Runtime.InteropServices.UnmanagedType.Interface)] out IPropertyStore store);
+
+        [System.Runtime.InteropServices.DllImport("ole32.dll")]
+        private static extern int PropVariantClear(ref PropVariant pv);
 
         private static ImageSource? FromIcon(IntPtr h)
         {
@@ -207,9 +270,28 @@ namespace Ovira.Taskbar
             if (ended == 0) foreach (var w in windows) Close(w.Handle);
         }
 
+        // Store apps can't be started from their .exe — they open through the
+        // shell by their AppUserModelID, the way Start opens them.
+        public static bool CanLaunch(string app) => !app.Contains('|') || IdFor(app).Length > 0;
+
+        private static string IdFor(string app)
+        {
+            if (AppIds.TryGetValue(app, out var id) && id.Length > 0) return id;
+            return Settings.Current.TaskbarAppIds.TryGetValue(app, out var saved) ? saved : "";
+        }
+
+        private static bool Packaged(string app) =>
+            app.Contains('|') || app.Contains("\\windowsapps\\") || app.Contains("\\systemapps\\") || app.EndsWith("\\applicationframehost.exe");
+
         public static void Launch(string app)
         {
             var exe = app.Split('|')[0];
+            var id = IdFor(app);
+            if (id.Length > 0 && (Packaged(app) || !File.Exists(exe)))
+            {
+                try { System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo("explorer.exe", "shell:AppsFolder\\" + id) { UseShellExecute = true }); } catch { }
+                return;
+            }
             if (!File.Exists(exe)) return;
             try
             {

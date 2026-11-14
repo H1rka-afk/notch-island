@@ -240,6 +240,11 @@ namespace Ovira.Core
         };
         public System.Collections.Generic.List<string> TaskbarPinned { get => _taskbarPinned; set => Set(ref _taskbarPinned, value ?? new()); }
 
+        // 0.7.6: AppUserModelIDs of pinned Store apps, so they can be opened
+        // (and drawn) while they are not running.
+        private System.Collections.Generic.Dictionary<string, string> _taskbarAppIds = new();
+        public System.Collections.Generic.Dictionary<string, string> TaskbarAppIds { get => _taskbarAppIds; set => Set(ref _taskbarAppIds, value ?? new()); }
+
         // Crash safety: set while Windows' own taskbar is hidden by Ovira, with
         // the auto-hide state it had before, so the next start can put it back.
         private bool _systemTaskbarHidden;
@@ -333,7 +338,7 @@ namespace Ovira.Core
             {
                 if (p.CanWrite && p.CanRead && p.Name != nameof(Section) && p.Name != nameof(OpenOnHover) &&
                     p.Name != nameof(CustomThemes) && p.Name != nameof(LastUpdateCheck) && p.Name != nameof(SavedTracks) && p.Name != nameof(Widgets) && p.Name != nameof(Alarms) && p.Name != nameof(YandexToken) && p.Name != nameof(UserProfiles) && p.Name != nameof(CustomProfile) &&
-                    p.Name != nameof(SystemTaskbarHidden) && p.Name != nameof(SystemTaskbarState) && p.Name != nameof(TaskbarPinned))
+                    p.Name != nameof(SystemTaskbarHidden) && p.Name != nameof(SystemTaskbarState) && p.Name != nameof(TaskbarPinned) && p.Name != nameof(TaskbarAppIds))
                     p.SetValue(this, p.GetValue(fresh));
             }
         }

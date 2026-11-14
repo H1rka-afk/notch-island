@@ -651,7 +651,7 @@ namespace Ovira.Taskbar
             _preview.HideNow();
             _bubble.IsOpen = false;
             var app = b.App!;
-            bool real = !app.Contains('|');
+            bool real = AppWindows.CanLaunch(app);
             var menu = new OviraMenu(D.Base).Header(b.IconSource, "grid", AppWindows.NameOf(app), WindowCount(b.Windows.Count));
             if (real)
             {
@@ -675,6 +675,12 @@ namespace Ovira.Taskbar
             var list = Settings.Current.TaskbarPinned.ToList();
             list.RemoveAll(p => string.Equals(p, app, StringComparison.OrdinalIgnoreCase));
             if (pin) list.Add(app);
+            // remember a Store app's id so it opens from the dock later
+            if (pin && AppWindows.AppIds.TryGetValue(app, out var id) && id.Length > 0)
+            {
+                var ids = new Dictionary<string, string>(Settings.Current.TaskbarAppIds) { [app] = id };
+                Settings.Current.TaskbarAppIds = ids;
+            }
             Settings.Current.TaskbarPinned = list;
         }
 
