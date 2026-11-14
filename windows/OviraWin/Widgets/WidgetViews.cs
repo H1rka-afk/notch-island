@@ -179,6 +179,14 @@ namespace Ovira.Widgets
         private static (FrameworkElement, Action) NowPlaying(WidgetState st, Look L)
         {
             bool small = st.Size == "s";
+            SaveStarView? star = null;
+            IconView? repeat = null;
+            void SetRepeat(bool on)
+            {
+                if (repeat == null) return;
+                repeat.Icon = on ? "repeat.1" : "repeat";
+                repeat.Fill = on ? L.Accent : L.Fg2;
+            }
             var media = App.Current.Media;
             var art = new Border { Width = small ? 60 : 72, Height = small ? 60 : 72, CornerRadius = new CornerRadius(14), Background = L.Faint, HorizontalAlignment = HorizontalAlignment.Left, VerticalAlignment = VerticalAlignment.Top };
             var note = Icon("music.note", 24, L.Fg2);
@@ -245,13 +253,36 @@ namespace Ovira.Widgets
                 controls.Children.Add(PlayerButton(prev, 48, 40, 40, L, () => { WidgetManager.HoldMedia(); prev.Pulse(); media.Previous(); }));
                 controls.Children.Add(PlayerButton(play, 48, 40, 40, L, TogglePlay));
                 controls.Children.Add(PlayerButton(next, 48, 40, 40, L, () => { WidgetManager.HoldMedia(); next.Pulse(); media.Next(); }));
+                // 0.8.3: the island's star on the left, «по кругу» on the right
+                if (Settings.Current.SaveButton)
+                {
+                    star = new SaveStarView(L);
+                    controls.Children.Insert(0, PlayerButton(star, 36, 40, 36, L, () => App.Current.IslandWindow?.ToggleSave()));
+                }
+                repeat = new IconView { Icon = "repeat", Width = 17, Height = 17, Fill = L.Fg2 };
+                controls.Children.Add(PlayerButton(repeat, 36, 40, 36, L, async () =>
+                {
+                    bool on = !media.Looping;
+                    SetRepeat(on);                                  // answers at once
+                    await media.SetRepeatAsync(on);
+                }));
                 bottom.Children.Add(controls);
                 root.Children.Add(bottom);
+            }
+            // the star follows the island's (same list, same Yandex «Мне нравится»)
+            if (star != null && App.Current.IslandWindow is { } island)
+            {
+                Action<bool, bool, bool> follow = (saved, animated, just) =>
+                    star.Show(saved, animated && star.IsLoaded, just, media.Track?.Tint ?? Colors.White);
+                island.SavedShown += follow;
+                root.Unloaded += (_, _) => island.SavedShown -= follow;
+                root.Loaded += (_, _) => { island.SavedShown -= follow; island.SavedShown += follow; star.Show(island.CurrentSaved, false, false, media.Track?.Tint ?? Colors.White); };
             }
             object? shown = null;
             void Update()
             {
                 var t = media.Track;
+                SetRepeat(media.Looping);
                 title.Text = t?.Title is { Length: > 0 } name ? name : "Ничего не играет";
                 artist.Text = t?.Artist ?? "";
                 play.Set(t?.Playing == true, animated: play.IsLoaded);

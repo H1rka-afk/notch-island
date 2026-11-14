@@ -244,6 +244,66 @@ namespace Ovira.Services
             return string.IsNullOrEmpty(name) ? "Музыка" : name;
         }
 
+        // 0.8.3: «по кругу» — the player's own repeat setting (if it has one)
+        public bool? RepeatOne
+        {
+            get
+            {
+                try { return _session?.GetPlaybackInfo()?.AutoRepeatMode is { } m ? m == global::Windows.Media.MediaPlaybackAutoRepeatMode.Track : null; }
+                catch { return null; }
+            }
+        }
+
+        // Many players (Spotify, Yandex Music in the browser…) don't let others
+        // change their repeat; then Ovira loops the song itself: a moment
+        // before the end it jumps back to the start (and if the player still
+        // moved on, it steps back to the song).
+        public bool LoopOwn { get; private set; }
+        private System.Windows.Threading.DispatcherTimer? _loop;
+        private string _loopKey = "";
+        private bool _loopNearEnd;
+
+        public bool Looping => LoopOwn || RepeatOne == true;
+
+        public async System.Threading.Tasks.Task<bool> SetRepeatAsync(bool one)
+        {
+            bool done = false;
+            try
+            {
+                if (_session != null)
+                    done = await _session.TryChangeAutoRepeatModeAsync(one ? global::Windows.Media.MediaPlaybackAutoRepeatMode.Track : global::Windows.Media.MediaPlaybackAutoRepeatMode.None);
+            }
+            catch { }
+            LoopOwn = one && !done;
+            if (LoopOwn)
+            {
+                _loopKey = Track != null ? Track.Title + "\u0001" + Track.Artist : "";
+                _loop ??= new System.Windows.Threading.DispatcherTimer { Interval = TimeSpan.FromMilliseconds(250) };
+                _loop.Tick -= LoopTick;
+                _loop.Tick += LoopTick;
+                _loop.Start();
+            }
+            else _loop?.Stop();
+            return true;
+        }
+
+        private void LoopTick(object? sender, EventArgs e)
+        {
+            var t = Track;
+            if (t == null) return;
+            var key = t.Title + "\u0001" + t.Artist;
+            if (key != _loopKey)
+            {
+                // the player moved on by itself right at the end — go back
+                if (_loopNearEnd && _loopKey.Length > 0) { _loopNearEnd = false; Previous(); return; }
+                _loopKey = key;          // a song picked by hand loops from now on
+            }
+            if (!t.Playing || t.Duration.TotalSeconds < 5) return;
+            var left = t.Duration - t.LivePosition;
+            _loopNearEnd = left.TotalSeconds < 3;
+            if (left.TotalSeconds < 1.2) Seek(TimeSpan.Zero);
+        }
+
         public async void PlayPause() { try { if (_session != null) await _session.TryTogglePlayPauseAsync(); } catch { } }
         public async void Next() { try { if (_session != null) await _session.TrySkipNextAsync(); } catch { } }
         public async void Previous() { try { if (_session != null) await _session.TrySkipPreviousAsync(); } catch { } }

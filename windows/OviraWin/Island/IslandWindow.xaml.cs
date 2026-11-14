@@ -113,7 +113,9 @@ namespace Ovira.Island
             // stays over games and full-screen video.
             // 0.5.0: on pause too — the player does not vanish from the game.
             var hide = S.HideInFullscreen && Native.FullscreenAppInFront() &&
-                       !(S.GameMedia && HasTrack) && !Native.OwnWindowInFront();
+                       !(S.GameMedia && HasTrack) && !Native.OwnWindowInFront() &&
+                       // 0.8.3: a call stays visible over games too
+                       !(S.GameCall && App.Current.Calls.Current != null);
             if (hide != _hiddenForFullscreen)
             {
                 _hiddenForFullscreen = hide;
@@ -716,7 +718,17 @@ namespace Ovira.Island
         }
 
         // 0.4.17: the star answers at once — Yandex Music is asked afterwards.
-        private async void OnSave(object sender, RoutedEventArgs e)
+        private void OnSave(object sender, RoutedEventArgs e) => ToggleSave();
+
+        // 0.8.3: the same star in the «Сейчас играет» widget — one list, one
+        // Yandex «Мне нравится», and the widget's star follows the island's.
+        public event Action<bool, bool, bool>? SavedShown;      // saved, animated, just saved
+        public bool CurrentSaved
+        {
+            get { var t = _media.Track; return t != null && (_favRemote ?? SavedTracks.Contains(t.Title, t.Artist)); }
+        }
+
+        public async void ToggleSave()
         {
             var t = _media.Track;
             if (t == null || _favBusy) return;
@@ -770,6 +782,7 @@ namespace Ovira.Island
             SaveButton.ToolTip = _favRemote != null
                 ? (saved ? "Убрать из «Мне нравится» в Яндекс Музыке" : "«Мне нравится» в Яндекс Музыке")
                 : (saved ? "Убрать из сохранённых" : "Сохранить песню");
+            SavedShown?.Invoke(saved, animated, justSaved);
             if (!animated) return;
 
             var press = new BackEase { Amplitude = 0.55, EasingMode = EasingMode.EaseOut };

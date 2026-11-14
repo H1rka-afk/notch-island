@@ -152,6 +152,10 @@ namespace Ovira.Core
         private bool _gameMedia;
         public bool GameMedia { get => _gameMedia; set => Set(ref _gameMedia, value); }
 
+        // 0.8.3: the call island over games.
+        private bool _gameCall = true;
+        public bool GameCall { get => _gameCall; set => Set(ref _gameCall, value); }
+
         private bool _gameKeyboard;
         public bool GameKeyboard { get => _gameKeyboard; set => Set(ref _gameKeyboard, value); }
 
