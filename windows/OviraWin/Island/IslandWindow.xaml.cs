@@ -997,7 +997,8 @@ namespace Ovira.Island
             if (a.IconA != null) ActivityAIcon.Icon = a.IconA;
             ActivityABg.Background = new SolidColorBrush(a.ARed ? Color.FromRgb(0xFF, 0x3B, 0x30) : Color.FromArgb(0x33, 0xFF, 0xFF, 0xFF));
             ActivityBIcon.Icon = a.IconB;
-            ActivityC.Visibility = HasTrack ? Visibility.Visible : Visibility.Collapsed;
+            // 0.8.4: no «music» button in a timer's or call's panel any more
+            ActivityC.Visibility = Visibility.Collapsed;
             ActivityBig.FontSize = a.Details != null ? 22 : 30;
             ActivityBBg.Background = new SolidColorBrush(a.Details != null ? Color.FromArgb(0x33, 0xFF, 0xFF, 0xFF) : Color.FromRgb(0xFF, 0x3B, 0x30));
             ActivityDetails.Visibility = a.Details != null ? Visibility.Visible : Visibility.Collapsed;
