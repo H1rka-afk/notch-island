@@ -64,7 +64,7 @@ namespace Ovira.Taskbar
             host.RenderTransform = new ScaleTransform(1, 1);
             TextOptions.SetTextFormattingMode(host, TextFormattingMode.Display);
             _popup.Child = host;
-            _popup.Closed += (_, _) => _closing = false;
+            _popup.Closed += (_, _) => { _closing = false; OpenCount = Math.Max(0, OpenCount - 1); };
         }
 
         public OviraMenu Header(ImageSource? icon, string? glyph, string title, string? subtitle)
@@ -127,6 +127,29 @@ namespace Ovira.Taskbar
         }
 
         // Above the target, centred on it (or on «atX» inside it).
+        // How many Ovira menus are open (the side panel stays out meanwhile).
+        public static int OpenCount;
+        public static bool AnyOpen => OpenCount > 0;
+
+        // «Боковая»: to the right of the target, level with «atY».
+        public void OpenRight(FrameworkElement target, double? atY = null)
+        {
+            var host = (FrameworkElement)_popup.Child;
+            host.Measure(new Size(double.PositiveInfinity, double.PositiveInfinity));
+            double h = host.DesiredSize.Height;
+            _popup.PlacementTarget = target;
+            _popup.Placement = PlacementMode.Right;
+            _popup.HorizontalOffset = -Pad + 10;
+            _popup.VerticalOffset = (atY ?? target.ActualHeight / 2) - h / 2;
+            host.RenderTransformOrigin = new Point(0, 0.5);
+            Show(host);
+        }
+
+        public void Open(FrameworkElement target, double? at, bool side)
+        {
+            if (side) OpenRight(target, at); else Open(target, at);
+        }
+
         public void Open(FrameworkElement target, double? atX = null)
         {
             var host = (FrameworkElement)_popup.Child;
@@ -142,6 +165,7 @@ namespace Ovira.Taskbar
         private void Show(FrameworkElement host)
         {
             _popup.IsOpen = true;
+            OpenCount++;
             Watch();
             var scale = (ScaleTransform)host.RenderTransform;
             var spring = new BackEase { Amplitude = 0.35, EasingMode = EasingMode.EaseOut };

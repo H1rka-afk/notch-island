@@ -133,17 +133,20 @@ namespace Ovira.Taskbar
     // Windows keeps the strip under it free (an «app bar»).
     internal sealed class TaskbarWindow : Window
     {
-        // 0.7.7: two looks — «Док» (a floating capsule) and «Полоса» (a
-        // full-width bar along the bottom edge, like Windows' own, in Ovira's
-        // colours). Switching rebuilds the window.
-        public static bool IsBar => Settings.Current.TaskbarLayout == "bar";
-        public static double Capsule => IsBar ? 48 : 54;          // the dock's height
-        public static double BottomGap => IsBar ? 0 : 7;
-        public static double Reserve => IsBar ? 48 : Capsule + BottomGap + 5;     // the strip windows don't cover
-        public const double Headroom = 46;         // room above for the grown icons
-        public static double Slot => IsBar ? 44 : 50;             // one icon's place
-        public static double IconSize => IsBar ? 26 : 34;
-        public static double Radius => IsBar ? 0 : 19;
+        // 0.7.8: two looks — «Док» (a floating capsule at the bottom) and
+        // «Боковая» (a tall capsule at the left edge that slides away and
+        // comes out when the mouse touches the edge). Switching rebuilds the
+        // window. In «Боковая» everything runs top to bottom and the icons
+        // grow to the right.
+        public static bool IsSide => Settings.Current.TaskbarLayout == "side";
+        public static bool SideHides => IsSide && Settings.Current.TaskbarSideHide;
+        public const double Capsule = 54;          // the dock's thickness
+        public const double BottomGap = 7;         // its distance from the screen edge
+        public const double Reserve = Capsule + BottomGap + 5;     // the strip windows don't cover
+        public const double Headroom = 46;         // room for the grown icons
+        public const double Slot = 50;             // one icon's place
+        public const double IconSize = 34;
+        public const double Radius = 19;
         public const double MaxGrow = 0.38;        // +38 % right under the cursor
 
         private IntPtr _hwnd;
@@ -201,13 +204,7 @@ namespace Ovira.Taskbar
             FontFamily = new FontFamily("Segoe UI Variable Text, Segoe UI");
             Left = -10000; Top = -10000;
 
-            _dock.Margin = IsBar ? new Thickness(0) : new Thickness(24, 0, 24, BottomGap);
-            if (IsBar)
-            {
-                _dock.HorizontalAlignment = HorizontalAlignment.Stretch;
-                SizeToContent = SizeToContent.Manual;
-                _shadow.Visibility = Visibility.Collapsed;
-            }
+            _dock.Margin = new Thickness(24, 0, 24, BottomGap);
             _shadow.CornerRadius = _capsule.CornerRadius = _capsuleOld.CornerRadius = _gloss.CornerRadius = new CornerRadius(Radius);
             _shadow.Height = _capsule.Height = _capsuleOld.Height = _gloss.Height = Capsule;
             _shadow.VerticalAlignment = _capsule.VerticalAlignment = _capsuleOld.VerticalAlignment = _gloss.VerticalAlignment = VerticalAlignment.Bottom;
@@ -216,12 +213,15 @@ namespace Ovira.Taskbar
             _shadow.Opacity = 0.55;
             _shadow.Effect = new DropShadowEffect { BlurRadius = 22, ShadowDepth = 4, Direction = 270, Opacity = 0.45 };
             _shadow.CacheMode = new BitmapCache();
-            _capsule.BorderThickness = _capsuleOld.BorderThickness = IsBar ? new Thickness(0, 1, 0, 0) : new Thickness(1);
-            _gloss.Margin = IsBar ? new Thickness(0, 1, 0, 0) : new Thickness(1);
+            _capsule.BorderThickness = _capsuleOld.BorderThickness = new Thickness(1);
+            _gloss.Margin = new Thickness(1);
             _artBox.Height = Capsule;
             _artBox.Children.Add(_art);
             _artBox.Children.Add(_artOld);
-            _dock.SizeChanged += (_, _) => _artBox.Clip = new RectangleGeometry(new Rect(0, 0, _dock.ActualWidth, Capsule), Radius, Radius);
+            _dock.SizeChanged += (_, _) => _artBox.Clip = IsSide
+                ? new RectangleGeometry(new Rect(0, 0, Capsule, _dock.ActualHeight), Radius, Radius)
+                : new RectangleGeometry(new Rect(0, 0, _dock.ActualWidth, Capsule), Radius, Radius);
+            if (IsSide) MakeSide();
             _dock.Children.Add(_shadow);
             _dock.Children.Add(_artBox);
             _dock.Children.Add(_capsule);
@@ -248,12 +248,13 @@ namespace Ovira.Taskbar
             Content = _root;
 
             _bubbleCard.Child = _bubbleText;
-            _bubble.Child = new Border { Padding = new Thickness(0, 0, 0, 6), Child = _bubbleCard };
+            _bubble.Child = new Border { Padding = IsSide ? new Thickness(8, 0, 0, 0) : new Thickness(0, 0, 0, 6), Child = _bubbleCard };
+            if (IsSide) _bubble.Placement = PlacementMode.Right;
 
             // the Dock's magnification follows the cursor along the capsule
-            _dock.MouseMove += (_, e) => Magnify(e.GetPosition(_row).X);
+            _dock.MouseMove += (_, e) => Magnify(IsSide ? e.GetPosition(_row).Y : e.GetPosition(_row).X);
             _dock.MouseLeave += (_, _) => Relax();
-            _dock.MouseRightButtonUp += (_, e) => { if (e.Handled) return; e.Handled = true; BarMenu(_capsule, e.GetPosition(_capsule).X); };
+            _dock.MouseRightButtonUp += (_, e) => { if (e.Handled) return; e.Handled = true; BarMenu(_capsule, IsSide ? e.GetPosition(_capsule).Y : e.GetPosition(_capsule).X); };
             _gloss.IsHitTestVisible = false;
 
             // 0.7.4: Windows tells the dock about new, closed and activated
@@ -286,15 +287,83 @@ namespace Ovira.Taskbar
                 _poll.Start();
                 _tray = new TrayWindow(this);
                 _tray.Show();
-                // rise from the bottom edge
-                var lift = new TranslateTransform(0, Capsule + BottomGap + 10);
-                _dock.RenderTransform = lift;
-                lift.BeginAnimation(TranslateTransform.YProperty, new DoubleAnimation(0, TimeSpan.FromSeconds(0.55)) { EasingFunction = new BackEase { Amplitude = 0.35, EasingMode = EasingMode.EaseOut } });
+                // rise from the bottom edge (or slide out of the left one)
+                _dock.RenderTransform = _slide;
+                if (IsSide) _slide.X = -(Capsule + BottomGap + 20); else _slide.Y = Capsule + BottomGap + 10;
+                _slide.BeginAnimation(IsSide ? TranslateTransform.XProperty : TranslateTransform.YProperty, new DoubleAnimation(0, TimeSpan.FromSeconds(0.55)) { EasingFunction = new BackEase { Amplitude = 0.35, EasingMode = EasingMode.EaseOut } });
+                if (SideHides) { _hideTimer.Interval = TimeSpan.FromSeconds(2); _hideTimer.Start(); }
             };
             Closed += (_, _) => Detach();
         }
 
         public DockLook Style2 => D;
+
+        // ================================================================ «Боковая»
+
+        private readonly TranslateTransform _slide = new(0, 0);
+        private readonly DispatcherTimer _hideTimer = new() { Interval = TimeSpan.FromSeconds(0.7) };
+        private bool _out = true;
+
+        private void MakeSide()
+        {
+            SizeToContent = SizeToContent.Width;
+            _root.ClearValue(HeightProperty);
+            _root.Width = BottomGap + Capsule + Headroom;
+            _dock.HorizontalAlignment = HorizontalAlignment.Left;
+            _dock.VerticalAlignment = VerticalAlignment.Center;
+            _dock.Margin = new Thickness(BottomGap, 24, 0, 24);
+            foreach (FrameworkElement e in new FrameworkElement[] { _shadow, _capsule, _capsuleOld, _gloss, _artBox })
+            {
+                e.ClearValue(HeightProperty);
+                e.Width = Capsule;
+                e.VerticalAlignment = VerticalAlignment.Stretch;
+                e.HorizontalAlignment = HorizontalAlignment.Left;
+            }
+            _shadow.Effect = new DropShadowEffect { BlurRadius = 22, ShadowDepth = 4, Direction = 0, Opacity = 0.45 };
+            _row.Orientation = Orientation.Vertical;
+            _row.Margin = new Thickness(0, 7, 0, 7);
+            _row.VerticalAlignment = VerticalAlignment.Center;
+            _row.HorizontalAlignment = HorizontalAlignment.Left;
+            _apps.Orientation = Orientation.Vertical;
+            _divider.Width = 30;
+            _divider.Height = 1;
+            _divider.Margin = new Thickness((Capsule - 30) / 2, 6, 0, 6);
+            _divider.VerticalAlignment = VerticalAlignment.Top;
+            _divider.HorizontalAlignment = HorizontalAlignment.Left;
+
+            if (!Settings.Current.TaskbarSideHide) return;
+            // a hair-thin, almost clear strip along the edge catches the mouse
+            var edge = new Border { Width = 3, Background = new SolidColorBrush(Color.FromArgb(0x01, 0, 0, 0)), HorizontalAlignment = HorizontalAlignment.Left };
+            _root.Children.Insert(0, edge);
+            _root.MouseEnter += (_, _) => { _hideTimer.Stop(); Reveal(true); };
+            _root.MouseLeave += (_, _) => { _hideTimer.Interval = TimeSpan.FromSeconds(0.7); _hideTimer.Start(); };
+            _hideTimer.Tick += (_, _) =>
+            {
+                if (IsMouseOver || (_tray?.IsMouseOver ?? false) || _preview.IsVisible || OviraMenu.AnyOpen) return;   // check again
+                _hideTimer.Stop();
+                Reveal(false);
+            };
+        }
+
+        public void TrayHover(bool inside)
+        {
+            if (!SideHides) return;
+            if (inside) { _hideTimer.Stop(); Reveal(true); }
+            else { _hideTimer.Interval = TimeSpan.FromSeconds(0.7); _hideTimer.Start(); }
+        }
+
+        private void Reveal(bool show)
+        {
+            if (!SideHides || _out == show) return;
+            _out = show;
+            if (!show) { _bubble.IsOpen = false; Relax(); }
+            var to = show ? 0 : -(Capsule + BottomGap + 30);
+            _slide.BeginAnimation(TranslateTransform.XProperty, new DoubleAnimation(to, TimeSpan.FromSeconds(show ? 0.42 : 0.32))
+            {
+                EasingFunction = show ? new BackEase { Amplitude = 0.3, EasingMode = EasingMode.EaseOut } : new CubicEase { EasingMode = EasingMode.EaseIn },
+            });
+            _tray?.Slide(show);
+        }
 
         // 0.7.3: the dock's size — «Маленький», «Средний», «Большой».
         private readonly ScaleTransform _zoom = new(K, K);
@@ -337,7 +406,7 @@ namespace Ovira.Taskbar
             _shellMsg = TB.RegisterWindowMessage("SHELLHOOK");
             _createdMsg = TB.RegisterWindowMessage("TaskbarCreated");
             TB.RegisterShellHookWindow(_hwnd);
-            Register();
+            if (!SideHides) Register();
             Place();
         }
 
@@ -346,7 +415,7 @@ namespace Ovira.Taskbar
             cbSize = System.Runtime.InteropServices.Marshal.SizeOf<TB.APPBARDATA>(),
             hWnd = _hwnd,
             uCallbackMessage = _abMsg,
-            uEdge = TB.ABE_BOTTOM,
+            uEdge = IsSide ? 0u /* ABE_LEFT */ : TB.ABE_BOTTOM,
         };
 
         private void Register()
@@ -365,11 +434,25 @@ namespace Ovira.Taskbar
             var screen = Screen;
             var dpi = VisualTreeHelper.GetDpi(this);
             int h = (int)Math.Round(Reserve * K * dpi.DpiScaleY);
-            if (IsBar)
+            if (IsSide)
             {
-                // the bar is exactly as wide as the screen
-                Width = screen.Width / dpi.DpiScaleX;
-                Height = (Capsule + BottomGap + Headroom) * K;
+                // a column as tall as the screen; the capsule sits in its middle
+                Height = screen.Height / dpi.DpiScaleY;
+                int w = (int)Math.Round(Reserve * K * dpi.DpiScaleX);
+                _leftPx = screen.Left;
+                if (!SideHides)
+                {
+                    var side = Data();
+                    side.rc = new TB.RECT { Left = screen.Left, Right = screen.Left + w, Top = screen.Top, Bottom = screen.Bottom };
+                    TB.SHAppBarMessage(TB.ABM_QUERYPOS, ref side);
+                    side.rc.Right = side.rc.Left + w;
+                    TB.SHAppBarMessage(TB.ABM_SETPOS, ref side);
+                    _leftPx = side.rc.Left;
+                }
+                _bottom = screen.Bottom;
+                Position();
+                _tray?.Position();
+                return;
             }
             var d = Data();
             d.rc = new TB.RECT { Left = screen.Left, Right = screen.Right, Top = screen.Bottom - h, Bottom = screen.Bottom };
@@ -382,6 +465,8 @@ namespace Ovira.Taskbar
         }
 
         private int _bottom = int.MinValue;
+        private int _leftPx;
+        public int LeftPx => _leftPx;
         public int BottomPx => _bottom == int.MinValue ? Screen.Bottom : _bottom;
 
         // The window is just as wide as the dock; it stays centred (or on the left).
@@ -391,8 +476,8 @@ namespace Ovira.Taskbar
             var screen = Screen;
             var dpi = VisualTreeHelper.GetDpi(this);
             int w = (int)Math.Round(ActualWidth * dpi.DpiScaleX), h = (int)Math.Round(ActualHeight * dpi.DpiScaleY);
-            int x = IsBar || Settings.Current.TaskbarAlign == "left" ? screen.Left : screen.Left + (screen.Width - w) / 2;
-            int y = BottomPx - h;
+            int x = IsSide ? _leftPx : Settings.Current.TaskbarAlign == "left" ? screen.Left : screen.Left + (screen.Width - w) / 2;
+            int y = IsSide ? screen.Top : BottomPx - h;
             TB.SetWindowPos(_hwnd, TB.HWND_TOPMOST, x, y, 0, 0, TB.SWP_NOSIZE | TB.SWP_NOACTIVATE | TB.SWP_SHOWWINDOW);
             _barTop = (BottomPx - (Capsule + BottomGap) * K * dpi.DpiScaleY) / dpi.DpiScaleY;
         }
@@ -484,7 +569,7 @@ namespace Ovira.Taskbar
                 _art.Source = D.Art;
             }
             _shadow.BeginAnimation(OpacityProperty, new DoubleAnimation(D.Shadow ? 0.55 : 0, TimeSpan.FromSeconds(IsLoaded ? 0.5 : 0)));
-            _row.HorizontalAlignment = !IsBar ? HorizontalAlignment.Stretch : Settings.Current.TaskbarAlign == "left" ? HorizontalAlignment.Left : HorizontalAlignment.Center;
+            if (!IsSide) _row.HorizontalAlignment = HorizontalAlignment.Stretch;
             _bubbleCard.Background = D.Fg is SolidColorBrush f && f.Color.R < 0x80 ? new SolidColorBrush(Color.FromArgb(0xF2, 0xFF, 0xFF, 0xFF)) : new SolidColorBrush(Color.FromArgb(0xF0, 0x26, 0x26, 0x2A));
             _bubbleText.Foreground = D.Fg;
             _start.Restyle(D);
@@ -513,7 +598,12 @@ namespace Ovira.Taskbar
             {
                 if (!b.IsVisible || b.ActualWidth <= 0) continue;
                 double c;
-                try { c = b.TransformToAncestor(_row).Transform(new Point(b.ActualWidth / 2, 0)).X; } catch { continue; }
+                try
+                {
+                    var mid = b.TransformToAncestor(_row).Transform(new Point(b.ActualWidth / 2, b.ActualHeight / 2));
+                    c = IsSide ? mid.Y : mid.X;
+                }
+                catch { continue; }
                 double d = Math.Abs(x - c) / (Slot * 1.6);
                 double grow = d >= 1 ? 0 : MaxGrow * (Math.Cos(d * Math.PI) + 1) / 2;
                 b.SetGrow(grow, animated: false);
@@ -624,8 +714,16 @@ namespace Ovira.Taskbar
             _bubble.IsOpen = false;
             _bubble.PlacementTarget = b;
             _bubble.Child.Measure(new Size(double.PositiveInfinity, double.PositiveInfinity));
-            _bubble.HorizontalOffset = (b.ActualWidth - _bubble.Child.DesiredSize.Width) / 2;
-            _bubble.VerticalOffset = -(Slot - (Capsule - 6)) - IconSize * MaxGrow - 2;
+            if (IsSide)
+            {
+                _bubble.HorizontalOffset = IconSize * MaxGrow;
+                _bubble.VerticalOffset = (b.ActualHeight - _bubble.Child.DesiredSize.Height) / 2;
+            }
+            else
+            {
+                _bubble.HorizontalOffset = (b.ActualWidth - _bubble.Child.DesiredSize.Width) / 2;
+                _bubble.VerticalOffset = -(Slot - (Capsule - 6)) - IconSize * MaxGrow - 2;
+            }
             _bubble.IsOpen = true;
             _bubble.Child.BeginAnimation(OpacityProperty, new DoubleAnimation(0, 1, TimeSpan.FromSeconds(0.14)));
         }
@@ -637,7 +735,8 @@ namespace Ovira.Taskbar
             var dpi = VisualTreeHelper.GetDpi(this);
             var p = b.PointToScreen(new Point(0, 0));
             var rect = new Rect(p.X / dpi.DpiScaleX, p.Y / dpi.DpiScaleY, b.ActualWidth, b.ActualHeight);
-            _preview.ShowFor(b.App, b.Windows.ToList(), D.Base, rect, _barTop - IconSize * MaxGrow * K);
+            double? right = IsSide ? (_leftPx / dpi.DpiScaleX) + (BottomGap + Capsule + IconSize * MaxGrow) * K : null;
+            _preview.ShowFor(b.App, b.Windows.ToList(), D.Base, rect, _barTop - IconSize * MaxGrow * K, right);
         }
 
         private void OnAppClick(DockItem b)
@@ -685,7 +784,7 @@ namespace Ovira.Taskbar
                 var windows = b.Windows.ToList();
                 menu.Item("xmark", "Завершить задачу", () => { AppWindows.EndTask(app, windows); QueueRefresh(); }, danger: true);
             }
-            menu.Open(b);
+            if (IsSide) menu.OpenRight(b); else menu.Open(b);
         }
 
         private static void TogglePin(string app, bool pin)
@@ -715,7 +814,7 @@ namespace Ovira.Taskbar
                 .Item("eye", "Прятать панель Windows", () => Settings.Current.TaskbarHideSystem = !Settings.Current.TaskbarHideSystem, check: Settings.Current.TaskbarHideSystem)
                 .Separator()
                 .Item("xmark", "Выключить панель Ovira", () => Settings.Current.TaskbarEnabled = false, danger: true)
-                .Open(target, atX);
+                .Open(target, atX, IsSide);
         }
     }
 
@@ -742,7 +841,8 @@ namespace Ovira.Taskbar
         private readonly ScaleTransform _grow = new(1, 1);
         private readonly TranslateTransform _hop = new(0, 0);
         private DockLook _look;
-        private bool _down, _active, _flash;
+        private bool _down, _active, _flash, _side;
+        private DependencyProperty Along => _side ? HeightProperty : WidthProperty;   // the dot and the slot grow along the bar
         private int _count = -1;
 
         public event Action<DockItem>? Click, MiddleClick, MenuWanted, Down;
@@ -767,6 +867,26 @@ namespace Ovira.Taskbar
             Width = TaskbarWindow.Slot;
             Height = TaskbarWindow.Capsule;
             VerticalAlignment = VerticalAlignment.Bottom;
+            _side = TaskbarWindow.IsSide;
+            if (_side)
+            {
+                // on the left edge: a row per app, the icon grows to the right
+                Width = TaskbarWindow.Capsule;
+                Height = TaskbarWindow.Slot;
+                VerticalAlignment = VerticalAlignment.Top;
+                HorizontalAlignment = HorizontalAlignment.Left;
+                _iconBox.HorizontalAlignment = HorizontalAlignment.Left;
+                _iconBox.VerticalAlignment = VerticalAlignment.Center;
+                _iconBox.Margin = new Thickness((TaskbarWindow.Capsule - TaskbarWindow.IconSize) / 2 + 1, 0, 0, 0);
+                _dot.HorizontalAlignment = HorizontalAlignment.Left;
+                _dot.VerticalAlignment = VerticalAlignment.Center;
+                _dot.Margin = new Thickness(3, 0, 0, 0);
+                _dot.Width = 4;
+                _dot.Height = 0;
+                _hover.HorizontalAlignment = HorizontalAlignment.Left;
+                _hover.VerticalAlignment = VerticalAlignment.Center;
+                _hover.Margin = new Thickness(5, 0, 0, 0);
+            }
             Background = Brushes.Transparent;
             Cursor = Cursors.Hand;
             RenderOptions.SetBitmapScalingMode(_image, BitmapScalingMode.HighQuality);
@@ -775,7 +895,7 @@ namespace Ovira.Taskbar
             group.Children.Add(_press);
             group.Children.Add(_grow);
             group.Children.Add(_hop);
-            _iconBox.RenderTransformOrigin = new Point(0.5, 1);
+            _iconBox.RenderTransformOrigin = TaskbarWindow.IsSide ? new Point(0, 0.5) : new Point(0.5, 1);
             _iconBox.RenderTransform = group;
             Children.Add(_hover);
             Children.Add(_iconBox);
@@ -819,8 +939,8 @@ namespace Ovira.Taskbar
             var target = _flash ? Color.FromRgb(0xFF, 0x9F, 0x0A) : ((_active ? _look.Accent : _look.Dot) as SolidColorBrush)?.Color ?? Colors.White;
             if (_dot.Background is not SolidColorBrush own || own.IsFrozen) _dot.Background = own = new SolidColorBrush(target);
             Fade.To(own, target, animated || IsLoaded);
-            if (!animated) { _dot.BeginAnimation(WidthProperty, null); _dot.Width = width; return; }
-            _dot.BeginAnimation(WidthProperty, new DoubleAnimation(width, TimeSpan.FromSeconds(0.38)) { EasingFunction = new BackEase { Amplitude = 0.5, EasingMode = EasingMode.EaseOut } });
+            if (!animated) { _dot.BeginAnimation(Along, null); _dot.SetValue(Along, width); return; }
+            _dot.BeginAnimation(Along, new DoubleAnimation(width, TimeSpan.FromSeconds(0.38)) { EasingFunction = new BackEase { Amplitude = 0.5, EasingMode = EasingMode.EaseOut } });
         }
 
         private void Highlight()
@@ -861,13 +981,18 @@ namespace Ovira.Taskbar
             var hop = new DoubleAnimationUsingKeyFrames { Duration = TimeSpan.FromSeconds(0.75) };
             hop.KeyFrames.Add(new EasingDoubleKeyFrame(-14, KeyTime.FromTimeSpan(TimeSpan.FromSeconds(0.22)), new QuadraticEase { EasingMode = EasingMode.EaseOut }));
             hop.KeyFrames.Add(new EasingDoubleKeyFrame(0, KeyTime.FromTimeSpan(TimeSpan.FromSeconds(0.75)), new BounceEase { Bounces = 2, Bounciness = 2.5, EasingMode = EasingMode.EaseOut }));
-            _hop.BeginAnimation(TranslateTransform.YProperty, hop);
+            if (_side)
+            {
+                foreach (var k in hop.KeyFrames.OfType<EasingDoubleKeyFrame>()) k.Value = -k.Value;    // hop away from the edge
+                _hop.BeginAnimation(TranslateTransform.XProperty, hop);
+            }
+            else _hop.BeginAnimation(TranslateTransform.YProperty, hop);
         }
 
         public void Enter(bool animated)
         {
             if (!animated) return;
-            BeginAnimation(WidthProperty, new DoubleAnimation(0, TaskbarWindow.Slot, TimeSpan.FromSeconds(0.34)) { EasingFunction = new CubicEase { EasingMode = EasingMode.EaseOut } });
+            BeginAnimation(Along, new DoubleAnimation(0, TaskbarWindow.Slot, TimeSpan.FromSeconds(0.34)) { EasingFunction = new CubicEase { EasingMode = EasingMode.EaseOut } });
             _iconBox.BeginAnimation(OpacityProperty, new DoubleAnimation(0, 1, TimeSpan.FromSeconds(0.25)) { BeginTime = TimeSpan.FromSeconds(0.06) });
             var pop = new DoubleAnimation(0.3, 1, TimeSpan.FromSeconds(0.5)) { EasingFunction = new BackEase { Amplitude = 0.45, EasingMode = EasingMode.EaseOut } };
             _press.CenterX = TaskbarWindow.IconSize / 2;
@@ -885,10 +1010,10 @@ namespace Ovira.Taskbar
             _press.BeginAnimation(ScaleTransform.ScaleXProperty, away);
             _press.BeginAnimation(ScaleTransform.ScaleYProperty, away);
             _iconBox.BeginAnimation(OpacityProperty, new DoubleAnimation(0, TimeSpan.FromSeconds(0.2)));
-            _dot.BeginAnimation(WidthProperty, new DoubleAnimation(0, TimeSpan.FromSeconds(0.15)));
-            var shrink = new DoubleAnimation(ActualWidth, 0, TimeSpan.FromSeconds(0.3)) { BeginTime = TimeSpan.FromSeconds(0.12), EasingFunction = new CubicEase { EasingMode = EasingMode.EaseInOut } };
+            _dot.BeginAnimation(Along, new DoubleAnimation(0, TimeSpan.FromSeconds(0.15)));
+            var shrink = new DoubleAnimation(_side ? ActualHeight : ActualWidth, 0, TimeSpan.FromSeconds(0.3)) { BeginTime = TimeSpan.FromSeconds(0.12), EasingFunction = new CubicEase { EasingMode = EasingMode.EaseInOut } };
             shrink.Completed += (_, _) => done();
-            BeginAnimation(WidthProperty, shrink);
+            BeginAnimation(Along, shrink);
         }
     }
 
@@ -968,7 +1093,19 @@ namespace Ovira.Taskbar
     // shows the desktop. Its own small window so the dock's stays narrow.
     internal sealed class TrayWindow : Window
     {
-        private static double H => TaskbarWindow.IsBar ? 40 : 44;
+        private const double H = 44;
+        private readonly bool _side = TaskbarWindow.IsSide;
+        private readonly TranslateTransform _slide = new(0, 0);
+
+        // «Боковая»: slides out and back with the panel
+        public void Slide(bool show)
+        {
+            if (!_side) return;
+            _slide.BeginAnimation(TranslateTransform.XProperty, new DoubleAnimation(show ? 0 : -(TaskbarWindow.Capsule + TaskbarWindow.BottomGap + 30), TimeSpan.FromSeconds(show ? 0.42 : 0.32))
+            {
+                EasingFunction = show ? new BackEase { Amplitude = 0.3, EasingMode = EasingMode.EaseOut } : new CubicEase { EasingMode = EasingMode.EaseIn },
+            });
+        }
         private readonly TaskbarWindow _bar;
         private IntPtr _hwnd;
         private readonly Border _shadow = new(), _capsule = new(), _capsuleOld = new(), _gloss = new() { IsHitTestVisible = false };
@@ -1004,9 +1141,10 @@ namespace Ovira.Taskbar
             FontFamily = new FontFamily("Segoe UI Variable Text, Segoe UI");
             Left = -10000; Top = -10000;
 
-            bool flat = TaskbarWindow.IsBar;
-            // in «Полоса» the clock sits inside the bar, without a capsule of its own
-            var grid = new Grid { Margin = flat ? new Thickness(0, 18, 4, 0) : new Thickness(18, 18, 10, 0), Height = H };
+            // «Боковая»: a narrow capsule in the bottom-left corner, items stacked
+            var grid = _side
+                ? new Grid { Margin = new Thickness(TaskbarWindow.BottomGap, 18, 18, TaskbarWindow.BottomGap), Width = TaskbarWindow.Capsule }
+                : new Grid { Margin = new Thickness(18, 18, 10, 0), Height = H };
             _grid = grid;
             _shadow.CornerRadius = _capsule.CornerRadius = _capsuleOld.CornerRadius = _gloss.CornerRadius = new CornerRadius(15);
             _capsuleOld.BorderThickness = new Thickness(1);
@@ -1025,7 +1163,13 @@ namespace Ovira.Taskbar
             grid.Children.Add(_row);
             // the bottom of the capsule lines up with the middle of the dock
             var outer = new Grid { Margin = new Thickness(0, 0, 0, TaskbarWindow.BottomGap + (TaskbarWindow.Capsule - H) / 2) };
-            if (flat) _shadow.Visibility = Visibility.Collapsed;
+            if (_side)
+            {
+                outer.Margin = new Thickness(0);
+                _row.Orientation = Orientation.Vertical;
+                _row.Margin = new Thickness(0, 5, 0, 5);
+                _shadow.Effect = new DropShadowEffect { BlurRadius = 18, ShadowDepth = 3, Direction = 0, Opacity = 0.4 };
+            }
             outer.Children.Add(grid);
             outer.LayoutTransform = _zoom;
             Content = outer;
@@ -1064,8 +1208,28 @@ namespace Ovira.Taskbar
             // 0.7.3: Ovira folds the windows itself — Win+D hid the widgets too
             Add(new TrayButton(desk, 26), Desktop.Toggle);
 
-            _capsule.MouseRightButtonUp += (_, e) => { e.Handled = true; _bar.BarMenu(_capsule, e.GetPosition(_capsule).X); };
-            _row.MouseRightButtonUp += (_, e) => { e.Handled = true; _bar.BarMenu(_capsule, e.GetPosition(_capsule).X); };
+            _capsule.MouseRightButtonUp += (_, e) => { e.Handled = true; _bar.BarMenu(_capsule, _side ? e.GetPosition(_capsule).Y : e.GetPosition(_capsule).X); };
+            _row.MouseRightButtonUp += (_, e) => { e.Handled = true; _bar.BarMenu(_capsule, _side ? e.GetPosition(_capsule).Y : e.GetPosition(_capsule).X); };
+            MouseEnter += (_, _) => _bar.TrayHover(true);
+            MouseLeave += (_, _) => _bar.TrayHover(false);
+            if (_side)
+            {
+                bs.Orientation = Orientation.Vertical;
+                _pct.Margin = new Thickness(0, 1, 0, 0);
+                _pct.FontSize = 10.5;
+                _pct.HorizontalAlignment = HorizontalAlignment.Center;
+                _battery.HorizontalAlignment = HorizontalAlignment.Center;
+                _time.HorizontalAlignment = _date.HorizontalAlignment = HorizontalAlignment.Center;
+                _time.FontSize = 12.5;
+                _date.FontSize = 10.5;
+                cs.Margin = new Thickness(0);
+                foreach (var b in _buttons)
+                {
+                    b.MinWidth = 0;
+                    b.Width = TaskbarWindow.Capsule - 8;
+                    b.Height = b == _batteryButton || b.Content == cs ? 46 : 36;
+                }
+            }
 
             ApplyLook();
             Tick();
@@ -1079,6 +1243,13 @@ namespace Ovira.Taskbar
             {
                 Position();
                 var lift = new TranslateTransform(0, 70);
+                if (_side)
+                {
+                    grid.RenderTransform = _slide;
+                    _slide.X = -(TaskbarWindow.Capsule + 40);
+                    _slide.BeginAnimation(TranslateTransform.XProperty, new DoubleAnimation(0, TimeSpan.FromSeconds(0.6)) { BeginTime = TimeSpan.FromSeconds(0.08), EasingFunction = new BackEase { Amplitude = 0.35, EasingMode = EasingMode.EaseOut } });
+                    return;
+                }
                 grid.RenderTransform = lift;
                 lift.BeginAnimation(TranslateTransform.YProperty, new DoubleAnimation(0, TimeSpan.FromSeconds(0.6)) { BeginTime = TimeSpan.FromSeconds(0.08), EasingFunction = new BackEase { Amplitude = 0.35, EasingMode = EasingMode.EaseOut } });
             };
@@ -1098,13 +1269,13 @@ namespace Ovira.Taskbar
             var screen = TaskbarWindow.Screen;
             var dpi = VisualTreeHelper.GetDpi(this);
             int w = (int)Math.Round(ActualWidth * dpi.DpiScaleX), h = (int)Math.Round(ActualHeight * dpi.DpiScaleY);
-            TB.SetWindowPos(_hwnd, TB.HWND_TOPMOST, screen.Right - w, _bar.BottomPx - h, 0, 0, TB.SWP_NOSIZE | TB.SWP_NOACTIVATE | TB.SWP_SHOWWINDOW);
+            TB.SetWindowPos(_hwnd, TB.HWND_TOPMOST, _side ? _bar.LeftPx : screen.Right - w, _bar.BottomPx - h, 0, 0, TB.SWP_NOSIZE | TB.SWP_NOACTIVATE | TB.SWP_SHOWWINDOW);
         }
 
         public void ApplyLook()
         {
             var d = _bar.Style2;
-            if (TaskbarWindow.IsBar)
+            if (false)
             {
                 // almost clear, so the gaps stay clickable; the bar below gives the colour
                 var clear = new SolidColorBrush(Color.FromArgb(0x01, 0, 0, 0));
@@ -1127,7 +1298,7 @@ namespace Ovira.Taskbar
         {
             var now = DateTime.Now;
             _time.Text = now.ToString(Settings.Current.TaskbarSeconds ? "HH:mm:ss" : "HH:mm");
-            _date.Text = now.ToString("d MMM", new System.Globalization.CultureInfo("ru-RU")).TrimEnd('.') + ", " +
+            _date.Text = _side ? now.ToString("dd.MM") : now.ToString("d MMM", new System.Globalization.CultureInfo("ru-RU")).TrimEnd('.') + ", " +
                          now.ToString("ddd", new System.Globalization.CultureInfo("ru-RU"));
             var layout = KeyboardWatch.CurrentLayout();
             if (DateTime.Now > Layouts.HoldLabel) _lang.Text = Layouts.Label(layout, _lang.Text);

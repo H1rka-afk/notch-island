@@ -49,7 +49,7 @@ namespace Ovira.Taskbar
 
         public bool Showing => IsVisible && App.Length > 0;
 
-        public void ShowFor(string app, List<TaskWindow> windows, Look look, Rect button, double barTop)
+        public void ShowFor(string app, List<TaskWindow> windows, Look look, Rect button, double barTop, double? rightOf = null)
         {
             bool light = look.Fg is SolidColorBrush f && f.Color.R < 0x80;
             Background = light ? new SolidColorBrush(Color.FromRgb(0xF3, 0xF3, 0xF5)) : new SolidColorBrush(Color.FromRgb(0x24, 0x24, 0x28));
@@ -63,8 +63,17 @@ namespace Ovira.Taskbar
                 Show();
             }
             UpdateLayout();
-            Left = Math.Max(SystemParameters.VirtualScreenLeft + 6, button.Left + button.Width / 2 - ActualWidth / 2);
-            Top = barTop - ActualHeight - 8;
+            if (rightOf is double x)
+            {
+                // «Боковая»: beside the panel, level with the icon
+                Left = x + 8;
+                Top = Math.Max(SystemParameters.VirtualScreenTop + 6, Math.Min(button.Top + button.Height / 2 - ActualHeight / 2, SystemParameters.PrimaryScreenHeight - ActualHeight - 6));
+            }
+            else
+            {
+                Left = Math.Max(SystemParameters.VirtualScreenLeft + 6, button.Left + button.Width / 2 - ActualWidth / 2);
+                Top = barTop - ActualHeight - 8;
+            }
             // slide up a little
             var shift = new TranslateTransform(0, 8);
             _row.RenderTransform = shift;
