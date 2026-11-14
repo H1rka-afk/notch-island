@@ -101,7 +101,7 @@ namespace Ovira.Widgets
             var cloud = Cloud(cx, bottom, sun || moon ? 0.95 : 1.05);
             var parts = new System.Collections.Generic.List<Geometry> { cloud };
             if (sun) parts.Add(Behind(Sun(16.8, falls ? 6.5 : 8.5, 0.62), cloud));
-            if (moon) parts.Add(Behind(Moon(17.2, falls ? 6.8 : 8.8, 0.62), cloud));
+            if (moon) parts.Add(Behind(Moon(17.6, falls ? 6.0 : 8.0, 0.85), cloud));
             if (kind.EndsWith(".rain") || kind.EndsWith(".heavyrain"))
             {
                 bool heavy = kind.EndsWith(".heavyrain");
