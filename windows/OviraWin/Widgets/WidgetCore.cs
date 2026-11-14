@@ -39,14 +39,39 @@ namespace Ovira.Widgets
             var layers = new Grid();
             var shape = new CornerRadius(24);
             layers.Children.Add(new Border { CornerRadius = shape, Background = look.Card });
-            if (look.Gloss)
+            // 0.8.0: «Стекло» is Liquid Glass — the wallpaper under the card,
+            // bent and lit (LiquidGlass.cs); the flat smoke stays underneath
+            // until the picture is ready, and in the editor's previews.
+            bool liquid = owner != null && Settings.Current.WidgetStyle == "glass";
+            if (liquid)
+            {
+                var glass = new System.Windows.Controls.Image { Stretch = Stretch.Fill, IsHitTestVisible = false };
+                layers.Children.Add(glass);
+                // a breath of shade so white text stays readable on light wallpapers
+                layers.Children.Add(new Border { CornerRadius = shape, IsHitTestVisible = false, Background = new SolidColorBrush(Color.FromArgb(0x1C, 0x08, 0x08, 0x10)) });
+                owner!.AttachGlass(glass);
+            }
+            if (look.Gloss && !liquid)
                 layers.Children.Add(new Border
                 {
                     CornerRadius = shape, IsHitTestVisible = false,
                     Background = new LinearGradientBrush(Color.FromArgb(0x30, 0xFF, 0xFF, 0xFF), Color.FromArgb(0, 0xFF, 0xFF, 0xFF), new Point(0, 0), new Point(0, 0.55))
                 });
             layers.Children.Add(new Border { CornerRadius = shape, Child = content, ClipToBounds = true });
-            layers.Children.Add(new Border { CornerRadius = shape, BorderBrush = look.Border, BorderThickness = new Thickness(1), IsHitTestVisible = false });
+            layers.Children.Add(new Border
+            {
+                CornerRadius = shape, IsHitTestVisible = false, BorderThickness = new Thickness(1),
+                // Liquid Glass: a rim that is bright where the light falls and fades round the sides
+                BorderBrush = liquid
+                    ? new LinearGradientBrush(new GradientStopCollection
+                      {
+                          new GradientStop(Color.FromArgb(0xB3, 0xFF, 0xFF, 0xFF), 0),
+                          new GradientStop(Color.FromArgb(0x1A, 0xFF, 0xFF, 0xFF), 0.45),
+                          new GradientStop(Color.FromArgb(0x10, 0xFF, 0xFF, 0xFF), 0.6),
+                          new GradientStop(Color.FromArgb(0x66, 0xFF, 0xFF, 0xFF), 1),
+                      }, new Point(0, 0), new Point(1, 1))
+                    : look.Border,
+            });
             System.Windows.Documents.TextElement.SetForeground(layers, look.Fg);
             return (layers, update);
         }
@@ -298,14 +323,54 @@ namespace Ovira.Widgets
             Deactivated += (_, _) => ToBottom();
             LocationChanged += (_, _) =>
             {
+                QueueGlass();
                 if (_placing || !IsLoaded) return;
                 State.X = Left; State.Y = Top;
                 Settings.Current.SaveSoon();
             };
+            Loaded += (_, _) => QueueGlass();
             Build();
         }
 
         private bool Typing => State.Kind is "note" or "todo";
+
+        // ---- 0.8.0: Liquid Glass ----
+        private System.Windows.Controls.Image? _glass;
+        private System.Windows.Threading.DispatcherTimer? _glassTimer;
+
+        public void AttachGlass(System.Windows.Controls.Image glass)
+        {
+            _glass = glass;
+            LiquidGlass.Ensure();
+            QueueGlass();
+        }
+
+        // at most ~30 times a second while the card is dragged
+        public void QueueGlass()
+        {
+            if (_glass == null) return;
+            if (_glassTimer == null)
+            {
+                _glassTimer = new System.Windows.Threading.DispatcherTimer { Interval = TimeSpan.FromMilliseconds(33) };
+                _glassTimer.Tick += (_, _) => { _glassTimer!.Stop(); UpdateGlass(); };
+            }
+            if (!_glassTimer.IsEnabled) _glassTimer.Start();
+        }
+
+        private void UpdateGlass()
+        {
+            var glass = _glass;
+            if (glass == null || !IsLoaded || !LiquidGlass.Available) return;
+            try
+            {
+                var dpi = VisualTreeHelper.GetDpi(this);
+                var topLeft = glass.PointToScreen(new Point(0, 0));
+                var rect = new Rect(topLeft.X, topLeft.Y, glass.ActualWidth * dpi.DpiScaleX, glass.ActualHeight * dpi.DpiScaleY);
+                var picture = LiquidGlass.Render(rect, 24 * dpi.DpiScaleX, dpi.DpiScaleX);
+                if (picture != null) glass.Source = picture;
+            }
+            catch { }
+        }
 
         public void ToBottom()
         {
@@ -451,6 +516,7 @@ namespace Ovira.Widgets
     public static class WidgetManager
     {
         private static readonly List<WidgetWindow> Live = new();
+        private static int _wallTick;
         private static readonly DispatcherTimer Clock = new DispatcherTimer { Interval = TimeSpan.FromSeconds(1) };
         private static bool _started;
         private static bool _hidden;
@@ -462,6 +528,7 @@ namespace Ovira.Widgets
             _started = true;
             foreach (var state in Settings.Current.Widgets.ToList()) Open(state);
             Clock.Tick += (_, _) => TickAll();
+            LiquidGlass.Ready += () => { foreach (var w in Live) w.QueueGlass(); };
             Clock.Start();
             Settings.Current.PropertyChanged += (_, e) =>
             {
@@ -596,6 +663,8 @@ namespace Ovira.Widgets
                 if (!hide) foreach (var w in Live) w.ToBottom();
             }
             if (hide || DateTime.Now < _holdUntil) return;
+            // 0.8.0: a new wallpaper re-draws the glass (checked every 5 s)
+            if (++_wallTick % 5 == 0 && Settings.Current.WidgetStyle == "glass") LiquidGlass.Ensure();
             foreach (var w in Live.ToList()) w.Tick();
         }
 
