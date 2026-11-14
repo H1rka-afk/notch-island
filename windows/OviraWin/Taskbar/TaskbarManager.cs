@@ -39,6 +39,14 @@ namespace Ovira.Taskbar
                     case nameof(Settings.CustomThemes):
                         _bar?.ApplyLook();
                         break;
+                    case nameof(Settings.TaskbarLayout):
+                        // a new window for the other look; Windows' taskbar stays hidden
+                        if (_bar == null) break;
+                        var old = _bar;
+                        _bar = null;
+                        try { old.Close(); } catch { }
+                        Open();
+                        break;
                     case nameof(Settings.TaskbarSize):
                         _bar?.ApplySize();
                         break;

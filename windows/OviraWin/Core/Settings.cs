@@ -220,6 +220,10 @@ namespace Ovira.Core
         private string _taskbarCustomColor = "#3D85FF";
         public string TaskbarCustomColor { get => _taskbarCustomColor; set => Set(ref _taskbarCustomColor, string.IsNullOrWhiteSpace(value) ? "#3D85FF" : value); }
 
+        // 0.7.7: «dock» (a floating capsule) or «bar» (a full-width strip).
+        private string _taskbarLayout = "dock";
+        public string TaskbarLayout { get => _taskbarLayout; set => Set(ref _taskbarLayout, value == "bar" ? "bar" : "dock"); }
+
         // 0.7.3: «small», «medium» or «large».
         private string _taskbarSize = "large";
         public string TaskbarSize { get => _taskbarSize; set => Set(ref _taskbarSize, value is "small" or "medium" ? value : "large"); }

@@ -133,12 +133,17 @@ namespace Ovira.Taskbar
     // Windows keeps the strip under it free (an «app bar»).
     internal sealed class TaskbarWindow : Window
     {
-        public const double Capsule = 54;          // the dock's height
-        public const double BottomGap = 7;
-        public const double Reserve = Capsule + BottomGap + 5;     // the strip windows don't cover
+        // 0.7.7: two looks — «Док» (a floating capsule) and «Полоса» (a
+        // full-width bar along the bottom edge, like Windows' own, in Ovira's
+        // colours). Switching rebuilds the window.
+        public static bool IsBar => Settings.Current.TaskbarLayout == "bar";
+        public static double Capsule => IsBar ? 48 : 54;          // the dock's height
+        public static double BottomGap => IsBar ? 0 : 7;
+        public static double Reserve => IsBar ? 48 : Capsule + BottomGap + 5;     // the strip windows don't cover
         public const double Headroom = 46;         // room above for the grown icons
-        public const double Slot = 50;             // one icon's place
-        public const double IconSize = 34;
+        public static double Slot => IsBar ? 44 : 50;             // one icon's place
+        public static double IconSize => IsBar ? 26 : 34;
+        public static double Radius => IsBar ? 0 : 19;
         public const double MaxGrow = 0.38;        // +38 % right under the cursor
 
         private IntPtr _hwnd;
@@ -196,8 +201,14 @@ namespace Ovira.Taskbar
             FontFamily = new FontFamily("Segoe UI Variable Text, Segoe UI");
             Left = -10000; Top = -10000;
 
-            _dock.Margin = new Thickness(24, 0, 24, BottomGap);
-            _shadow.CornerRadius = _capsule.CornerRadius = _capsuleOld.CornerRadius = _gloss.CornerRadius = new CornerRadius(19);
+            _dock.Margin = IsBar ? new Thickness(0) : new Thickness(24, 0, 24, BottomGap);
+            if (IsBar)
+            {
+                _dock.HorizontalAlignment = HorizontalAlignment.Stretch;
+                SizeToContent = SizeToContent.Manual;
+                _shadow.Visibility = Visibility.Collapsed;
+            }
+            _shadow.CornerRadius = _capsule.CornerRadius = _capsuleOld.CornerRadius = _gloss.CornerRadius = new CornerRadius(Radius);
             _shadow.Height = _capsule.Height = _capsuleOld.Height = _gloss.Height = Capsule;
             _shadow.VerticalAlignment = _capsule.VerticalAlignment = _capsuleOld.VerticalAlignment = _gloss.VerticalAlignment = VerticalAlignment.Bottom;
             _capsuleOld.BorderThickness = new Thickness(1);
@@ -205,12 +216,12 @@ namespace Ovira.Taskbar
             _shadow.Opacity = 0.55;
             _shadow.Effect = new DropShadowEffect { BlurRadius = 22, ShadowDepth = 4, Direction = 270, Opacity = 0.45 };
             _shadow.CacheMode = new BitmapCache();
-            _capsule.BorderThickness = new Thickness(1);
-            _gloss.Margin = new Thickness(1);
+            _capsule.BorderThickness = _capsuleOld.BorderThickness = IsBar ? new Thickness(0, 1, 0, 0) : new Thickness(1);
+            _gloss.Margin = IsBar ? new Thickness(0, 1, 0, 0) : new Thickness(1);
             _artBox.Height = Capsule;
             _artBox.Children.Add(_art);
             _artBox.Children.Add(_artOld);
-            _dock.SizeChanged += (_, _) => _artBox.Clip = new RectangleGeometry(new Rect(0, 0, _dock.ActualWidth, Capsule), 19, 19);
+            _dock.SizeChanged += (_, _) => _artBox.Clip = new RectangleGeometry(new Rect(0, 0, _dock.ActualWidth, Capsule), Radius, Radius);
             _dock.Children.Add(_shadow);
             _dock.Children.Add(_artBox);
             _dock.Children.Add(_capsule);
@@ -354,6 +365,12 @@ namespace Ovira.Taskbar
             var screen = Screen;
             var dpi = VisualTreeHelper.GetDpi(this);
             int h = (int)Math.Round(Reserve * K * dpi.DpiScaleY);
+            if (IsBar)
+            {
+                // the bar is exactly as wide as the screen
+                Width = screen.Width / dpi.DpiScaleX;
+                Height = (Capsule + BottomGap + Headroom) * K;
+            }
             var d = Data();
             d.rc = new TB.RECT { Left = screen.Left, Right = screen.Right, Top = screen.Bottom - h, Bottom = screen.Bottom };
             TB.SHAppBarMessage(TB.ABM_QUERYPOS, ref d);
@@ -374,7 +391,7 @@ namespace Ovira.Taskbar
             var screen = Screen;
             var dpi = VisualTreeHelper.GetDpi(this);
             int w = (int)Math.Round(ActualWidth * dpi.DpiScaleX), h = (int)Math.Round(ActualHeight * dpi.DpiScaleY);
-            int x = Settings.Current.TaskbarAlign == "left" ? screen.Left : screen.Left + (screen.Width - w) / 2;
+            int x = IsBar || Settings.Current.TaskbarAlign == "left" ? screen.Left : screen.Left + (screen.Width - w) / 2;
             int y = BottomPx - h;
             TB.SetWindowPos(_hwnd, TB.HWND_TOPMOST, x, y, 0, 0, TB.SWP_NOSIZE | TB.SWP_NOACTIVATE | TB.SWP_SHOWWINDOW);
             _barTop = (BottomPx - (Capsule + BottomGap) * K * dpi.DpiScaleY) / dpi.DpiScaleY;
@@ -467,6 +484,7 @@ namespace Ovira.Taskbar
                 _art.Source = D.Art;
             }
             _shadow.BeginAnimation(OpacityProperty, new DoubleAnimation(D.Shadow ? 0.55 : 0, TimeSpan.FromSeconds(IsLoaded ? 0.5 : 0)));
+            _row.HorizontalAlignment = !IsBar ? HorizontalAlignment.Stretch : Settings.Current.TaskbarAlign == "left" ? HorizontalAlignment.Left : HorizontalAlignment.Center;
             _bubbleCard.Background = D.Fg is SolidColorBrush f && f.Color.R < 0x80 ? new SolidColorBrush(Color.FromArgb(0xF2, 0xFF, 0xFF, 0xFF)) : new SolidColorBrush(Color.FromArgb(0xF0, 0x26, 0x26, 0x2A));
             _bubbleText.Foreground = D.Fg;
             _start.Restyle(D);
@@ -950,7 +968,7 @@ namespace Ovira.Taskbar
     // shows the desktop. Its own small window so the dock's stays narrow.
     internal sealed class TrayWindow : Window
     {
-        private const double H = 44;
+        private static double H => TaskbarWindow.IsBar ? 40 : 44;
         private readonly TaskbarWindow _bar;
         private IntPtr _hwnd;
         private readonly Border _shadow = new(), _capsule = new(), _capsuleOld = new(), _gloss = new() { IsHitTestVisible = false };
@@ -986,7 +1004,9 @@ namespace Ovira.Taskbar
             FontFamily = new FontFamily("Segoe UI Variable Text, Segoe UI");
             Left = -10000; Top = -10000;
 
-            var grid = new Grid { Margin = new Thickness(18, 18, 10, 0), Height = H };
+            bool bar = TaskbarWindow.IsBar;
+            // in «Полоса» the clock sits inside the bar, without a capsule of its own
+            var grid = new Grid { Margin = bar ? new Thickness(0, 18, 4, 0) : new Thickness(18, 18, 10, 0), Height = H };
             _grid = grid;
             _shadow.CornerRadius = _capsule.CornerRadius = _capsuleOld.CornerRadius = _gloss.CornerRadius = new CornerRadius(15);
             _capsuleOld.BorderThickness = new Thickness(1);
@@ -1005,6 +1025,7 @@ namespace Ovira.Taskbar
             grid.Children.Add(_row);
             // the bottom of the capsule lines up with the middle of the dock
             var outer = new Grid { Margin = new Thickness(0, 0, 0, TaskbarWindow.BottomGap + (TaskbarWindow.Capsule - H) / 2) };
+            if (bar) _shadow.Visibility = Visibility.Collapsed;
             outer.Children.Add(grid);
             outer.LayoutTransform = _zoom;
             Content = outer;
@@ -1083,9 +1104,19 @@ namespace Ovira.Taskbar
         public void ApplyLook()
         {
             var d = _bar.Style2;
-            Fade.Swap(_capsule, _capsuleOld, d.Back, d.Rim, IsLoaded);
-            _shadow.BeginAnimation(OpacityProperty, new DoubleAnimation(d.Shadow ? 0.55 : 0, TimeSpan.FromSeconds(IsLoaded ? 0.5 : 0)));
-            _gloss.Background = d.Gloss;
+            if (TaskbarWindow.IsBar)
+            {
+                // almost clear, so the gaps stay clickable; the bar below gives the colour
+                var clear = new SolidColorBrush(Color.FromArgb(0x01, 0, 0, 0));
+                _capsule.Background = clear; _capsule.BorderBrush = Brushes.Transparent;
+                _gloss.Background = null;
+            }
+            else
+            {
+                Fade.Swap(_capsule, _capsuleOld, d.Back, d.Rim, IsLoaded);
+                _shadow.BeginAnimation(OpacityProperty, new DoubleAnimation(d.Shadow ? 0.55 : 0, TimeSpan.FromSeconds(IsLoaded ? 0.5 : 0)));
+                _gloss.Background = d.Gloss;
+            }
             foreach (var b in _buttons) b.Hover = d.Hover;
             _time.Foreground = d.Fg; _date.Foreground = d.Fg2; _lang.Foreground = d.Fg; _pct.Foreground = d.Fg;
             _speaker.Fill = d.Fg; _battery.Fill = d.Fg;
