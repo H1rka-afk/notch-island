@@ -530,8 +530,22 @@ namespace Ovira.Taskbar
             return IntPtr.Zero;
         }
 
+        // 0.8.2: while the widget editor is open the dock steps away completely
+        private bool _suspended;
+        public void SetSuspended(bool on)
+        {
+            _suspended = on;
+            _preview.HideNow();
+            _bubble.IsOpen = false;
+            var v = on || _fullscreen ? Visibility.Hidden : Visibility.Visible;
+            Visibility = v;
+            if (_tray != null) _tray.Visibility = v;
+            if (!on && !_fullscreen) Place();
+        }
+
         private void UpdateFullscreen()
         {
+            if (_suspended) return;
             bool fs = Native.GameCoversDesktop();
             if (fs == _fullscreen) return;
             _fullscreen = fs;

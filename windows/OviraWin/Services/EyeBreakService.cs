@@ -66,7 +66,7 @@ namespace Ovira.Services
         }
 
         private bool CanRemindNow() =>
-            (S.GameEyeBreak || !Native.FullscreenAppInFront()) && !(_island?.Busy ?? false) && !InUse("microphone") && !InUse("webcam");
+            (S.GameEyeBreak || !Native.FullscreenAppInFront() || Native.OwnWindowInFront()) && !(_island?.Busy ?? false) && !InUse("microphone") && !InUse("webcam");
 
         // The break itself: «Посмотри вдаль», a countdown with a bar, «Готово».
         // A click on the island skips it.

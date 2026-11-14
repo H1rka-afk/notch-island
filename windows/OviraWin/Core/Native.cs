@@ -80,6 +80,16 @@ namespace Ovira.Core
         [DllImport("shell32.dll")]
         private static extern int SHQueryUserNotificationState(out int state);
 
+        // 0.8.2: Ovira's own full-screen windows (the widget editor) are not
+        // a game — the island and the rest should not hide for them.
+        public static bool OwnWindowInFront()
+        {
+            var fg = GetForegroundWindow();
+            if (fg == IntPtr.Zero) return false;
+            GetWindowThreadProcessId(fg, out var pid);
+            return pid == (uint)Environment.ProcessId;
+        }
+
         public static bool FullscreenAppInFront()
         {
             if (SHQueryUserNotificationState(out var state) != 0) return false;

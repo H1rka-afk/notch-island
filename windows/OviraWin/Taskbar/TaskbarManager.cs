@@ -147,6 +147,23 @@ namespace Ovira.Taskbar
             SafeRestore();
         }
 
+        // 0.8.2: the widget editor covers the screen — no dock over it.
+        private static bool _suspended;
+        public static void Suspend(bool on)
+        {
+            _suspended = on;
+            _bar?.SetSuspended(on);
+            // Windows likes to bring its own taskbar back when a full-screen
+            // window of ours takes the front — keep it away, quickly
+            _guard ??= new System.Windows.Threading.DispatcherTimer { Interval = TimeSpan.FromMilliseconds(150) };
+            _guard.Tick -= GuardTick;
+            _guard.Tick += GuardTick;
+            if (on && _bar != null) _guard.Start(); else _guard.Stop();
+        }
+
+        private static System.Windows.Threading.DispatcherTimer? _guard;
+        private static void GuardTick(object? sender, EventArgs e) { try { SystemTaskbar.KeepHidden(); } catch { } }
+
         public static void Stop()
         {
             var bar = _bar;

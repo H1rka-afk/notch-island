@@ -87,6 +87,8 @@ namespace Ovira.Widgets
             _look = Look.Current();
             _work = Settings.Current.Widgets.Select(w => w.Copy()).ToList();
             WidgetManager.HideAll();
+            Ovira.Taskbar.TaskbarManager.Suspend(true);
+            Closed += (_, _) => Ovira.Taskbar.TaskbarManager.Suspend(false);
 
             // Wallpaper, a slight dim, the cells, the widgets.
             _root.Children.Add(Wallpaper());

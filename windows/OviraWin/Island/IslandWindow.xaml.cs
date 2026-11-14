@@ -113,7 +113,7 @@ namespace Ovira.Island
             // stays over games and full-screen video.
             // 0.5.0: on pause too — the player does not vanish from the game.
             var hide = S.HideInFullscreen && Native.FullscreenAppInFront() &&
-                       !(S.GameMedia && HasTrack);
+                       !(S.GameMedia && HasTrack) && !Native.OwnWindowInFront();
             if (hide != _hiddenForFullscreen)
             {
                 _hiddenForFullscreen = hide;
