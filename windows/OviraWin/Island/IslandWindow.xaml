@@ -17,6 +17,8 @@
             <!-- 0.4.2: no drop shadow — on a transparent window it was redrawn by
                  the processor on every frame of the bars -->
             <Path x:Name="Shape" Fill="Black" HorizontalAlignment="Left" VerticalAlignment="Top" />
+            <!-- 0.8.5: the second island's own shape, so each one grows on its own under the pointer -->
+            <Path x:Name="BubbleShape" Fill="Black" HorizontalAlignment="Left" VerticalAlignment="Top" />
 
             <!-- 0.6.2: the second island on the right (a timer, a call… while music plays) -->
             <Grid x:Name="BubbleLayer" HorizontalAlignment="Left" VerticalAlignment="Top" Height="35" Opacity="0"

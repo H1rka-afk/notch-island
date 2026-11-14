@@ -32,7 +32,10 @@ namespace Ovira.Island
         private Settings S => Settings.Current;
 
         private Mode _mode = Mode.Hidden;
-        private readonly Spring _w = new Spring(120), _h = new Spring(0), _r = new Spring(13), _peek = new Spring(1);
+        private readonly Spring _w = new Spring(120), _h = new Spring(0), _r = new Spring(13), _peek = new Spring(1), _bpeek = new Spring(1);
+        // 0.8.5: each island grows by itself under the pointer
+        private readonly ScaleTransform _shapePeek = new(), _contentPeek = new(), _bubbleShapePeek = new(), _bubblePeek = new();
+        private bool _overBubble;
         // 0.6.2: the island split in two — the music on the left (its right
         // wing pulled in to the notch), a second small island on the right.
         private readonly Spring _shift = new Spring(0), _bw = new Spring(0);
@@ -73,13 +76,19 @@ namespace Ovira.Island
             };
             Loaded += (_, _) => { Position(); Relayout(animated: false); };
 
+            Shape.RenderTransform = _shapePeek;
+            ContentHost.RenderTransform = _contentPeek;
+            BubbleShape.RenderTransform = _bubbleShapePeek;
+            BubbleLayer.RenderTransform = _bubblePeek;
+            BubbleLayer.MouseEnter += (_, _) => { _overBubble = true; PeekTargets(); };
+            BubbleLayer.MouseLeave += (_, _) => { _overBubble = false; PeekTargets(); };
             Island.MouseEnter += (_, _) => PointerEntered();
             Island.MouseLeave += (_, _) => PointerLeft();
             Island.MouseLeftButtonUp += OnIslandClick;
             // 0.6.2: the second island opens its activity.
             BubbleLayer.MouseLeftButtonUp += (_, e) => { if (_split && _mode == Mode.Compact) { OpenActivity(); e.Handled = true; } };
 
-            _hoverOpen.Tick += (_, _) => { _hoverOpen.Stop(); if (_pointerInside && S.OpenOnHover) Expand(); };
+            _hoverOpen.Tick += (_, _) => { _hoverOpen.Stop(); if (_pointerInside && !_overBubble && S.OpenOnHover) Expand(); };
             _hoverClose.Tick += (_, _) => { _hoverClose.Stop(); if (!_pointerInside) Collapse(); };
             _bannerTimer.Tick += (_, _) => { _bannerTimer.Stop(); EndBanner(); };
             _progressTimer.Tick += (_, _) => { UpdateProgress(); UpdateVolume(); };
@@ -234,7 +243,7 @@ namespace Ovira.Island
             var now = _clock.Elapsed.TotalSeconds;
             var dt = Math.Min(0.05, Math.Max(0.001, now - _lastFrame));
             _lastFrame = now;
-            bool moving = _w.Step(dt) | _h.Step(dt) | _r.Step(dt) | _peek.Step(dt) | _shift.Step(dt) | _bw.Step(dt);
+            bool moving = _w.Step(dt) | _h.Step(dt) | _r.Step(dt) | _peek.Step(dt) | _bpeek.Step(dt) | _shift.Step(dt) | _bw.Step(dt);
             DrawFrame();
             if (!moving)
             {
@@ -288,6 +297,17 @@ namespace Ovira.Island
             }
             BubbleLayer.Margin = new Thickness(bx, top, 0, 0);
             BubbleLayer.Width = bw;
+            if (bubble != null) bubble.Freeze();
+            BubbleShape.Data = bubble ?? Geometry.Empty;
+            {
+                double bh = Math.Min(h, CompactH);
+                double byc = Floating ? top + bh / 2 : 0;
+                _bubbleShapePeek.CenterX = bx + bw / 2; _bubbleShapePeek.CenterY = byc;
+                _bubblePeek.CenterX = bw / 2; _bubblePeek.CenterY = Floating ? bh / 2 : 0;
+                _bubbleShapePeek.ScaleX = _bubbleShapePeek.ScaleY = _bpeek.Value;
+                _bubblePeek.ScaleX = _bubblePeek.ScaleY = _bpeek.Value;
+            }
+            bubble = null;      // the main shape is drawn alone
 
             if (h < 0.5)
             {
@@ -352,8 +372,12 @@ namespace Ovira.Island
             Place(ActivityLayer, ExpandedW, w);
             ExpandedLayer.Height = ExpandedH;
 
-            PeekScale.ScaleX = _peek.Value;
-            PeekScale.ScaleY = _peek.Value;
+            PeekScale.ScaleX = PeekScale.ScaleY = 1;
+            double myc = Floating ? top + h / 2 : 0;
+            _shapePeek.CenterX = cx; _shapePeek.CenterY = myc;
+            _contentPeek.CenterX = w / 2; _contentPeek.CenterY = Floating ? h / 2 : 0;
+            _shapePeek.ScaleX = _shapePeek.ScaleY = _peek.Value;
+            _contentPeek.ScaleX = _contentPeek.ScaleY = _peek.Value;
         }
 
         private static void Place(FrameworkElement layer, double width, double hostWidth)
@@ -402,18 +426,38 @@ namespace Ovira.Island
         {
             _pointerInside = true;
             _hoverClose.Stop();
-            if (_mode == Mode.Compact || _mode == Mode.Idle)
+            if (_mode == Mode.Compact || _mode == Mode.Idle) PeekTargets();
+        }
+
+        // Only the island under the pointer grows (and only the main one
+        // opens on hover).
+        private void PeekTargets()
+        {
+            if (!_pointerInside || !(_mode == Mode.Compact || _mode == Mode.Idle))
             {
-                if (S.HoverPeek) { _peek.To(1.045, Motion.PeekResponse, Motion.PeekDamping); StartAnimating(); }
-                if (S.OpenOnHover && _mode == Mode.Compact) _hoverOpen.Start();
+                _peek.To(1, Motion.PeekResponse, 0.9);
+                _bpeek.To(1, Motion.PeekResponse, 0.9);
+                StartAnimating();
+                return;
             }
+            bool bubble = _overBubble && _split;
+            if (S.HoverPeek)
+            {
+                _peek.To(bubble ? 1 : 1.045, Motion.PeekResponse, bubble ? 0.9 : Motion.PeekDamping);
+                _bpeek.To(bubble ? 1.06 : 1, Motion.PeekResponse, bubble ? Motion.PeekDamping : 0.9);
+                StartAnimating();
+            }
+            if (bubble) _hoverOpen.Stop();
+            else if (S.OpenOnHover && _mode == Mode.Compact && !_hoverOpen.IsEnabled) _hoverOpen.Start();
         }
 
         private void PointerLeft()
         {
             _pointerInside = false;
+            _overBubble = false;
             _hoverOpen.Stop();
             _peek.To(1, Motion.PeekResponse, 0.9);
+            _bpeek.To(1, Motion.PeekResponse, 0.9);
             StartAnimating();
             if (_mode == Mode.Expanded && !_seeking && !_settingVolume) _hoverClose.Start();
         }
