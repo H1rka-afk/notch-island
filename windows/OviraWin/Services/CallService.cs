@@ -44,10 +44,28 @@ namespace Ovira.Services
             Changed?.Invoke();
         }
 
-        private void Poll()
+        private bool _busy;
+
+        // 0.7.9: the look-up runs off the UI thread (it asks the audio system)
+        private async void Poll()
         {
+            if (DateTime.Now < _demoUntil || _busy) return;
+            if (!Ovira.Core.Settings.Current.CallActivity) { Apply(null); return; }
+            _busy = true;
+            Call? found = null;
+            try { found = await Task.Run(Detect); } catch { }
+            finally { _busy = false; }
             if (DateTime.Now < _demoUntil) return;
-            Call? found = Ovira.Core.Settings.Current.CallActivity ? Detect() : null;
+            Apply(found);
+        }
+
+        private int _misses;
+
+        private void Apply(Call? found)
+        {
+            // a short gap in the microphone (a muted moment) doesn't end the call
+            if (found == null && Current != null && Current.Process != "demo" && ++_misses < 3) return;
+            _misses = 0;
             bool changed = (found == null) != (Current == null) || (found != null && Current != null && found.App != Current.App);
             if (found != null && Current != null && found.App == Current.App) found = Current;   // keep the start time
             Current = found;
@@ -58,6 +76,15 @@ namespace Ovira.Services
 
         private static Call? Detect()
         {
+            // 0.7.9: first ask the sound system which programs are recording
+            // from a microphone right now — more reliable than the privacy
+            // list, which some Windows builds fill late or not at all.
+            try
+            {
+                var fromAudio = DetectFromAudio();
+                if (fromAudio != null) return fromAudio;
+            }
+            catch { }
             try
             {
                 using var root = Registry.CurrentUser.OpenSubKey(@"Software\Microsoft\Windows\CurrentVersion\CapabilityAccessManager\ConsentStore\microphone");
@@ -82,6 +109,41 @@ namespace Ovira.Services
             return null;
         }
 
+        private static Call? DetectFromAudio()
+        {
+            using var en = new MMDeviceEnumerator();
+            var seen = new HashSet<uint>();
+            foreach (var device in en.EnumerateAudioEndPoints(DataFlow.Capture, DeviceState.Active))
+            {
+                try
+                {
+                    var manager = device.AudioSessionManager;
+                    manager.RefreshSessions();
+                    var sessions = manager.Sessions;
+                    for (int i = 0; i < sessions.Count; i++)
+                    {
+                        var session = sessions[i];
+                        if (session.State != NAudio.CoreAudioApi.Interfaces.AudioSessionState.AudioSessionStateActive) continue;
+                        uint pid = session.GetProcessID;
+                        if (pid == 0 || !seen.Add(pid)) continue;
+                        string name;
+                        try { using var proc = Process.GetProcessById((int)pid); name = proc.ProcessName.ToLowerInvariant(); }
+                        catch { continue; }
+                        var app = AppFor(name, name);
+                        if (app != null) return new Call(app, DateTime.Now, name);
+                        if (IsBrowser(name))
+                        {
+                            var tab = BrowserCallTab(name);
+                            if (tab != null) return new Call(tab, DateTime.Now, name);
+                        }
+                    }
+                }
+                catch { }
+                finally { device.Dispose(); }
+            }
+            return null;
+        }
+
         private static void Collect(RegistryKey key, List<(string, DateTime)> into)
         {
             foreach (var name in key.GetSubKeyNames())
@@ -100,6 +162,15 @@ namespace Ovira.Services
         private static string? AppFor(string exe, string key)
         {
             if (exe.StartsWith("discord")) return "Discord";
+            // 0.7.9: more messengers
+            if (exe.StartsWith("telegram") || key.Contains("telegramdesktop")) return "Telegram";
+            if (exe.StartsWith("whatsapp") || key.Contains("whatsappdesktop")) return "WhatsApp";
+            if (exe is "zoom" or "zoom.us" || key.Contains("#zoom#")) return "Zoom";
+            if (exe is "ms-teams" or "teams" || key.Contains("msteams")) return "Teams";
+            if (exe.StartsWith("skype") || key.Contains("skype")) return "Skype";
+            if (exe.StartsWith("viber")) return "Viber";
+            if (exe == "slack") return "Slack";
+            if (exe.Contains("telemost") || key.Contains("telemost")) return "Телемост";
             if ((exe.Contains("vk") && (exe.Contains("messenger") || exe.Contains("call") || exe.Contains("мессенджер"))) ||
                 key.Contains("vk messenger") || key.Contains("vkmessenger") || key.Contains("vk.messenger") || key.Contains("vkcalls"))
                 return "VK Мессенджер";
@@ -116,6 +187,12 @@ namespace Ovira.Services
                 if (proc != exe) continue;
                 var t = title.ToLowerInvariant();
                 if (t.Contains("discord")) { result = "Discord"; break; }
+                if (t.Contains("google meet") || t.StartsWith("meet -") || t.Contains("meet.google")) { result = "Google Meet"; break; }
+                if (t.Contains("zoom")) { result = "Zoom"; break; }
+                if (t.Contains("telegram")) { result = "Telegram"; break; }
+                if (t.Contains("whatsapp")) { result = "WhatsApp"; break; }
+                if (t.Contains("телемост")) { result = "Телемост"; break; }
+                if (t.Contains("microsoft teams")) { result = "Teams"; break; }
                 if (t.Contains("вконтакте") || t.Contains("vk звонки") || t.Contains("vk мессенджер") || t.Contains("vk messenger") || t.Contains(" | vk") || t.EndsWith(" vk"))
                 { result = "VK"; break; }
             }
