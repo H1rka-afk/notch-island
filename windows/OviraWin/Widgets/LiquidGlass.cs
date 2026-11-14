@@ -126,7 +126,7 @@ namespace Ovira.Widgets
             var dispatcher = Application.Current.Dispatcher;
             Task.Run(() =>
             {
-                int radius = Math.Max(2, (int)Math.Round(w / 640.0 * 2.2));      // a light frost, not a fog
+                int radius = Math.Max(2, (int)Math.Round(w / 640.0 * 1.3));      // a light frost, not a fog
                 for (int pass = 0; pass < 3; pass++) { BoxH(raw, w, h, radius); BoxV(raw, w, h, radius); }
                 dispatcher.BeginInvoke(new Action(() =>
                 {
