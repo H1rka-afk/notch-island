@@ -88,7 +88,12 @@ namespace Ovira.Island
             // 0.6.2: the second island opens its activity.
             BubbleLayer.MouseLeftButtonUp += (_, e) => { if (_split && _mode == Mode.Compact) { OpenActivity(); e.Handled = true; } };
 
-            _hoverOpen.Tick += (_, _) => { _hoverOpen.Stop(); if (_pointerInside && !_overBubble && S.OpenOnHover) Expand(); };
+            _hoverOpen.Tick += (_, _) =>
+            {
+                _hoverOpen.Stop();
+                if (!_pointerInside || _overBubble || !S.OpenOnHover) return;
+                if (ActivityResting) OpenActivity(); else Expand();
+            };
             _hoverClose.Tick += (_, _) => { _hoverClose.Stop(); if (!_pointerInside) Collapse(); };
             _bannerTimer.Tick += (_, _) => { _bannerTimer.Stop(); EndBanner(); };
             _progressTimer.Tick += (_, _) => { UpdateProgress(); UpdateVolume(); };
@@ -426,14 +431,18 @@ namespace Ovira.Island
         {
             _pointerInside = true;
             _hoverClose.Stop();
-            if (_mode == Mode.Compact || _mode == Mode.Idle) PeekTargets();
+            if (_mode == Mode.Compact || _mode == Mode.Idle || ActivityResting) PeekTargets();
         }
+
+        // 0.8.7: a call (or timer…) sitting in the main island without music
+        // grows under the pointer and opens on hover like the player does.
+        private bool ActivityResting => _mode == Mode.Banner && _activityBanner;
 
         // Only the island under the pointer grows (and only the main one
         // opens on hover).
         private void PeekTargets()
         {
-            if (!_pointerInside || !(_mode == Mode.Compact || _mode == Mode.Idle))
+            if (!_pointerInside || !(_mode == Mode.Compact || _mode == Mode.Idle || ActivityResting))
             {
                 _peek.To(1, Motion.PeekResponse, 0.9);
                 _bpeek.To(1, Motion.PeekResponse, 0.9);
@@ -448,7 +457,7 @@ namespace Ovira.Island
                 StartAnimating();
             }
             if (bubble) _hoverOpen.Stop();
-            else if (S.OpenOnHover && _mode == Mode.Compact && !_hoverOpen.IsEnabled) _hoverOpen.Start();
+            else if (S.OpenOnHover && (_mode == Mode.Compact || ActivityResting) && !_hoverOpen.IsEnabled) _hoverOpen.Start();
         }
 
         private void PointerLeft()

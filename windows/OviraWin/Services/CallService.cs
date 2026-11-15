@@ -234,35 +234,57 @@ namespace Ovira.Services
             "положить трубку", "выйти из звонка", "покинуть", "hang up", "завершить"
         };
 
+        // 0.8.7: sturdier. Discord, Telegram and browsers are Chromium inside:
+        // they build the list of their buttons for others only after being
+        // asked (and only for the page itself, a child window) — so Ovira
+        // asks both and waits a little longer, tries hidden and minimised
+        // windows of the app too, and presses through the app's own
+        // accessibility if the button has no ordinary «press».
         public Task<bool> HangUpAsync() => Task.Run(() =>
         {
             var call = Current;
             if (call == null) return false;
             if (call.Process == "demo") { _demoUntil = DateTime.MinValue; return true; }
-            for (int attempt = 0; attempt < 2; attempt++)
+            var windows = Windows(call).ToList();
+            int[] waits = { 0, 700, 1500 };
+            foreach (var wait in waits)
             {
-                foreach (var hwnd in Windows(call))
+                if (wait > 0)
                 {
-                    if (attempt == 1) Wake(hwnd);
+                    foreach (var hwnd in windows) Wake(hwnd);
+                    Thread.Sleep(wait);
+                }
+                foreach (var hwnd in windows)
+                {
                     var button = FindHangUp(hwnd);
                     if (button == null) continue;
-                    try
-                    {
-                        if (button.TryGetCurrentPattern(InvokePattern.Pattern, out var p)) { ((InvokePattern)p).Invoke(); return true; }
-                    }
-                    catch { }
+                    if (Press(button)) return true;
                 }
-                Thread.Sleep(500);
             }
             return false;
         });
+
+        private static bool Press(AutomationElement button)
+        {
+            try
+            {
+                if (button.TryGetCurrentPattern(InvokePattern.Pattern, out var p)) { ((InvokePattern)p).Invoke(); return true; }
+                if (button.TryGetCurrentPattern(TogglePattern.Pattern, out var t)) { ((TogglePattern)t).Toggle(); return true; }
+                if (button.TryGetCurrentPattern(SelectionItemPattern.Pattern, out var si)) { ((SelectionItemPattern)si).Select(); return true; }
+            }
+            catch { }
+            return false;
+        }
 
         private static AutomationElement? FindHangUp(IntPtr hwnd)
         {
             try
             {
                 var root = AutomationElement.FromHandle(hwnd);
-                var buttons = root.FindAll(TreeScope.Descendants, new PropertyCondition(AutomationElement.ControlTypeProperty, ControlType.Button));
+                var buttons = root.FindAll(TreeScope.Descendants, new OrCondition(
+                    new PropertyCondition(AutomationElement.ControlTypeProperty, ControlType.Button),
+                    new PropertyCondition(AutomationElement.ControlTypeProperty, ControlType.Hyperlink),
+                    new PropertyCondition(AutomationElement.ControlTypeProperty, ControlType.MenuItem)));
                 AutomationElement? best = null;
                 int bestScore = 0;
                 foreach (AutomationElement b in buttons)
@@ -312,19 +334,51 @@ namespace Ovira.Services
             return list;
         }
 
+        [DllImport("user32.dll")] private static extern bool EnumChildWindows(IntPtr parent, EnumProc proc, IntPtr param);
+        [DllImport("user32.dll", CharSet = CharSet.Unicode)] private static extern int GetClassName(IntPtr hwnd, StringBuilder name, int max);
+
+        private static readonly Dictionary<string, string[]> TabWords = new()
+        {
+            ["Discord"] = new[] { "discord" },
+            ["VK"] = new[] { "вконтакте", "vk" },
+            ["VK Мессенджер"] = new[] { "вконтакте", "vk" },
+            ["Google Meet"] = new[] { "meet" },
+            ["Zoom"] = new[] { "zoom" },
+            ["Telegram"] = new[] { "telegram" },
+            ["WhatsApp"] = new[] { "whatsapp" },
+            ["Телемост"] = new[] { "телемост", "telemost" },
+            ["Teams"] = new[] { "teams" },
+        };
+
+        // The app's windows — visible ones first, then hidden or minimised
+        // ones (Discord keeps running in the tray).
         private static IEnumerable<IntPtr> Windows(Call call)
         {
-            foreach (var (hwnd, title, proc) in TopWindows())
+            var visible = new List<IntPtr>();
+            var hidden = new List<IntPtr>();
+            var names = new Dictionary<uint, string>();
+            EnumWindows((hwnd, _) =>
             {
-                if (proc != call.Process) continue;
-                if (IsBrowser(proc))
+                GetWindowThreadProcessId(hwnd, out var pid);
+                if (!names.TryGetValue(pid, out var name))
                 {
-                    var t = title.ToLowerInvariant();
-                    bool match = call.App == "Discord" ? t.Contains("discord") : (t.Contains("вконтакте") || t.Contains("vk"));
-                    if (!match) continue;
+                    try { using var p = Process.GetProcessById((int)pid); name = p.ProcessName.ToLowerInvariant(); } catch { name = ""; }
+                    names[pid] = name;
                 }
-                yield return hwnd;
-            }
+                if (name != call.Process) return true;
+                var title = new StringBuilder(512);
+                GetWindowText(hwnd, title, 512);
+                if (title.Length == 0) return true;
+                if (IsBrowser(name))
+                {
+                    var t = title.ToString().ToLowerInvariant();
+                    var words = TabWords.TryGetValue(call.App, out var w) ? w : new[] { call.App.ToLowerInvariant() };
+                    if (!words.Any(t.Contains)) return true;
+                }
+                (IsWindowVisible(hwnd) ? visible : hidden).Add(hwnd);
+                return true;
+            }, IntPtr.Zero);
+            return visible.Concat(hidden);
         }
 
         private static void Wake(IntPtr hwnd)
@@ -334,6 +388,19 @@ namespace Ovira.Services
                 var iid = new Guid("618736E0-3C3D-11CF-810C-00AA00389B71");
                 AccessibleObjectFromWindow(hwnd, 0xFFFFFFFC, ref iid, out var obj);
                 if (obj != null) Marshal.ReleaseComObject(obj);
+                // the page itself lives in a child window — ask it too
+                EnumChildWindows(hwnd, (child, _) =>
+                {
+                    var cls = new StringBuilder(64);
+                    GetClassName(child, cls, 64);
+                    if (cls.ToString().StartsWith("Chrome_RenderWidgetHostHWND", StringComparison.Ordinal))
+                    {
+                        var iid2 = new Guid("618736E0-3C3D-11CF-810C-00AA00389B71");
+                        AccessibleObjectFromWindow(child, 0xFFFFFFFC, ref iid2, out var o2);
+                        if (o2 != null) Marshal.ReleaseComObject(o2);
+                    }
+                    return true;
+                }, IntPtr.Zero);
             }
             catch { }
         }
