@@ -60,6 +60,9 @@ namespace Ovira.SettingsUi
         public SettingsWindow()
         {
             InitializeComponent();
+            // 0.8.9: the widgets must not come up with the settings
+            Activated += (_, _) => Ovira.Widgets.WidgetManager.SinkSoon();
+            SourceInitialized += (_, _) => Ovira.Widgets.WidgetManager.SinkSoon();
             VersionText.Text = "Версия " + App.Version + " · Windows";
             SourceInitialized += (_, _) =>
             {

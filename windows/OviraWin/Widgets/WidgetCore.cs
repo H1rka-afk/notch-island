@@ -549,6 +549,17 @@ namespace Ovira.Widgets
         private static DateTime _holdUntil;
         private static DispatcherTimer? _holdTimer;
 
+        // called when an Ovira window (settings) comes to the front
+        public static void SinkSoon()
+        {
+            foreach (var delay in new[] { 30, 250 })
+            {
+                var t = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(delay) };
+                t.Tick += (_, _) => { t.Stop(); foreach (var w in Live) w.ToBottom(); };
+                t.Start();
+            }
+        }
+
         public static void HoldMedia() => _holdUntil = DateTime.Now.AddSeconds(0.42);
 
         private static void MediaChanged()
@@ -663,6 +674,9 @@ namespace Ovira.Widgets
                 if (!hide) foreach (var w in Live) w.ToBottom();
             }
             if (hide || DateTime.Now < _holdUntil) return;
+            // 0.8.9: widgets stay on the wallpaper — if something lifted them
+            // above other windows (opening Ovira's settings did), put them back
+            foreach (var w in Live) w.ToBottom();
             // 0.8.0: a new wallpaper re-draws the glass (checked every 5 s)
             if (++_wallTick % 5 == 0 && Settings.Current.WidgetStyle == "glass") LiquidGlass.Ensure();
             foreach (var w in Live.ToList()) w.Tick();

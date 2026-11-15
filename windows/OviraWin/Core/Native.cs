@@ -59,7 +59,16 @@ namespace Ovira.Core
             }
             if (desktop == IntPtr.Zero) return;
             var above = GetWindow(desktop, GW_HWNDPREV);
-            if (above == hwnd) return;                          // already there
+            // 0.8.9: already in the layer right on the wallpaper (only other
+            // widgets or hidden windows between it and the desktop)? — leave it
+            for (var w = above; w != IntPtr.Zero; w = GetWindow(w, GW_HWNDPREV))
+            {
+                if (w == hwnd) return;
+                if (!IsWindowVisible(w)) continue;
+                GetWindowThreadProcessId(w, out var pid);
+                if (pid != (uint)Environment.ProcessId) break;
+                if ((GetWindowLongPtr(w, -20).ToInt64() & 0x8 /* WS_EX_TOPMOST */) != 0) break;
+            }
             var after = above == IntPtr.Zero ? IntPtr.Zero /* HWND_TOP */ : above;
             SetWindowPos(hwnd, after, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE);
         }
