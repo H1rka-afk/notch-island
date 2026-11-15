@@ -31,6 +31,7 @@ namespace Ovira.Services
         [DllImport("user32.dll", CharSet = CharSet.Unicode)] private static extern int GetClassName(IntPtr h, StringBuilder s, int max);
         [DllImport("user32.dll")] private static extern uint GetWindowThreadProcessId(IntPtr h, out uint pid);
         private delegate bool EnumProc(IntPtr h, IntPtr p);
+        [DllImport("user32.dll")] private static extern bool PostMessage(IntPtr h, uint msg, IntPtr w, IntPtr l);
 
         [StructLayout(LayoutKind.Sequential)] private struct RECT { public int Left, Top, Right, Bottom; }
         [StructLayout(LayoutKind.Sequential)] private struct MONITORINFO { public int cbSize; public RECT Monitor, Work; public uint Flags; }
@@ -44,6 +45,12 @@ namespace Ovira.Services
         private static readonly Dictionary<IntPtr, Saved> Done = new();
 
         public static bool IsOn(IntPtr hwnd) => Done.ContainsKey(hwnd);
+
+        [DllImport("user32.dll")] private static extern IntPtr GetForegroundWindow();
+
+        // A window Ovira stretched is not «a game in full screen» for the
+        // island: it stays visible there, as on the desktop.
+        public static bool ForegroundIsOurs() => Done.Count > 0 && Done.ContainsKey(GetForegroundWindow());
 
         public static bool HasFrame(IntPtr hwnd) => (GetLong(hwnd, GWL_STYLE).ToInt64() & WS_CAPTION) == WS_CAPTION;
 
@@ -107,18 +114,44 @@ namespace Ovira.Services
             }
         }
 
-        // The game's window: Java (javaw.exe) drawing through GLFW. Only a
-        // window with a frame is touched — in F11 it is left alone.
+        // The game's window: Java (javaw.exe) drawing through GLFW.
+        // 0.9.0: in F11 the game is asked to leave its own full screen (the
+        // same F11 a player presses, sent to the game's window), and the
+        // window it comes back with is stretched frameless — so it works
+        // without changing anything in the game.
+        private static readonly Dictionary<IntPtr, DateTime> Asked = new();
+
         private static void Look(object? sender, EventArgs e)
         {
             foreach (var h in new List<IntPtr>(Done.Keys)) if (!IsWindow(h)) Done.Remove(h);
             EnumWindows((h, _) =>
             {
                 if (!IsWindowVisible(h) || IsIconic(h) || Done.ContainsKey(h)) return true;
-                if (!IsMinecraft(h) || !HasFrame(h)) return true;
-                Apply(h);
+                if (!IsMinecraft(h)) return true;
+                if (HasFrame(h)) { Note("frame → borderless", h); Apply(h); return true; }
+                // no frame and not ours: the game's own full screen
+                if (Asked.TryGetValue(h, out var at) && (DateTime.Now - at).TotalSeconds < 6) return true;
+                Asked[h] = DateTime.Now;
+                Note("F11 full screen → asking the game to leave it", h);
+                const uint WM_KEYDOWN = 0x100, WM_KEYUP = 0x101;
+                long scan = 0x57L << 16;                         // F11's scan code, as GLFW reads it
+                PostMessage(h, WM_KEYDOWN, new IntPtr(0x7A), new IntPtr(1 | scan));
+                PostMessage(h, WM_KEYUP, new IntPtr(0x7A), new IntPtr(unchecked((int)(1 | scan | 0xC0000000L))));
                 return true;
             }, IntPtr.Zero);
+        }
+
+        // What happened, for a bug report (window class and size only).
+        private static void Note(string what, IntPtr h)
+        {
+            try
+            {
+                GetWindowRect(h, out var r);
+                var file = System.IO.Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "Ovira", "borderless.log");
+                System.IO.Directory.CreateDirectory(System.IO.Path.GetDirectoryName(file)!);
+                System.IO.File.AppendAllText(file, DateTime.Now.ToString("s") + " " + what + $" ({r.Right - r.Left}×{r.Bottom - r.Top})" + Environment.NewLine);
+            }
+            catch { }
         }
 
         private static bool IsMinecraft(IntPtr h)
