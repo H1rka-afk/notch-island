@@ -793,6 +793,10 @@ namespace Ovira.Taskbar
             {
                 var handles = b.Windows.Select(w => w.Handle).ToList();
                 menu.Item("minimize", handles.Count == 1 ? "Свернуть" : "Свернуть все", () => { foreach (var h in handles) AppWindows.Minimize(h); });
+                // 0.8.8: a game in a window, as if full screen — the island stays visible
+                var fgw = TB.GetForegroundWindow();
+                var target = handles.Contains(fgw) ? fgw : handles[0];
+                menu.Item("grid", "Без рамки на весь экран", () => Ovira.Services.Borderless.Toggle(target), check: Ovira.Services.Borderless.IsOn(target));
                 menu.Separator();
                 // 0.7.5: ends the app itself, like «Снять задачу» in Task Manager
                 var windows = b.Windows.ToList();

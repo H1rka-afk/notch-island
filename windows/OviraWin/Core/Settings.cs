@@ -152,6 +152,10 @@ namespace Ovira.Core
         private bool _gameMedia;
         public bool GameMedia { get => _gameMedia; set => Set(ref _gameMedia, value); }
 
+        // 0.8.8: Minecraft (Java) in a window, stretched frameless over the screen.
+        private bool _minecraftBorderless;
+        public bool MinecraftBorderless { get => _minecraftBorderless; set => Set(ref _minecraftBorderless, value); }
+
         // 0.8.3: the call island over games.
         private bool _gameCall = true;
         public bool GameCall { get => _gameCall; set => Set(ref _gameCall, value); }
